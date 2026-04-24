@@ -1,0 +1,78 @@
+@layer theme, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@source "../**/*.{ts,tsx}";
+
+@theme inline {
+  --font-sans:
+    'SF Pro Display', 'SF Pro Text', ui-sans-serif, system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+:host {
+  --background: oklch(0.986 0.004 255);
+  --foreground: oklch(0.244 0.014 254);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.244 0.014 254);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.244 0.014 254);
+  --primary: oklch(0.404 0.041 259);
+  --primary-foreground: oklch(0.985 0.002 247);
+  --secondary: oklch(0.955 0.008 255);
+  --secondary-foreground: oklch(0.32 0.02 255);
+  --muted: oklch(0.965 0.006 255);
+  --muted-foreground: oklch(0.53 0.02 255);
+  --accent: oklch(0.955 0.013 255);
+  --accent-foreground: oklch(0.32 0.02 255);
+  --destructive: oklch(0.61 0.23 28);
+  --destructive-foreground: oklch(0.985 0.004 255);
+  --border: oklch(0.903 0.011 255);
+  --input: oklch(0.903 0.011 255);
+  --ring: oklch(0.62 0.05 255);
+  --radius: 1rem;
+  color-scheme: light;
+  display: block;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:host *,
+:host *::before,
+:host *::after {
+  box-sizing: border-box;
+}
+
+:host a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.moodle-ui {
+  color: var(--foreground);
+}

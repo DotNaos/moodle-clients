@@ -1,0 +1,101 @@
+<!-- https://aai-login.fhgr.ch/idp/profile/SAML2/Redirect/SSO?execution=e1s2 -->
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fachhochschule Graubünden Login</title>
+    <link rel="stylesheet" type="text/css" href="/idp/css/main.css">
+    <link rel="stylesheet" type="text/css" href="/idp/css/idphosting.css">
+    <link rel="shortcut icon" href="/idp/images/favicon.ico">
+    <!-- IdP Node: node12.fhgr.ch -->
+</head>
+
+<body>
+    <div class="aai_box">
+        <div class="container">
+            <a href="https://www.switch.ch/aai/">
+                <img class="aai_logo" alt="SWITCHaai-Logo" src="/idp/images/switchaai-logo.png">
+            </a>
+            <a href="https://www.fhgr.ch/">
+                <img style="float:right; border: 0" src="/idp/images/logo.png" alt="Fachhochschule Graubünden">
+            </a>
+        </div>
+
+        <div>
+            <h1 class="aai">Fachhochschule Graubünden Login</h1>
+            <p>
+                In order to access the service <strong>Moodle der FH Graubünden</strong>, you need to authenticate
+                first. </p>
+        </div>
+
+
+
+        <div class="aai_login_field">
+            <div>
+                <p>
+                    Enter your username and password below, then click on the <strong>Login</strong> button to continue.
+                </p>
+            </div>
+
+            <form action="/idp/profile/SAML2/Redirect/SSO?execution=e1s2" method="post">
+
+
+
+                <div class="form-group">
+                    <label for="username">Username:</label>
+                    <input class="form-element" id="username" name="j_username" type="text" placeholder="Username"
+                        value="" autofocus="autofocus">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password:</label>
+                    <input class="form-element" id="password" name="j_password" type="password" placeholder="Password"
+                        value="">
+                </div>
+
+                <!-- Enabling the next "div" element allows users to explicitly disable SSO,
+                   i.e. the IdP will not remember the session for later use in this case
+                   (potentially useful when logging in from a "public" system) -->
+                <!--
+              <div>
+                <label>
+                <input type="checkbox" name="donotcache" value="1"> Don't Remember Login
+                </label>
+              </div>
+              -->
+
+                <div class="aai_login_button">
+                    <button class="aai_login_button" type="submit" name="_eventId_proceed">Login</button>
+                </div>
+
+                <div><a href="javascript:"
+                        onclick="document.getElementById('user-consent-div').style.display='block'; document.getElementById('triangle').src='/idp/images/triangle2.png'; return false;"><img
+                            alt="&gt;" src="/idp/images/triangle1.png" id="triangle"
+                            style="margin-right: 6px;"><span>Options for personal data protection</span></a></div>
+                <div id="user-consent-div" style="display: none;">
+                    <input id="_shib_idp_revokeConsent" type="checkbox" name="_shib_idp_revokeConsent" value="true">
+                    <label for="_shib_idp_revokeConsent">
+                        Clear my attribute release consent </label>
+                </div>
+            </form>
+            <div>
+
+            </div>
+        </div>
+        <div>
+            <ul class="help">
+                <li class="aai last">
+                    For questions or problems please contact the <a
+                        href="https://my.fhgr.ch/index.php?id=support">Support</a>. </li>
+            </ul>
+        </div>
+    </div>
+
+
+    <div id="1p-live-region" role="status" aria-live="polite" aria-atomic="true" aria-relevant="all"
+        style="clip: rect(0px, 0px, 0px, 0px); clip-path: inset(50%); height: 1px; overflow: hidden; position: fixed; top: 0px; left: 0px; white-space: nowrap; width: 1px; overflow-wrap: normal;">
+    </div>
+</body>
+
+</html>

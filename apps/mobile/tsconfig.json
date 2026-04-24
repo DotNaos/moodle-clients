@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@moodle-clients/app": ["../../packages/app/App.tsx"],
+      "@moodle-clients/app/*": ["../../packages/app/*"]
+    }
+  }
+}

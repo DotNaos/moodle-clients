@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+
+# Expo / React Native
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+ios/
+android/
+.metro-health-check*
+
+# extension builds
+apps/extension/dist/
+apps/extension/.playwright/
+apps/extension/screenshots/
+apps/extension/dogfood-output/
+
+# generated
+.turbo/
+*.tsbuildinfo
+*.log
+.DS_Store
+.verification/
+
+# local config
+.env
+.env.*
+!.env.example
+.vercel/

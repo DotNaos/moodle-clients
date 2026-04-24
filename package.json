@@ -1,0 +1,20 @@
+{
+  "name": "moodle-clients",
+  "private": true,
+  "packageManager": "pnpm@10.30.2",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "web:dev": "pnpm --filter @moodle-clients/web dev",
+    "web:build": "pnpm --filter @moodle-clients/web build",
+    "mobile:start": "pnpm --filter @moodle-clients/mobile start",
+    "extension:dev": "pnpm --filter @moodle-clients/extension dev",
+    "extension:build": "pnpm --filter @moodle-clients/extension build"
+  },
+  "devDependencies": {
+    "turbo": "^2.6.1",
+    "typescript": "~5.9.3"
+  }
+}
