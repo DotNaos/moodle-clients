@@ -28,3 +28,4 @@ apps/extension/dogfood-output/
 .env.*
 !.env.example
 .vercel/
+.vercel
