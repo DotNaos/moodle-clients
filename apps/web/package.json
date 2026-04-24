@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@babel/runtime": "^7.29.2",
     "@expo/metro-runtime": "~6.1.2",
     "@moodle-clients/app": "workspace:*",
     "expo": "~54.0.33",
