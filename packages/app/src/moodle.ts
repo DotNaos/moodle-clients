@@ -1,3 +1,5 @@
+import { logDevError, logDevInfo, sanitizeForLog } from "./debug";
+
 const MOODLE_MOBILE_SCHEME = "moodlemobile://";
 const MOODLE_MOBILE_USER_AGENT = "Mozilla/5.0 MoodleMobile";
 const MOBILE_QR_TOKEN_FUNCTION = "tool_mobile_get_tokens_for_qr_login";
@@ -116,6 +118,12 @@ export async function exchangeQRToken(link: MobileQRLink): Promise<MoodleConnect
     },
   ];
 
+  logDevInfo("QR token exchange started", {
+    endpoint: endpoint.toString(),
+    siteUrl: link.siteUrl,
+    userId: link.userId,
+  });
+
   let response: Response;
   try {
     response = await fetch(endpoint.toString(), {
@@ -127,23 +135,46 @@ export async function exchangeQRToken(link: MobileQRLink): Promise<MoodleConnect
       },
       body: JSON.stringify(payload),
     });
-  } catch {
+  } catch (error) {
+    logDevError("QR token exchange network failure", error, {
+      endpoint: endpoint.toString(),
+      siteUrl: link.siteUrl,
+      userId: link.userId,
+    });
     throw new Error("Could not reach Moodle for QR token exchange.");
   }
 
   if (!response.ok) {
+    const body = await readResponsePreview(response);
+    logDevError("QR token exchange HTTP failure", new Error(`HTTP ${response.status}`), {
+      endpoint: endpoint.toString(),
+      status: response.status,
+      responseBody: body,
+    });
     throw new Error(`QR token exchange failed with HTTP ${response.status}.`);
   }
 
   let parsed: QRTokenExchangeResponse;
   try {
-    parsed = (await response.json()) as QRTokenExchangeResponse;
-  } catch {
+    const responseText = await response.text();
+    logDevInfo("QR token exchange response", {
+      endpoint: endpoint.toString(),
+      responseBody: responseText,
+    });
+    parsed = JSON.parse(responseText) as QRTokenExchangeResponse;
+  } catch (error) {
+    logDevError("QR token exchange invalid JSON", error, {
+      endpoint: endpoint.toString(),
+    });
     throw new Error("QR token exchange returned invalid JSON.");
   }
 
   const first = parsed[0];
   if (!first || first.error || !first.data?.token) {
+    logDevError("QR token exchange rejected", new Error(getQRExchangeErrorMessage(first)), {
+      endpoint: endpoint.toString(),
+      moodleResult: sanitizeForLog(first),
+    });
     throw new Error(getQRExchangeErrorMessage(first));
   }
 
@@ -298,18 +329,35 @@ async function callMoodleApi(
       },
       body: body.toString(),
     });
-  } catch {
+  } catch (error) {
+    logDevError("Moodle API network failure", error, {
+      endpoint: endpoint.toString(),
+      functionName,
+      params,
+    });
     throw new Error("Could not reach Moodle.");
   }
 
   if (!response.ok) {
+    const responseBody = await readResponsePreview(response);
+    logDevError("Moodle API HTTP failure", new Error(`HTTP ${response.status}`), {
+      endpoint: endpoint.toString(),
+      functionName,
+      status: response.status,
+      responseBody,
+    });
     throw new Error(`Moodle API failed with HTTP ${response.status}.`);
   }
 
   let parsed: unknown;
   try {
-    parsed = await response.json();
-  } catch {
+    const responseText = await response.text();
+    parsed = JSON.parse(responseText);
+  } catch (error) {
+    logDevError("Moodle API invalid JSON", error, {
+      endpoint: endpoint.toString(),
+      functionName,
+    });
     throw new Error("Moodle API returned invalid JSON.");
   }
 
@@ -320,10 +368,23 @@ async function callMoodleApi(
     maybeError.exception
   ) {
     const message = typeof maybeError.message === "string" ? maybeError.message.trim() : "";
+    logDevError("Moodle API rejected request", new Error(message || "Moodle API rejected the request."), {
+      endpoint: endpoint.toString(),
+      functionName,
+      moodleResult: sanitizeForLog(maybeError),
+    });
     throw new Error(message || "Moodle API rejected the request.");
   }
 
   return parsed;
+}
+
+async function readResponsePreview(response: Response): Promise<string> {
+  try {
+    return (await response.clone().text()).slice(0, 2000);
+  } catch {
+    return "";
+  }
 }
 
 function isIPMismatchMessage(message: string): boolean {

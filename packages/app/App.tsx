@@ -7,6 +7,7 @@ import { BottomNav } from "./src/components/BottomNav";
 import { PdfViewerModal } from "./src/components/PdfViewerModal";
 import { ScannerModal } from "./src/components/ScannerModal";
 import { StatusBanner } from "./src/components/StatusBanner";
+import { logDevError, logDevInfo } from "./src/debug";
 import { ConnectScreen } from "./src/screens/ConnectScreen";
 import { CoursesScreen } from "./src/screens/CoursesScreen";
 import { ProfileScreen } from "./src/screens/ProfileScreen";
@@ -64,6 +65,29 @@ export default function App() {
 
     return () => {
       mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    void Linking.getInitialURL()
+      .then((url) => {
+        if (mounted) {
+          void handleIncomingLink(url, "initial");
+        }
+      })
+      .catch((error) => {
+        logDevError("Initial deep link lookup failed", error);
+      });
+
+    const subscription = Linking.addEventListener("url", (event) => {
+      void handleIncomingLink(event.url, "event");
+    });
+
+    return () => {
+      mounted = false;
+      subscription.remove();
     };
   }, []);
 
@@ -180,11 +204,28 @@ export default function App() {
     setScannerMode(nextMode);
   }
 
+  async function handleIncomingLink(rawUrl: string | null, source: "initial" | "event"): Promise<void> {
+    if (!rawUrl) {
+      return;
+    }
+
+    logDevInfo("Incoming link received", { source, rawUrl });
+
+    if (!rawUrl.toLowerCase().startsWith("moodlemobile://")) {
+      return;
+    }
+
+    setActiveView("connect");
+    setInfoMessage("Received a Moodle QR login link from the operating system.");
+    await connectMoodle(rawUrl);
+  }
+
   async function connectMoodle(rawQrLink: string): Promise<void> {
     setBusy(true);
     setErrorMessage("");
 
     try {
+      logDevInfo("Moodle QR connection started", { rawQrLink });
       const nextConnection = await exchangeQRToken(parseMobileQRLink(rawQrLink));
       await storeConnection(nextConnection);
       setConnection(nextConnection);
@@ -197,6 +238,7 @@ export default function App() {
           "Moodle requires the QR page and the app request to use the same network address. Use the laptop web scanner for laptop QR codes, or keep phone and laptop on the same Wi-Fi with VPN and iCloud Private Relay off.",
         );
       }
+      logDevError("Moodle QR connection failed", error);
       setErrorMessage(getSafeMessage(error));
     } finally {
       setBusy(false);
