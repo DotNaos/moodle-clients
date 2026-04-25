@@ -1,7 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import { type BarcodeScanningResult, useCameraPermissions } from "expo-camera";
 import { useEffect, useRef, useState } from "react";
-import { Linking, SafeAreaView, ScrollView, Text, View } from "react-native";
+import { Linking, Platform, SafeAreaView, ScrollView, Text, View } from "react-native";
 
 import { BottomNav } from "./src/components/BottomNav";
 import { PdfViewerModal } from "./src/components/PdfViewerModal";
@@ -133,9 +133,12 @@ export default function App() {
       return;
     }
 
+    const currentScannerMode = scannerMode;
     scanLockRef.current = true;
+    setScannerMode(null);
+
     try {
-      if (scannerMode === "moodle") {
+      if (currentScannerMode === "moodle") {
         await connectMoodle(result.data);
       } else if (connection) {
         await sendPairing(result.data, connection);
@@ -149,7 +152,19 @@ export default function App() {
 
   async function openScanner(nextMode: ScannerMode): Promise<void> {
     setErrorMessage("");
+    if (Platform.OS === "web") {
+      setScannerMode(nextMode);
+      return;
+    }
+
     if (!permission) {
+      const response = await requestPermission();
+      if (!response.granted) {
+        setErrorMessage("Camera permission is required to scan QR codes.");
+        return;
+      }
+
+      setScannerMode(nextMode);
       return;
     }
 
@@ -199,7 +214,7 @@ export default function App() {
 
   const currentCourse = courses.find((course) => course.id === selectedCourseId) ?? null;
   const currentSections = selectedCourseId ? courseContentsById[selectedCourseId] ?? [] : [];
-  const hasCamera = permission?.granted ?? false;
+  const hasCamera = Platform.OS === "web" || (permission?.granted ?? false);
   const connected = connection !== null;
 
   return (
@@ -326,6 +341,7 @@ export default function App() {
         mode={scannerMode}
         hasCamera={hasCamera}
         onClose={() => setScannerMode(null)}
+        onScannerError={setErrorMessage}
         onBarcodeScanned={(result) => {
           void handleBarcodeScanned(result);
         }}
