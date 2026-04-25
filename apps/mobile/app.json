@@ -14,12 +14,15 @@
       "backgroundColor": "#0c0a09"
     },
     "ios": {
+      "bundleIdentifier": "com.dotnaos.moodleclient",
       "supportsTablet": true,
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "The app needs camera access to scan Moodle and OAuth pairing QR codes."
       }
     },
     "android": {
+      "package": "com.dotnaos.moodleclient",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0c0a09"
@@ -32,6 +35,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "db508694-d456-463c-9a25-2d9e3620c052"
+      }
+    },
+    "owner": "omiq"
   }
 }
