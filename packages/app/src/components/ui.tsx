@@ -1,6 +1,7 @@
 import { ActivityIndicator, Pressable, Text, TextInput, View, type TextInputProps } from "react-native";
 
 import { compactUrl, getInitials } from "../format";
+import type { IconComponent } from "../icons";
 import { palette, styles } from "../styles";
 import type { MoodleCourse } from "../moodle";
 
@@ -22,11 +23,19 @@ export function SectionHeader(props: { kicker?: string; title: string; action?: 
 
 export function Card(props: {
   children: React.ReactNode;
+  compact?: boolean;
   raised?: boolean;
   ready?: boolean;
 }) {
   return (
-    <View style={[styles.card, props.raised && styles.cardRaised, props.ready && styles.heroPanelReady]}>
+    <View
+      style={[
+        styles.card,
+        props.compact && styles.cardCompact,
+        props.raised && styles.cardRaised,
+        props.ready && styles.heroPanelReady,
+      ]}
+    >
       {props.children}
     </View>
   );
@@ -55,7 +64,9 @@ export function PrimaryButton(props: {
   label: string;
   onPress: () => void | Promise<void>;
   disabled?: boolean;
+  icon?: IconComponent;
 }) {
+  const Icon = props.icon;
   return (
     <Pressable
       disabled={props.disabled}
@@ -65,6 +76,7 @@ export function PrimaryButton(props: {
         (pressed || props.disabled) && styles.pressed,
       ]}
     >
+      {Icon ? <Icon color={palette.ink} size={18} /> : null}
       <Text style={styles.primaryButtonText}>{props.label}</Text>
     </Pressable>
   );
@@ -74,7 +86,9 @@ export function SecondaryButton(props: {
   label: string;
   onPress: () => void | Promise<void>;
   disabled?: boolean;
+  icon?: IconComponent;
 }) {
+  const Icon = props.icon;
   return (
     <Pressable
       disabled={props.disabled}
@@ -84,6 +98,7 @@ export function SecondaryButton(props: {
         (pressed || props.disabled) && styles.pressed,
       ]}
     >
+      {Icon ? <Icon color={palette.text} size={18} /> : null}
       <Text style={styles.secondaryButtonText}>{props.label}</Text>
     </Pressable>
   );
@@ -138,9 +153,11 @@ export function CourseRow(props: {
         <Text style={styles.rowTitle}>{props.course.fullName}</Text>
         <Text style={styles.rowSubtitle}>{props.course.shortName}</Text>
       </View>
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>{props.course.visible ? "Visible" : "Hidden"}</Text>
-      </View>
+      {!props.course.visible ? (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>Hidden</Text>
+        </View>
+      ) : null}
     </>
   );
 

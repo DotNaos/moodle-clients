@@ -1,10 +1,11 @@
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useMemo, useState } from "react";
 
 import { CourseRow, Card, EmptyState, ScreenSection, SectionHeader, SecondaryButton, TextField } from "../components/ui";
 import { stripHtml } from "../format";
+import { ChevronRight, FileText, RefreshCw, Search } from "../icons";
 import { palette, styles } from "../styles";
-import type { MoodleConnection, MoodleCourse, MoodleCourseSection } from "../moodle";
+import type { MoodleConnection, MoodleCourse, MoodleCourseFile, MoodleCourseSection } from "../moodle";
 
 export function CoursesScreen(props: {
   connection: MoodleConnection | null;
@@ -17,6 +18,7 @@ export function CoursesScreen(props: {
   onRefresh: () => void;
   onOpenConnect: () => void;
   onSelectCourse: (courseId: number) => void;
+  onOpenFile: (file: MoodleCourseFile) => void;
 }) {
   const [query, setQuery] = useState("");
   const filteredCourses = useMemo(() => {
@@ -26,16 +28,17 @@ export function CoursesScreen(props: {
     }
 
     return props.courses.filter((course) =>
-      `${course.fullName} ${course.shortName}`.toLowerCase().includes(normalized),
+      `${course.fullName} ${course.shortName} ${course.categoryName}`.toLowerCase().includes(normalized),
     );
   }, [props.courses, query]);
+  const groupedCourses = useMemo(() => groupCourses(filteredCourses), [filteredCourses]);
 
   if (!props.connection) {
     return (
       <ScreenSection>
         <EmptyState
           title="Courses are locked"
-          body="Connect Moodle first. After that this screen becomes the main course browser."
+          body="Connect Moodle first."
           actionLabel="Connect Moodle"
           onPress={props.onOpenConnect}
         />
@@ -46,24 +49,31 @@ export function CoursesScreen(props: {
   return (
     <ScreenSection>
       <SectionHeader
-        kicker="Moodle"
         title="Courses"
-        action={<SecondaryButton label="Refresh" onPress={props.onRefresh} />}
+        action={<SecondaryButton label="Refresh" icon={RefreshCw} onPress={props.onRefresh} />}
       />
 
-      <TextField value={query} onChangeText={setQuery} placeholder="Search courses" />
+      <View style={styles.searchRow}>
+        <Search color={palette.subtle} size={18} />
+        <TextField value={query} onChangeText={setQuery} placeholder="Search courses" style={styles.searchInput} />
+      </View>
 
-      <Card>
+      <Card compact>
         {props.loadingDashboard ? (
           <ActivityIndicator color={palette.text} />
-        ) : filteredCourses.length > 0 ? (
-          filteredCourses.map((course) => (
-            <CourseRow
-              key={course.id}
-              course={course}
-              active={props.selectedCourseId === course.id}
-              onPress={() => props.onSelectCourse(course.id)}
-            />
+        ) : groupedCourses.length > 0 ? (
+          groupedCourses.map((group) => (
+            <View key={group.name} style={styles.courseGroup}>
+              <Text style={styles.groupTitle}>{group.name}</Text>
+              {group.courses.map((course) => (
+                <CourseRow
+                  key={course.id}
+                  course={course}
+                  active={props.selectedCourseId === course.id}
+                  onPress={() => props.onSelectCourse(course.id)}
+                />
+              ))}
+            </View>
           ))
         ) : (
           <Text style={styles.emptyText}>No courses match this search.</Text>
@@ -71,10 +81,9 @@ export function CoursesScreen(props: {
       </Card>
 
       {props.currentCourse ? (
-        <Card raised>
-          <Text style={styles.heroLabel}>Selected course</Text>
+        <Card>
           <Text style={styles.cardTitle}>{props.currentCourse.fullName}</Text>
-          <Text style={styles.cardBody}>{props.currentCourse.shortName}</Text>
+          <Text style={styles.rowSubtitle}>{props.currentCourse.categoryName}</Text>
 
           {props.loadingCourseId === props.currentCourse.id ? (
             <ActivityIndicator color={palette.text} />
@@ -85,13 +94,22 @@ export function CoursesScreen(props: {
                 {section.summary ? <Text style={styles.cardBody}>{stripHtml(section.summary)}</Text> : null}
                 {section.modules.length > 0 ? (
                   section.modules.map((module, moduleIndex) => (
-                    <View key={`${module.id ?? moduleIndex}-${module.name}`} style={styles.moduleRow}>
-                      <View style={styles.moduleRail} />
+                    <View key={`${module.id ?? moduleIndex}-${module.name}`} style={styles.moduleBlock}>
                       <View style={styles.rowText}>
                         <Text style={styles.rowTitle}>{module.name}</Text>
                         {module.modname ? <Text style={styles.rowSubtitle}>{module.modname}</Text> : null}
-                        {module.url ? <Text style={styles.moduleLink}>{module.url}</Text> : null}
                       </View>
+                      {module.contents.length > 0 ? (
+                        <View style={styles.fileList}>
+                          {module.contents.map((file) => (
+                            <FileRow
+                              key={`${file.fileUrl}-${file.filename}`}
+                              file={file}
+                              onPress={() => props.onOpenFile(file)}
+                            />
+                          ))}
+                        </View>
+                      ) : null}
                     </View>
                   ))
                 ) : (
@@ -106,4 +124,34 @@ export function CoursesScreen(props: {
       ) : null}
     </ScreenSection>
   );
+}
+
+function FileRow(props: { file: MoodleCourseFile; onPress: () => void }) {
+  const isPdf =
+    props.file.mimeType === "application/pdf" || props.file.filename.toLowerCase().endsWith(".pdf");
+  return (
+    <Pressable onPress={props.onPress} style={({ pressed }) => [styles.fileRow, pressed && styles.pressed]}>
+      <FileText color={isPdf ? palette.red : palette.blue} size={18} />
+      <View style={styles.rowText}>
+        <Text style={styles.rowTitle} numberOfLines={2}>
+          {props.file.filename}
+        </Text>
+        <Text style={styles.rowSubtitle}>{isPdf ? "PDF" : props.file.mimeType || "File"}</Text>
+      </View>
+      <ChevronRight color={palette.subtle} size={18} />
+    </Pressable>
+  );
+}
+
+function groupCourses(courses: MoodleCourse[]): Array<{ name: string; courses: MoodleCourse[] }> {
+  const groups = new Map<string, MoodleCourse[]>();
+  courses.forEach((course) => {
+    const name = course.categoryName || "Other courses";
+    groups.set(name, [...(groups.get(name) ?? []), course]);
+  });
+
+  return Array.from(groups.entries()).map(([name, groupCourses]) => ({
+    name,
+    courses: groupCourses,
+  }));
 }

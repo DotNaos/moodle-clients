@@ -55,7 +55,7 @@ export const styles = StyleSheet.create({
   },
   appTitle: {
     color: palette.text,
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "800",
   },
   appSubtitle: {
@@ -127,9 +127,9 @@ export const styles = StyleSheet.create({
   },
   heroTitle: {
     color: palette.text,
-    fontSize: 24,
+    fontSize: 21,
     fontWeight: "800",
-    lineHeight: 30,
+    lineHeight: 27,
   },
   heroBody: {
     color: palette.muted,
@@ -144,14 +144,17 @@ export const styles = StyleSheet.create({
     gap: 12,
     padding: 16,
   },
+  cardCompact: {
+    padding: 10,
+  },
   cardRaised: {
     backgroundColor: palette.surfaceRaised,
   },
   cardTitle: {
     color: palette.text,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "800",
-    lineHeight: 23,
+    lineHeight: 21,
   },
   cardBody: {
     color: palette.muted,
@@ -186,6 +189,8 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: palette.text,
     borderRadius: 8,
+    flexDirection: "row",
+    gap: 8,
     justifyContent: "center",
     minHeight: 48,
     paddingHorizontal: 16,
@@ -202,6 +207,8 @@ export const styles = StyleSheet.create({
     borderColor: palette.borderStrong,
     borderRadius: 8,
     borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
     justifyContent: "center",
     minHeight: 48,
     paddingHorizontal: 16,
@@ -239,7 +246,7 @@ export const styles = StyleSheet.create({
   },
   metricValue: {
     color: palette.text,
-    fontSize: 24,
+    fontSize: 21,
     fontWeight: "800",
   },
   metricHint: {
@@ -315,6 +322,24 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 12,
   },
+  searchRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.2)",
+    borderColor: palette.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 48,
+    paddingHorizontal: 13,
+  },
+  searchInput: {
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    flex: 1,
+    minHeight: 46,
+    paddingHorizontal: 0,
+  },
   emptyText: {
     color: palette.muted,
     fontSize: 14,
@@ -363,7 +388,7 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 8,
     flex: 1,
-    gap: 5,
+    gap: 4,
     minHeight: 54,
     justifyContent: "center",
   },
@@ -394,6 +419,39 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 10,
     padding: 13,
+  },
+  courseGroup: {
+    gap: 8,
+  },
+  groupTitle: {
+    color: palette.subtle,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.6,
+    paddingHorizontal: 4,
+    paddingTop: 4,
+    textTransform: "uppercase",
+  },
+  moduleBlock: {
+    backgroundColor: "rgba(0,0,0,0.14)",
+    borderColor: palette.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  fileList: {
+    gap: 8,
+  },
+  fileRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.035)",
+    borderRadius: 8,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 52,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
   },
   moduleRow: {
     alignItems: "flex-start",
@@ -469,5 +527,40 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     textAlign: "center",
+  },
+  iconButton: {
+    alignItems: "center",
+    borderColor: palette.borderStrong,
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
+  pdfModal: {
+    backgroundColor: palette.background,
+    flex: 1,
+  },
+  pdfHeader: {
+    alignItems: "center",
+    borderBottomColor: palette.border,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 54,
+  },
+  pdfTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  pdfFrame: {
+    flex: 1,
+  },
+  pdfWebView: {
+    backgroundColor: palette.background,
+    flex: 1,
   },
 });
