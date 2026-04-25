@@ -80,7 +80,7 @@ export function parseMobileQRLink(raw: string): MobileQRLink {
 
   let parsed: URL;
   try {
-    parsed = new URL(trimmed.slice(MOODLE_MOBILE_SCHEME.length));
+    parsed = new URL(normalizeMobileQRPayload(trimmed.slice(MOODLE_MOBILE_SCHEME.length)));
   } catch {
     throw new Error("QR link is invalid.");
   }
@@ -99,6 +99,19 @@ export function parseMobileQRLink(raw: string): MobileQRLink {
     qrLoginKey,
     userId: parsePositiveInteger(parsed.searchParams.get("userid"), "userid"),
   };
+}
+
+function normalizeMobileQRPayload(raw: string): string {
+  const decoded = decodeURIComponent(raw.trim());
+  if (/^https?:\/\//i.test(decoded)) {
+    return decoded;
+  }
+
+  if (/^https?\/\//i.test(decoded)) {
+    return decoded.replace(/^(https?)\/\//i, "$1://");
+  }
+
+  return decoded;
 }
 
 export async function exchangeQRToken(link: MobileQRLink): Promise<MoodleConnection> {
