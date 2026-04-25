@@ -17,6 +17,7 @@
       "bundleIdentifier": "com.dotnaos.moodleclient",
       "supportsTablet": true,
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "The app needs camera access to scan Moodle and OAuth pairing QR codes."
       }
     },
