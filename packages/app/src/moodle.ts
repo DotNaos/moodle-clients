@@ -1,6 +1,8 @@
 const MOODLE_MOBILE_SCHEME = "moodlemobile://";
 const MOODLE_MOBILE_USER_AGENT = "Mozilla/5.0 MoodleMobile";
 const MOBILE_QR_TOKEN_FUNCTION = "tool_mobile_get_tokens_for_qr_login";
+export const QR_NETWORK_MISMATCH_MESSAGE =
+  "QR login was blocked by Moodle's same-IP check.";
 
 export type MobileQRLink = {
   siteUrl: string;
@@ -246,12 +248,16 @@ export function getAuthenticatedFileUrl(connection: MoodleConnection, fileUrl: s
   return parsed.toString();
 }
 
+export function isQRNetworkMismatchError(error: unknown): boolean {
+  return error instanceof Error && error.message === QR_NETWORK_MISMATCH_MESSAGE;
+}
+
 function getQRExchangeErrorMessage(result: QRTokenExchangeResponse[number] | undefined): string {
   const errorCode = result?.exception?.errorcode?.trim().toLowerCase() ?? "";
   const message = sanitizeMessage(result?.exception?.message ?? "");
 
-  if (message.toLowerCase().includes("ip-adresse passt nicht")) {
-    return "Moodle rejected the QR login key because the mobile network path does not match the QR session.";
+  if (isIPMismatchMessage(message) || errorCode === "ipmismatch") {
+    return QR_NETWORK_MISMATCH_MESSAGE;
   }
 
   if (errorCode === "invalidkey") {
@@ -318,6 +324,11 @@ async function callMoodleApi(
   }
 
   return parsed;
+}
+
+function isIPMismatchMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  return normalized.includes("ip-adresse passt nicht") || normalized.includes("ip address does not match");
 }
 
 function sanitizeMessage(message: string): string {

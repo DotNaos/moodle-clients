@@ -18,6 +18,7 @@ import {
   getCourseContents,
   getCourses,
   getSiteInfo,
+  isQRNetworkMismatchError,
   parseMobileQRLink,
   type MoodleConnection,
   type MoodleCourse,
@@ -191,6 +192,11 @@ export default function App() {
       setActiveView("today");
       setInfoMessage(`Connected to Moodle as user ${nextConnection.moodleUserId}.`);
     } catch (error) {
+      if (isQRNetworkMismatchError(error)) {
+        setInfoMessage(
+          "Moodle requires the QR page and the app request to use the same network address. Use the laptop web scanner for laptop QR codes, or keep phone and laptop on the same Wi-Fi with VPN and iCloud Private Relay off.",
+        );
+      }
       setErrorMessage(getSafeMessage(error));
     } finally {
       setBusy(false);
