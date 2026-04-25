@@ -1,9 +1,10 @@
 import { StatusBar } from "expo-status-bar";
 import { type BarcodeScanningResult, useCameraPermissions } from "expo-camera";
 import { useEffect, useRef, useState } from "react";
-import { SafeAreaView, ScrollView, Text, View } from "react-native";
+import { Linking, SafeAreaView, ScrollView, Text, View } from "react-native";
 
 import { BottomNav } from "./src/components/BottomNav";
+import { PdfViewerModal } from "./src/components/PdfViewerModal";
 import { ScannerModal } from "./src/components/ScannerModal";
 import { StatusBanner } from "./src/components/StatusBanner";
 import { ConnectScreen } from "./src/screens/ConnectScreen";
@@ -13,6 +14,7 @@ import { TodayScreen } from "./src/screens/TodayScreen";
 import { getSafeMessage } from "./src/format";
 import {
   exchangeQRToken,
+  getAuthenticatedFileUrl,
   getCourseContents,
   getCourses,
   getSiteInfo,
@@ -23,6 +25,7 @@ import {
   type MoodleSiteInfo,
 } from "./src/moodle";
 import { completeMobilePairing, parseMobilePairTarget } from "./src/pairing";
+import { loadStoredConnection, storeConnection } from "./src/storage";
 import { styles } from "./src/styles";
 import type { AppView, ScannerMode } from "./src/types";
 
@@ -44,7 +47,24 @@ export default function App() {
   const [courses, setCourses] = useState<MoodleCourse[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
   const [courseContentsById, setCourseContentsById] = useState<Record<number, MoodleCourseSection[]>>({});
+  const [pdfPreview, setPdfPreview] = useState<{ title: string; url: string } | null>(null);
   const scanLockRef = useRef(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void loadStoredConnection().then((storedConnection) => {
+      if (!mounted || !storedConnection) {
+        return;
+      }
+
+      setConnection(storedConnection);
+      setInfoMessage("Restored the local Moodle session.");
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!connection) {
@@ -150,6 +170,7 @@ export default function App() {
 
     try {
       const nextConnection = await exchangeQRToken(parseMobileQRLink(rawQrLink));
+      await storeConnection(nextConnection);
       setConnection(nextConnection);
       setScannerMode(null);
       setActiveView("today");
@@ -242,6 +263,19 @@ export default function App() {
                   void loadCourseContents(connection, courseId);
                 }
               }}
+              onOpenFile={(file) => {
+                if (!connection) {
+                  return;
+                }
+
+                const url = getAuthenticatedFileUrl(connection, file.fileUrl);
+                if (file.mimeType === "application/pdf" || file.filename.toLowerCase().endsWith(".pdf")) {
+                  setPdfPreview({ title: file.filename, url });
+                  return;
+                }
+
+                void Linking.openURL(url);
+              }}
             />
           ) : null}
 
@@ -296,6 +330,12 @@ export default function App() {
           void handleBarcodeScanned(result);
         }}
       />
+      <PdfViewerModal
+        visible={pdfPreview !== null}
+        title={pdfPreview?.title ?? ""}
+        url={pdfPreview?.url ?? null}
+        onClose={() => setPdfPreview(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -316,18 +356,18 @@ function getScreenTitle(view: AppView): string {
 function getScreenSubtitle(view: AppView, connected: boolean): string {
   if (!connected) {
     return view === "connect"
-      ? "Scan the Moodle QR code to create a local session."
-      : "Connect Moodle once, then use this as your study workspace.";
+      ? "Scan the Moodle QR code once."
+      : "Connect once. The token stays local.";
   }
 
   switch (view) {
     case "today":
-      return "Your daily Moodle overview and next actions.";
+      return "Daily overview.";
     case "courses":
-      return "Browse course sections and Moodle modules.";
+      return "Grouped by semester.";
     case "connect":
-      return "Pair browsers and tools with your Moodle session.";
+      return "QR login and browser pairing.";
     case "profile":
-      return "Local session details and future preferences.";
+      return "Local session details.";
   }
 }

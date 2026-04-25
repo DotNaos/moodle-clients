@@ -25,6 +25,8 @@ export type MoodleCourse = {
   id: number;
   fullName: string;
   shortName: string;
+  categoryId?: number;
+  categoryName: string;
   visible: number;
 };
 
@@ -41,6 +43,14 @@ export type MoodleCourseModule = {
   modname?: string;
   url?: string;
   description?: string;
+  contents: MoodleCourseFile[];
+};
+
+export type MoodleCourseFile = {
+  filename: string;
+  fileUrl: string;
+  mimeType: string;
+  fileSize?: number;
 };
 
 type QRTokenExchangeResponse = Array<{
@@ -167,6 +177,12 @@ export async function getCourses(connection: MoodleConnection): Promise<MoodleCo
       id: requireNumber(record.id, "course.id"),
       fullName: requireString(record.fullname, "course.fullname"),
       shortName: requireString(record.shortname, "course.shortname"),
+      categoryId: typeof record.category === "number" ? record.category : undefined,
+      categoryName:
+        getOptionalString(record.categoryname) ??
+        getOptionalString(record.categoryName) ??
+        getOptionalString(record.categorysortorder) ??
+        "Other courses",
       visible: requireNumber(record.visible, "course.visible"),
     };
   });
@@ -193,6 +209,7 @@ export async function getCourseContents(
       summary: typeof record.summary === "string" ? record.summary : "",
       modules: rawModules.map((moduleItem) => {
         const moduleRecord = asRecord(moduleItem, "course module");
+        const rawContents = Array.isArray(moduleRecord.contents) ? moduleRecord.contents : [];
         return {
           id: typeof moduleRecord.id === "number" ? moduleRecord.id : undefined,
           name: requireString(moduleRecord.name, "module.name"),
@@ -200,10 +217,33 @@ export async function getCourseContents(
           url: typeof moduleRecord.url === "string" ? moduleRecord.url : "",
           description:
             typeof moduleRecord.description === "string" ? moduleRecord.description : "",
+          contents: rawContents.flatMap((contentItem) => {
+            const contentRecord = asRecord(contentItem, "module file");
+            const filename = getOptionalString(contentRecord.filename);
+            const fileUrl = getOptionalString(contentRecord.fileurl);
+            if (!filename || !fileUrl) {
+              return [];
+            }
+
+            return [
+              {
+                filename,
+                fileUrl,
+                mimeType: getOptionalString(contentRecord.mimetype) ?? "",
+                fileSize: typeof contentRecord.filesize === "number" ? contentRecord.filesize : undefined,
+              },
+            ];
+          }),
         };
       }),
     };
   });
+}
+
+export function getAuthenticatedFileUrl(connection: MoodleConnection, fileUrl: string): string {
+  const parsed = new URL(fileUrl);
+  parsed.searchParams.set("token", connection.moodleMobileToken);
+  return parsed.toString();
 }
 
 function getQRExchangeErrorMessage(result: QRTokenExchangeResponse[number] | undefined): string {
@@ -301,6 +341,10 @@ function requireString(value: unknown, fieldName: string): string {
   }
 
   return value.trim();
+}
+
+function getOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function requireNumber(value: unknown, fieldName: string): number {

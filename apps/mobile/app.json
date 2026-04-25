@@ -41,6 +41,9 @@
         "projectId": "db508694-d456-463c-9a25-2d9e3620c052"
       }
     },
-    "owner": "omiq"
+    "owner": "omiq",
+    "plugins": [
+      "expo-secure-store"
+    ]
   }
 }

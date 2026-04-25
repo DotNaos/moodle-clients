@@ -1,13 +1,14 @@
 import { Pressable, Text, View } from "react-native";
 
-import { styles } from "../styles";
+import { BookOpen, CalendarDays, Link2, UserRound, type IconComponent } from "../icons";
+import { palette, styles } from "../styles";
 import type { AppView } from "../types";
 
-const navItems: Array<{ id: AppView; label: string }> = [
-  { id: "today", label: "Today" },
-  { id: "courses", label: "Courses" },
-  { id: "connect", label: "Connect" },
-  { id: "profile", label: "Profile" },
+const navItems: Array<{ id: AppView; label: string; icon: IconComponent }> = [
+  { id: "today", label: "Today", icon: CalendarDays },
+  { id: "courses", label: "Courses", icon: BookOpen },
+  { id: "connect", label: "Connect", icon: Link2 },
+  { id: "profile", label: "Profile", icon: UserRound },
 ];
 
 export function BottomNav(props: {
@@ -18,6 +19,7 @@ export function BottomNav(props: {
     <View style={styles.bottomNav}>
       {navItems.map((item) => {
         const active = props.activeView === item.id;
+        const Icon = item.icon;
         return (
           <Pressable
             key={item.id}
@@ -28,7 +30,7 @@ export function BottomNav(props: {
               pressed && styles.pressed,
             ]}
           >
-            <View style={[styles.navMarker, active && styles.navMarkerActive]} />
+            <Icon color={active ? palette.text : palette.subtle} size={21} />
             <Text style={[styles.navLabel, active && styles.navLabelActive]}>{item.label}</Text>
           </Pressable>
         );
