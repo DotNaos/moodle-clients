@@ -1,6 +1,10 @@
+import { logDevError, logDevInfo, sanitizeForLog } from "./debug";
+
 const MOODLE_MOBILE_SCHEME = "moodlemobile://";
 const MOODLE_MOBILE_USER_AGENT = "Mozilla/5.0 MoodleMobile";
 const MOBILE_QR_TOKEN_FUNCTION = "tool_mobile_get_tokens_for_qr_login";
+export const QR_NETWORK_MISMATCH_MESSAGE =
+  "QR login was blocked by Moodle's same-IP check.";
 
 export type MobileQRLink = {
   siteUrl: string;
@@ -27,6 +31,7 @@ export type MoodleCourse = {
   shortName: string;
   categoryId?: number;
   categoryName: string;
+  rawCategory?: string;
   visible: number;
 };
 
@@ -76,7 +81,7 @@ export function parseMobileQRLink(raw: string): MobileQRLink {
 
   let parsed: URL;
   try {
-    parsed = new URL(trimmed.slice(MOODLE_MOBILE_SCHEME.length));
+    parsed = new URL(normalizeMobileQRPayload(trimmed.slice(MOODLE_MOBILE_SCHEME.length)));
   } catch {
     throw new Error("QR link is invalid.");
   }
@@ -97,6 +102,19 @@ export function parseMobileQRLink(raw: string): MobileQRLink {
   };
 }
 
+function normalizeMobileQRPayload(raw: string): string {
+  const decoded = decodeURIComponent(raw.trim());
+  if (/^https?:\/\//i.test(decoded)) {
+    return decoded;
+  }
+
+  if (/^https?\/\//i.test(decoded)) {
+    return decoded.replace(/^(https?)\/\//i, "$1://");
+  }
+
+  return decoded;
+}
+
 export async function exchangeQRToken(link: MobileQRLink): Promise<MoodleConnection> {
   const endpoint = new URL(
     `/lib/ajax/service-nologin.php?info=${MOBILE_QR_TOKEN_FUNCTION}&lang=de_ch`,
@@ -114,6 +132,12 @@ export async function exchangeQRToken(link: MobileQRLink): Promise<MoodleConnect
     },
   ];
 
+  logDevInfo("QR token exchange started", {
+    endpoint: endpoint.toString(),
+    siteUrl: link.siteUrl,
+    userId: link.userId,
+  });
+
   let response: Response;
   try {
     response = await fetch(endpoint.toString(), {
@@ -125,23 +149,46 @@ export async function exchangeQRToken(link: MobileQRLink): Promise<MoodleConnect
       },
       body: JSON.stringify(payload),
     });
-  } catch {
+  } catch (error) {
+    logDevError("QR token exchange network failure", error, {
+      endpoint: endpoint.toString(),
+      siteUrl: link.siteUrl,
+      userId: link.userId,
+    });
     throw new Error("Could not reach Moodle for QR token exchange.");
   }
 
   if (!response.ok) {
+    const body = await readResponsePreview(response);
+    logDevError("QR token exchange HTTP failure", new Error(`HTTP ${response.status}`), {
+      endpoint: endpoint.toString(),
+      status: response.status,
+      responseBody: body,
+    });
     throw new Error(`QR token exchange failed with HTTP ${response.status}.`);
   }
 
   let parsed: QRTokenExchangeResponse;
   try {
-    parsed = (await response.json()) as QRTokenExchangeResponse;
-  } catch {
+    const responseText = await response.text();
+    logDevInfo("QR token exchange response", {
+      endpoint: endpoint.toString(),
+      responseBody: responseText,
+    });
+    parsed = JSON.parse(responseText) as QRTokenExchangeResponse;
+  } catch (error) {
+    logDevError("QR token exchange invalid JSON", error, {
+      endpoint: endpoint.toString(),
+    });
     throw new Error("QR token exchange returned invalid JSON.");
   }
 
   const first = parsed[0];
   if (!first || first.error || !first.data?.token) {
+    logDevError("QR token exchange rejected", new Error(getQRExchangeErrorMessage(first)), {
+      endpoint: endpoint.toString(),
+      moodleResult: sanitizeForLog(first),
+    });
     throw new Error(getQRExchangeErrorMessage(first));
   }
 
@@ -171,18 +218,38 @@ export async function getCourses(connection: MoodleConnection): Promise<MoodleCo
     throw new Error("Courses response is invalid.");
   }
 
+  logDevInfo("Moodle course DTO fields", {
+    count: raw.length,
+    samples: raw.slice(0, 5).map((item) => {
+      const record = asRecord(item, "course");
+      return {
+        keys: Object.keys(record).sort(),
+        id: record.id,
+        fullname: record.fullname,
+        shortname: record.shortname,
+        category: record.category,
+        categoryname: record.categoryname,
+        categoryName: record.categoryName,
+        categorysortorder: record.categorysortorder,
+      };
+    }),
+  });
+
   return raw.map((item) => {
     const record = asRecord(item, "course");
+    const rawCategory = getOptionalString(record.category);
     return {
       id: requireNumber(record.id, "course.id"),
       fullName: requireString(record.fullname, "course.fullname"),
       shortName: requireString(record.shortname, "course.shortname"),
       categoryId: typeof record.category === "number" ? record.category : undefined,
       categoryName:
+        rawCategory ??
         getOptionalString(record.categoryname) ??
         getOptionalString(record.categoryName) ??
         getOptionalString(record.categorysortorder) ??
         "Other courses",
+      rawCategory,
       visible: requireNumber(record.visible, "course.visible"),
     };
   });
@@ -246,12 +313,16 @@ export function getAuthenticatedFileUrl(connection: MoodleConnection, fileUrl: s
   return parsed.toString();
 }
 
+export function isQRNetworkMismatchError(error: unknown): boolean {
+  return error instanceof Error && error.message === QR_NETWORK_MISMATCH_MESSAGE;
+}
+
 function getQRExchangeErrorMessage(result: QRTokenExchangeResponse[number] | undefined): string {
   const errorCode = result?.exception?.errorcode?.trim().toLowerCase() ?? "";
   const message = sanitizeMessage(result?.exception?.message ?? "");
 
-  if (message.toLowerCase().includes("ip-adresse passt nicht")) {
-    return "Moodle rejected the QR login key because the mobile network path does not match the QR session.";
+  if (isIPMismatchMessage(message) || errorCode === "ipmismatch") {
+    return QR_NETWORK_MISMATCH_MESSAGE;
   }
 
   if (errorCode === "invalidkey") {
@@ -292,18 +363,35 @@ async function callMoodleApi(
       },
       body: body.toString(),
     });
-  } catch {
+  } catch (error) {
+    logDevError("Moodle API network failure", error, {
+      endpoint: endpoint.toString(),
+      functionName,
+      params,
+    });
     throw new Error("Could not reach Moodle.");
   }
 
   if (!response.ok) {
+    const responseBody = await readResponsePreview(response);
+    logDevError("Moodle API HTTP failure", new Error(`HTTP ${response.status}`), {
+      endpoint: endpoint.toString(),
+      functionName,
+      status: response.status,
+      responseBody,
+    });
     throw new Error(`Moodle API failed with HTTP ${response.status}.`);
   }
 
   let parsed: unknown;
   try {
-    parsed = await response.json();
-  } catch {
+    const responseText = await response.text();
+    parsed = JSON.parse(responseText);
+  } catch (error) {
+    logDevError("Moodle API invalid JSON", error, {
+      endpoint: endpoint.toString(),
+      functionName,
+    });
     throw new Error("Moodle API returned invalid JSON.");
   }
 
@@ -314,10 +402,28 @@ async function callMoodleApi(
     maybeError.exception
   ) {
     const message = typeof maybeError.message === "string" ? maybeError.message.trim() : "";
+    logDevError("Moodle API rejected request", new Error(message || "Moodle API rejected the request."), {
+      endpoint: endpoint.toString(),
+      functionName,
+      moodleResult: sanitizeForLog(maybeError),
+    });
     throw new Error(message || "Moodle API rejected the request.");
   }
 
   return parsed;
+}
+
+async function readResponsePreview(response: Response): Promise<string> {
+  try {
+    return (await response.clone().text()).slice(0, 2000);
+  } catch {
+    return "";
+  }
+}
+
+function isIPMismatchMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  return normalized.includes("ip-adresse passt nicht") || normalized.includes("ip address does not match");
 }
 
 function sanitizeMessage(message: string): string {

@@ -53,6 +53,11 @@ export const styles = StyleSheet.create({
     letterSpacing: 2.6,
     textTransform: "uppercase",
   },
+  brandLabel: {
+    color: palette.subtle,
+    fontSize: 13,
+    fontWeight: "700",
+  },
   appTitle: {
     color: palette.text,
     fontSize: 24,
@@ -105,6 +110,21 @@ export const styles = StyleSheet.create({
   },
   screen: {
     gap: 14,
+  },
+  connectSection: {
+    borderBottomColor: palette.border,
+    borderBottomWidth: 1,
+    gap: 14,
+    paddingBottom: 18,
+    paddingTop: 4,
+  },
+  infoPanel: {
+    backgroundColor: "rgba(140,199,255,0.08)",
+    borderColor: "rgba(140,199,255,0.2)",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 13,
   },
   heroPanel: {
     backgroundColor: palette.surface,
@@ -160,6 +180,18 @@ export const styles = StyleSheet.create({
     color: palette.muted,
     fontSize: 14,
     lineHeight: 22,
+  },
+  tipList: {
+    gap: 8,
+  },
+  tipItem: {
+    color: palette.muted,
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  tipItemStrong: {
+    color: palette.text,
+    fontWeight: "800",
   },
   sectionHeader: {
     alignItems: "center",
@@ -345,6 +377,11 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
   },
+  loadingPanel: {
+    alignItems: "center",
+    minHeight: 96,
+    justifyContent: "center",
+  },
   statusBanner: {
     borderRadius: 8,
     borderWidth: 1,
@@ -423,6 +460,39 @@ export const styles = StyleSheet.create({
   courseGroup: {
     gap: 8,
   },
+  courseList: {
+    gap: 16,
+  },
+  plainList: {
+    gap: 8,
+  },
+  courseListRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.035)",
+    borderColor: palette.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 64,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+  },
+  drilldownHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+  },
+  backButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: palette.borderStrong,
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
   groupTitle: {
     color: palette.subtle,
     fontSize: 11,
@@ -442,6 +512,20 @@ export const styles = StyleSheet.create({
   },
   fileList: {
     gap: 8,
+  },
+  resourceGroup: {
+    gap: 8,
+  },
+  resourceGroupTitle: {
+    color: palette.muted,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
+  },
+  sectionSummary: {
+    color: palette.muted,
+    fontSize: 13,
+    lineHeight: 19,
   },
   fileRow: {
     alignItems: "center",
@@ -478,7 +562,10 @@ export const styles = StyleSheet.create({
     gap: 16,
   },
   modalHeader: {
+    alignSelf: "center",
     gap: 14,
+    maxWidth: 760,
+    width: "100%",
   },
   modalTitle: {
     color: palette.text,
@@ -496,6 +583,11 @@ export const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     flex: 1,
+    maxHeight: 620,
+    maxWidth: 760,
+    minHeight: 280,
+    width: "100%",
+    alignSelf: "center",
     overflow: "hidden",
     position: "relative",
   },
@@ -511,6 +603,28 @@ export const styles = StyleSheet.create({
     position: "absolute",
     top: "24%",
     width: "70%",
+  },
+  webScannerShell: {
+    alignSelf: "center",
+    flex: 1,
+    gap: 12,
+    maxHeight: 660,
+    maxWidth: 760,
+    minHeight: 340,
+    width: "100%",
+  },
+  webCameraPicker: {
+    gap: 6,
+  },
+  webVideoFrame: {
+    backgroundColor: "#000",
+    borderColor: palette.borderStrong,
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 280,
+    overflow: "hidden",
+    position: "relative",
   },
   permissionBox: {
     alignItems: "center",
