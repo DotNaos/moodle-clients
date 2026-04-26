@@ -18,7 +18,11 @@
     },
     "ios": {
       "bundleIdentifier": "com.dotnaos.moodleclient",
-      "icon": "./assets/ios-icon.png",
+      "icon": {
+        "light": "./assets/ios-icon.png",
+        "dark": "./assets/ios-icon-dark.png",
+        "tinted": "./assets/ios-icon-tinted.png"
+      },
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
