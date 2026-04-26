@@ -3,14 +3,14 @@ import { Text, View } from 'react-native';
 
 import {
     ActionRow,
-    Card,
     PrimaryButton,
     ScreenSection,
     SecondaryButton,
     SessionCard,
     TextField,
 } from '../components/ui';
-import { Link2, ScanLine } from '../icons';
+import { QRImageUpload } from '../components/QRImageUpload';
+import { CircleHelp, Link2, ScanLine } from '../icons';
 import type { MoodleConnection } from '../moodle';
 import { styles } from '../styles';
 
@@ -23,6 +23,8 @@ type ConnectScreenProps = Readonly<{
     onChangePairQr: (value: string) => void;
     onScanMoodleQr: () => void;
     onUseMoodleQr: () => void;
+    onUseMoodleQrValue: (value: string) => void;
+    onMoodleQrUploadError: (message: string) => void;
     onScanPairQr: () => void;
     onUsePairQr: () => void;
 }>;
@@ -30,6 +32,7 @@ type ConnectScreenProps = Readonly<{
 export function ConnectScreen(props: ConnectScreenProps) {
     const [showMoodlePaste, setShowMoodlePaste] = useState(false);
     const [showPairPaste, setShowPairPaste] = useState(false);
+    const [showHelp, setShowHelp] = useState(false);
 
     return (
         <ScreenSection>
@@ -40,15 +43,9 @@ export function ConnectScreen(props: ConnectScreenProps) {
                 />
             ) : null}
 
-            <Card>
-                <Text style={styles.heroLabel}>Step 1</Text>
+            <View style={styles.connectSection}>
                 <Text style={styles.cardTitle}>
                     Connect this device to Moodle
-                </Text>
-                <Text style={styles.cardBody}>
-                    Tip: turn off any school VPN before scanning. Moodle QR
-                    login only works when the phone and the Moodle page reach
-                    Moodle through the same network path.
                 </Text>
                 <ActionRow>
                     <PrimaryButton
@@ -67,6 +64,18 @@ export function ConnectScreen(props: ConnectScreenProps) {
                         }
                         disabled={props.busy}
                     />
+                    <QRImageUpload
+                        label="Upload QR"
+                        disabled={props.busy}
+                        onDecoded={props.onUseMoodleQrValue}
+                        onError={props.onMoodleQrUploadError}
+                    />
+                    <SecondaryButton
+                        label="Info"
+                        icon={CircleHelp}
+                        onPress={() => setShowHelp((current) => !current)}
+                        disabled={props.busy}
+                    />
                 </ActionRow>
                 {showMoodlePaste ? (
                     <TextField
@@ -75,40 +84,11 @@ export function ConnectScreen(props: ConnectScreenProps) {
                         placeholder="moodlemobile://https://..."
                     />
                 ) : null}
-            </Card>
 
-            <Card raised>
-                <Text style={styles.heroLabel}>Troubleshooting</Text>
-                <Text style={styles.cardTitle}>If QR login fails</Text>
-                <View style={styles.tipList}>
-                    <Text style={styles.tipItem}>
-                        • Turn off any{' '}
-                        <Text style={styles.tipItemStrong}>school VPN</Text> on
-                        the phone.
-                    </Text>
-                    <Text style={styles.tipItem}>
-                        • Keep the phone and the Moodle page on the{' '}
-                        <Text style={styles.tipItemStrong}>same Wi-Fi</Text>.
-                    </Text>
-                    <Text style={styles.tipItem}>
-                        • Disable{' '}
-                        <Text style={styles.tipItemStrong}>
-                            iCloud Private Relay
-                        </Text>{' '}
-                        while connecting.
-                    </Text>
-                    <Text style={styles.tipItem}>
-                        • If the QR code is shown on a laptop, use the{' '}
-                        <Text style={styles.tipItemStrong}>
-                            laptop web scanner
-                        </Text>{' '}
-                        instead of the phone camera.
-                    </Text>
-                </View>
-            </Card>
+                {showHelp ? <TroubleshootingInfo /> : null}
+            </View>
 
-            <Card>
-                <Text style={styles.heroLabel}>Step 2</Text>
+            <View style={styles.connectSection}>
                 <Text style={styles.cardTitle}>Pair a browser session</Text>
                 <ActionRow>
                     <PrimaryButton
@@ -135,7 +115,33 @@ export function ConnectScreen(props: ConnectScreenProps) {
                         placeholder="moodlereadonlyproxy://pair?pairId=..."
                     />
                 ) : null}
-            </Card>
+            </View>
         </ScreenSection>
+    );
+}
+
+function TroubleshootingInfo() {
+    return (
+        <View style={styles.infoPanel}>
+            <Text style={styles.cardTitle}>If QR login fails</Text>
+            <View style={styles.tipList}>
+                <Text style={styles.tipItem}>
+                    • Turn off any{' '}
+                    <Text style={styles.tipItemStrong}>school VPN</Text> on the
+                    phone.
+                </Text>
+                <Text style={styles.tipItem}>
+                    • Keep the phone and the Moodle page on the{' '}
+                    <Text style={styles.tipItemStrong}>same Wi-Fi</Text>.
+                </Text>
+                <Text style={styles.tipItem}>
+                    • Disable{' '}
+                    <Text style={styles.tipItemStrong}>
+                        iCloud Private Relay
+                    </Text>{' '}
+                    while connecting.
+                </Text>
+            </View>
+        </View>
     );
 }

@@ -53,6 +53,11 @@ export const styles = StyleSheet.create({
     letterSpacing: 2.6,
     textTransform: "uppercase",
   },
+  brandLabel: {
+    color: palette.subtle,
+    fontSize: 13,
+    fontWeight: "700",
+  },
   appTitle: {
     color: palette.text,
     fontSize: 24,
@@ -105,6 +110,21 @@ export const styles = StyleSheet.create({
   },
   screen: {
     gap: 14,
+  },
+  connectSection: {
+    borderBottomColor: palette.border,
+    borderBottomWidth: 1,
+    gap: 14,
+    paddingBottom: 18,
+    paddingTop: 4,
+  },
+  infoPanel: {
+    backgroundColor: "rgba(140,199,255,0.08)",
+    borderColor: "rgba(140,199,255,0.2)",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 13,
   },
   heroPanel: {
     backgroundColor: palette.surface,

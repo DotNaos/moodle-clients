@@ -333,28 +333,9 @@ export default function App() {
                 <View style={styles.topBar}>
                     <View style={styles.brandRow}>
                         <View style={styles.brandCopy}>
-                            <Text style={styles.eyebrow}>Moodle Client</Text>
+                            <Text style={styles.brandLabel}>Moodle Client</Text>
                             <Text style={styles.appTitle}>
                                 {getScreenTitle(activeView)}
-                            </Text>
-                        </View>
-                        <View
-                            style={[
-                                styles.connectionPill,
-                                connected
-                                    ? styles.connectionPillReady
-                                    : styles.connectionPillWaiting,
-                            ]}>
-                            <View
-                                style={[
-                                    styles.pillDot,
-                                    connected
-                                        ? styles.pillDotReady
-                                        : styles.pillDotWaiting,
-                                ]}
-                            />
-                            <Text style={styles.connectionPillText}>
-                                {connected ? 'Ready' : 'Setup'}
                             </Text>
                         </View>
                     </View>
@@ -447,6 +428,11 @@ export default function App() {
                             onUseMoodleQr={() =>
                                 void connectMoodle(moodleQrInput)
                             }
+                            onUseMoodleQrValue={(value) => {
+                                setMoodleQrInput(value);
+                                void connectMoodle(value);
+                            }}
+                            onMoodleQrUploadError={setErrorMessage}
                             onScanPairQr={() => {
                                 if (!connection) {
                                     setErrorMessage('Connect Moodle first.');
