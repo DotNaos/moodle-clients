@@ -11,6 +11,7 @@ const icons = require("lucide-react-native");
 
 export const BookOpen = icons.BookOpen;
 export const CalendarDays = icons.CalendarDays;
+export const ChevronLeft = icons.ChevronLeft;
 export const ChevronRight = icons.ChevronRight;
 export const FileText = icons.FileText;
 export const Link2 = icons.Link2;

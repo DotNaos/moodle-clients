@@ -357,6 +357,11 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
   },
+  loadingPanel: {
+    alignItems: "center",
+    minHeight: 96,
+    justifyContent: "center",
+  },
   statusBanner: {
     borderRadius: 8,
     borderWidth: 1,
@@ -435,6 +440,39 @@ export const styles = StyleSheet.create({
   courseGroup: {
     gap: 8,
   },
+  courseList: {
+    gap: 16,
+  },
+  plainList: {
+    gap: 8,
+  },
+  courseListRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.035)",
+    borderColor: palette.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 64,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+  },
+  drilldownHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+  },
+  backButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: palette.borderStrong,
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
   groupTitle: {
     color: palette.subtle,
     fontSize: 11,
@@ -454,6 +492,20 @@ export const styles = StyleSheet.create({
   },
   fileList: {
     gap: 8,
+  },
+  resourceGroup: {
+    gap: 8,
+  },
+  resourceGroupTitle: {
+    color: palette.muted,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
+  },
+  sectionSummary: {
+    color: palette.muted,
+    fontSize: 13,
+    lineHeight: 19,
   },
   fileRow: {
     alignItems: "center",

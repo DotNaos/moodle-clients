@@ -31,6 +31,7 @@ export type MoodleCourse = {
   shortName: string;
   categoryId?: number;
   categoryName: string;
+  rawCategory?: string;
   visible: number;
 };
 
@@ -217,18 +218,38 @@ export async function getCourses(connection: MoodleConnection): Promise<MoodleCo
     throw new Error("Courses response is invalid.");
   }
 
+  logDevInfo("Moodle course DTO fields", {
+    count: raw.length,
+    samples: raw.slice(0, 5).map((item) => {
+      const record = asRecord(item, "course");
+      return {
+        keys: Object.keys(record).sort(),
+        id: record.id,
+        fullname: record.fullname,
+        shortname: record.shortname,
+        category: record.category,
+        categoryname: record.categoryname,
+        categoryName: record.categoryName,
+        categorysortorder: record.categorysortorder,
+      };
+    }),
+  });
+
   return raw.map((item) => {
     const record = asRecord(item, "course");
+    const rawCategory = getOptionalString(record.category);
     return {
       id: requireNumber(record.id, "course.id"),
       fullName: requireString(record.fullname, "course.fullname"),
       shortName: requireString(record.shortname, "course.shortname"),
       categoryId: typeof record.category === "number" ? record.category : undefined,
       categoryName:
+        rawCategory ??
         getOptionalString(record.categoryname) ??
         getOptionalString(record.categoryName) ??
         getOptionalString(record.categorysortorder) ??
         "Other courses",
+      rawCategory,
       visible: requireNumber(record.visible, "course.visible"),
     };
   });

@@ -83,8 +83,8 @@ export function ConnectScreen(props: ConnectScreenProps) {
                 <View style={styles.tipList}>
                     <Text style={styles.tipItem}>
                         • Turn off any{' '}
-                        <Text style={styles.tipItemStrong}>school VPN</Text>{' '}
-                        on the phone.
+                        <Text style={styles.tipItemStrong}>school VPN</Text> on
+                        the phone.
                     </Text>
                     <Text style={styles.tipItem}>
                         • Keep the phone and the Moodle page on the{' '}

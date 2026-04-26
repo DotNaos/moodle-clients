@@ -75,6 +75,8 @@ export default function App() {
 
             setConnection(storedConnection);
             setInfoMessage('Restored the local Moodle session.');
+        }).catch((error) => {
+            logDevError('Stored Moodle session restore failed', error);
         });
 
         return () => {
@@ -147,7 +149,7 @@ export default function App() {
                 ) {
                     return previous;
                 }
-                return nextCourses[0]?.id ?? null;
+                return null;
             });
             setInfoMessage(
                 'Moodle is connected. Courses and pairing are ready.',
@@ -407,6 +409,7 @@ export default function App() {
                                     );
                                 }
                             }}
+                            onBackToCourses={() => setSelectedCourseId(null)}
                             onOpenFile={(file) => {
                                 if (!connection) {
                                     return;
