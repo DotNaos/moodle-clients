@@ -161,6 +161,18 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
   },
+  tipList: {
+    gap: 8,
+  },
+  tipItem: {
+    color: palette.muted,
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  tipItemStrong: {
+    color: palette.text,
+    fontWeight: "800",
+  },
   sectionHeader: {
     alignItems: "center",
     flexDirection: "row",
