@@ -33,13 +33,7 @@ export type MoodleCourse = {
   categoryName: string;
   rawCategory?: string;
   visible: number;
-};
-
-export type MoodleCourseSection = {
-  id?: number;
-  name: string;
-  summary?: string;
-  modules: MoodleCourseModule[];
+    courseImage?: string | null;
 };
 
 export type MoodleCourseModule = {
@@ -264,6 +258,23 @@ export async function getCourses(connection: MoodleConnection): Promise<MoodleCo
   return raw.map((item) => {
     const record = asRecord(item, "course");
     const rawCategory = getOptionalString(record.category);
+    
+    let courseImage: string | null = null;
+    if (Array.isArray(record.overviewfiles) && record.overviewfiles.length > 0) {
+        const overviewFile = record.overviewfiles[0];
+        if (overviewFile && typeof overviewFile === "object" && typeof overviewFile.fileurl === "string") {
+            courseImage = overviewFile.fileurl;
+        }
+    } else if (typeof record.courseimage === "string") {
+        courseImage = record.courseimage;
+    }
+
+    if (courseImage && connection.moodleToken) {
+        if (!courseImage.includes("token=")) {
+            courseImage += (courseImage.includes("?") ? "&" : "?") + "token=" + connection.moodleToken;
+        }
+    }
+
     return {
       id: requireNumber(record.id, "course.id"),
       fullName: requireString(record.fullname, "course.fullname"),
@@ -277,6 +288,7 @@ export async function getCourses(connection: MoodleConnection): Promise<MoodleCo
         "Other courses",
       rawCategory,
       visible: requireNumber(record.visible, "course.visible"),
+      courseImage,
     };
   });
 }

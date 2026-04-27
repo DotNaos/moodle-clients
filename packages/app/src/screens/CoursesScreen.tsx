@@ -1,12 +1,11 @@
 import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
 
 import {
     Card,
     EmptyState,
     ScreenSection,
     SecondaryButton,
-    SectionHeader,
 } from '../components/ui';
 import { stripHtml } from '../format';
 import { ChevronLeft, ChevronRight, FileText, RefreshCw } from '../icons';
@@ -102,25 +101,24 @@ export function CoursesScreen(props: CoursesScreenProps) {
             </View>
         );
     } else if (groupedCourses.length > 0) {
+// Removes the SectionHeader and double Cards
         coursesContent = (
-            <View style={styles.courseList}>
+            <View style={styles.courseListOuter}>
                 {groupedCourses.map((group) => (
-                    <Card key={group.name}>
-                        <View style={styles.courseGroup}>
-                            <Text style={styles.groupTitle}>{group.name}</Text>
-                            <View style={styles.plainList}>
-                                {group.courses.map((course) => (
-                                    <CourseListRow
-                                        key={course.id}
-                                        course={course}
-                                        onPress={() =>
-                                            props.onSelectCourse(course.id)
-                                        }
-                                    />
-                                ))}
-                            </View>
+                    <View key={group.name} style={styles.courseGroup}>
+                        <Text style={styles.groupTitlePlain}>{group.name}</Text>
+                        <View style={styles.plainList}>
+                            {group.courses.map((course) => (
+                                <CourseListRow
+                                    key={course.id}
+                                    course={course}
+                                    onPress={() =>
+                                        props.onSelectCourse(course.id)
+                                    }
+                                />
+                            ))}
                         </View>
-                    </Card>
+                    </View>
                 ))}
             </View>
         );
@@ -135,18 +133,15 @@ export function CoursesScreen(props: CoursesScreenProps) {
 
     return (
         <ScreenSection>
-            <SectionHeader
-                kicker="Library"
-                title="Courses"
-                action={
-                    <SecondaryButton
-                        label="Refresh"
-                        icon={RefreshCw}
-                        onPress={props.onRefresh}
-                        fullWidth={false}
-                    />
-                }
-            />
+            <View style={styles.courseTopBar}>
+                <Text style={styles.appTitle}>Courses</Text>
+                <SecondaryButton
+                    label="Refresh"
+                    icon={RefreshCw}
+                    onPress={props.onRefresh}
+                    fullWidth={false}
+                />
+            </View>
             {coursesContent}
         </ScreenSection>
     );
@@ -264,20 +259,31 @@ function CourseListRow(props: CourseListRowProps) {
     return (
         <Pressable
             onPress={props.onPress}
-            style={({ pressed }) => [pressed && styles.pressed]}>
-            <Card compact raised>
-                <View style={styles.courseListRow}>
-                    <View style={styles.rowText}>
-                        <Text style={styles.rowTitle} numberOfLines={2}>
-                            {props.course.fullName}
-                        </Text>
-                        <Text style={styles.rowSubtitle} numberOfLines={1}>
-                            {props.course.shortName}
-                        </Text>
-                    </View>
-                    <ChevronRight color={palette.subtle} size={18} />
-                </View>
-            </Card>
+            style={({ pressed }) => [
+                styles.courseListRowPlain,
+                pressed ? [styles.dimmed, { opacity: 0.8 }] : null,
+            ]}>
+            <View style={styles.courseImagePreview}>
+                {props.course.courseImage ? (
+                    <Image 
+                        source={{ uri: props.course.courseImage }} 
+                        style={{ width: '100%', height: '100%', resizeMode: 'cover' } as any} 
+                    />
+                ) : (
+                    <Text style={styles.courseAvatarText}>
+                        {props.course.shortName.slice(0, 2).toUpperCase()}
+                    </Text>
+                )}
+            </View>
+            <View style={styles.courseListRowContent}>
+                <Text style={styles.rowTitle} numberOfLines={2}>
+                    {props.course.fullName}
+                </Text>
+                <Text style={styles.rowSubtitle} numberOfLines={1}>
+                    {props.course.shortName}
+                </Text>
+            </View>
+            <ChevronRight color={palette.subtle} size={18} />
         </Pressable>
     );
 }

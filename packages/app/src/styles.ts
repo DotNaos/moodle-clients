@@ -664,6 +664,41 @@ export const styles = StyleSheet.create({
   plainList: {
     gap: 8,
   },
+  courseListOuter: {
+    gap: 20,
+    paddingHorizontal: 0,
+  },
+  groupTitlePlain: {
+    paddingHorizontal: 16,
+    marginBottom: 0,
+    fontSize: 14,
+    fontWeight: "600",
+    color: palette.muted,
+  },
+  courseListRowPlain: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 16,
+    minHeight: 64,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.border,
+  },
+  courseImagePreview: {
+    width: 64,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: palette.surfaceRaised,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  courseListRowContent: {
+    flex: 1,
+    justifyContent: "center",
+    gap: 2,
+  },
   courseListRow: {
     alignItems: "center",
     flexDirection: "row",
