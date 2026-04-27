@@ -267,7 +267,8 @@ function CourseListRow(props: CourseListRowProps) {
                 {props.course.courseImage ? (
                     <Image 
                         source={{ uri: props.course.courseImage }} 
-                        style={{ width: '100%', height: '100%', resizeMode: 'cover' } as any} 
+                        style={{ width: '100%', height: '100%' }} 
+                        resizeMode="cover"
                     />
                 ) : (
                     <Text style={styles.courseAvatarText}>

@@ -258,7 +258,7 @@ export async function getCourses(connection: MoodleConnection): Promise<MoodleCo
   return raw.map((item) => {
     const record = asRecord(item, "course");
     const rawCategory = getOptionalString(record.category);
-    
+
     let courseImage: string | null = null;
     if (Array.isArray(record.overviewfiles) && record.overviewfiles.length > 0) {
         const overviewFile = record.overviewfiles[0];
@@ -269,9 +269,13 @@ export async function getCourses(connection: MoodleConnection): Promise<MoodleCo
         courseImage = record.courseimage;
     }
 
-    if (courseImage && connection.moodleToken) {
+    if (courseImage && connection.moodleMobileToken) {
+        // Moodle requires webservice/pluginfile.php for token auth
+        if (courseImage.includes("/pluginfile.php/") && !courseImage.includes("/webservice/pluginfile.php/")) {
+            courseImage = courseImage.replace("/pluginfile.php/", "/webservice/pluginfile.php/");
+        }
         if (!courseImage.includes("token=")) {
-            courseImage += (courseImage.includes("?") ? "&" : "?") + "token=" + connection.moodleToken;
+            courseImage += (courseImage.includes("?") ? "&" : "?") + "token=" + connection.moodleMobileToken;
         }
     }
 
