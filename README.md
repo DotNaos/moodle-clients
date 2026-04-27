@@ -44,3 +44,29 @@ Build the extension:
 ```sh
 pnpm extension:build
 ```
+
+## Web deploy on Vercel
+
+The repository already includes a root `vercel.json` for the Expo web app:
+
+- install: `pnpm install --frozen-lockfile`
+- build: `pnpm --filter @moodle-clients/web build`
+- output: `apps/web/dist`
+
+So you can import the repository into Vercel and deploy the web version directly.
+
+### Camera support on phone web
+
+The web QR scanner uses the browser camera API. It works when the app is opened on a secure origin:
+
+- `https://` deployments such as Vercel work
+- `http://localhost` works for local development
+- insecure non-localhost `http://` URLs do **not** get camera access
+
+Open the deployed Vercel URL on your phone, tap **Scan QR Code**, and allow camera access in the browser.
+
+### Web session persistence
+
+On web, the Moodle connection is already stored in `localStorage` under the key `moodle-clients.connection.v1`.
+
+That means a Vercel-hosted web session on your phone stays local to that browser until you clear it or log out.

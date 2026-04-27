@@ -1,0 +1,63 @@
+@import "tailwindcss";
+@import "uniwind";
+@import "heroui-native/styles";
+
+@source "../../node_modules/heroui-native/lib";
+@source "./App.tsx";
+@source "./src";
+
+@layer theme {
+  @variant dark {
+    --background: #0b0f14;
+    --foreground: #f8fafc;
+
+    --surface: #121820;
+    --surface-foreground: #f8fafc;
+    --surface-secondary: #18202a;
+    --surface-secondary-foreground: #f8fafc;
+    --surface-tertiary: color-mix(in oklab, #18202a 88%, #f8fafc 12%);
+    --surface-tertiary-foreground: #f8fafc;
+
+    --overlay: #111821;
+    --overlay-foreground: #f8fafc;
+    --backdrop: rgba(2, 6, 23, 0.82);
+
+    --muted: #a8b3c1;
+    --default: #18202a;
+    --default-foreground: #f8fafc;
+
+    --accent: #8cc7ff;
+    --accent-foreground: #071018;
+
+    --success: #7dd3a6;
+    --success-foreground: #071018;
+    --warning: #f7c873;
+    --warning-foreground: #071018;
+    --danger: #fda4af;
+    --danger-foreground: #071018;
+
+    --field-background: rgba(0, 0, 0, 0.2);
+    --field-foreground: #f8fafc;
+    --field-placeholder: #738091;
+    --field-border: rgba(255, 255, 255, 0.09);
+
+    --separator: rgba(255, 255, 255, 0.09);
+    --border: rgba(255, 255, 255, 0.12);
+    --focus: #8cc7ff;
+    --link: #8cc7ff;
+
+    --surface-shadow: 0 12px 40px rgba(2, 6, 23, 0.22);
+    --overlay-shadow: 0 24px 56px rgba(2, 6, 23, 0.42);
+    --field-shadow: 0 0 0 0 transparent;
+
+    --radius: 16px;
+  }
+
+  @variant light {
+    --accent: #2563eb;
+    --accent-foreground: #ffffff;
+    --focus: #2563eb;
+    --link: #2563eb;
+    --radius: 16px;
+  }
+}

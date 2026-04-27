@@ -13,6 +13,7 @@ export const BookOpen = icons.BookOpen;
 export const CalendarDays = icons.CalendarDays;
 export const ChevronLeft = icons.ChevronLeft;
 export const ChevronRight = icons.ChevronRight;
+export const Clipboard = icons.Clipboard;
 export const CircleHelp = icons.CircleHelp;
 export const FileText = icons.FileText;
 export const Link2 = icons.Link2;

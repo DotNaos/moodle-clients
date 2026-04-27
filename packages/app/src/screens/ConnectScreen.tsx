@@ -1,18 +1,26 @@
 import { useState } from 'react';
-import { Text, View } from 'react-native';
-
 import {
-    ActionRow,
+    Image,
+    ImageBackground,
+    type ImageStyle,
+    Text,
+    View,
+    useWindowDimensions,
+} from 'react-native';
+
+import { QRImportMenu } from '../components/QRImportMenu';
+import {
     PrimaryButton,
     ScreenSection,
-    SecondaryButton,
+    SectionHeader,
     SessionCard,
-    TextField,
 } from '../components/ui';
-import { QRImageUpload } from '../components/QRImageUpload';
-import { CircleHelp, Link2, ScanLine } from '../icons';
+import { ScanLine } from '../icons';
 import type { MoodleConnection } from '../moodle';
 import { styles } from '../styles';
+
+const moodleClientLogo = require('../../../../apps/mobile/assets/splash-icon.png');
+const loginBackground = require('../../../../assets/new_other_aspect.png');
 
 type ConnectScreenProps = Readonly<{
     busy: boolean;
@@ -22,126 +30,224 @@ type ConnectScreenProps = Readonly<{
     onChangeMoodleQr: (value: string) => void;
     onChangePairQr: (value: string) => void;
     onScanMoodleQr: () => void;
-    onUseMoodleQr: () => void;
     onUseMoodleQrValue: (value: string) => void;
-    onMoodleQrUploadError: (message: string) => void;
+    onMoodleQrImportError: (message: string) => void;
     onScanPairQr: () => void;
-    onUsePairQr: () => void;
+    onUsePairQrValue: (value: string) => void;
+    onPairQrImportError: (message: string) => void;
+}>;
+
+type DisconnectedConnectStateProps = Readonly<{
+    busy: boolean;
+    moodleQrInput: string;
+    showOptions: boolean;
+    onChangeMoodleQr: (value: string) => void;
+    onScanMoodleQr: () => void;
+    onUseMoodleQrValue: (value: string) => void;
+    onMoodleQrImportError: (message: string) => void;
+    onToggleOptions: () => void;
+}>;
+
+type ConnectedSetupCardProps = Readonly<{
+    busy: boolean;
+    showOptions: boolean;
+    moodleQrInput: string;
+    onChangeMoodleQr: (value: string) => void;
+    onScanMoodleQr: () => void;
+    onUseMoodleQrValue: (value: string) => void;
+    onMoodleQrImportError: (message: string) => void;
+    onToggleOptions: () => void;
+}>;
+
+type PairingCardProps = Readonly<{
+    busy: boolean;
+    showOptions: boolean;
+    pairQrInput: string;
+    onChangePairQr: (value: string) => void;
+    onScanPairQr: () => void;
+    onUsePairQrValue: (value: string) => void;
+    onPairQrImportError: (message: string) => void;
+    onToggleOptions: () => void;
 }>;
 
 export function ConnectScreen(props: ConnectScreenProps) {
-    const [showMoodlePaste, setShowMoodlePaste] = useState(false);
-    const [showPairPaste, setShowPairPaste] = useState(false);
-    const [showHelp, setShowHelp] = useState(false);
+    const [showMoodleOptions, setShowMoodleOptions] = useState(false);
+    const [showPairOptions, setShowPairOptions] = useState(false);
+
+    if (!props.connection) {
+        return (
+            <DisconnectedConnectState
+                busy={props.busy}
+                moodleQrInput={props.moodleQrInput}
+                showOptions={showMoodleOptions}
+                onChangeMoodleQr={props.onChangeMoodleQr}
+                onScanMoodleQr={props.onScanMoodleQr}
+                onUseMoodleQrValue={props.onUseMoodleQrValue}
+                onMoodleQrImportError={props.onMoodleQrImportError}
+                onToggleOptions={() =>
+                    setShowMoodleOptions((current) => !current)
+                }
+            />
+        );
+    }
 
     return (
         <ScreenSection>
-            {props.connection ? (
-                <SessionCard
-                    siteUrl={props.connection.moodleSiteUrl}
-                    userId={props.connection.moodleUserId}
-                />
-            ) : null}
+            <SessionCard siteUrl={props.connection.moodleSiteUrl} />
 
-            <View style={styles.connectSection}>
-                <Text style={styles.cardTitle}>
-                    Connect this device to Moodle
-                </Text>
-                <ActionRow>
-                    <PrimaryButton
-                        label={props.busy ? 'Working...' : 'Scan'}
-                        icon={ScanLine}
-                        onPress={props.onScanMoodleQr}
-                        disabled={props.busy}
-                    />
-                    <SecondaryButton
-                        label={showMoodlePaste ? 'Submit' : 'Use paste'}
-                        icon={Link2}
-                        onPress={
-                            showMoodlePaste
-                                ? props.onUseMoodleQr
-                                : () => setShowMoodlePaste(true)
-                        }
-                        disabled={props.busy}
-                    />
-                    <QRImageUpload
-                        label="Upload QR"
-                        disabled={props.busy}
-                        onDecoded={props.onUseMoodleQrValue}
-                        onError={props.onMoodleQrUploadError}
-                    />
-                    <SecondaryButton
-                        label="Info"
-                        icon={CircleHelp}
-                        onPress={() => setShowHelp((current) => !current)}
-                        disabled={props.busy}
-                    />
-                </ActionRow>
-                {showMoodlePaste ? (
-                    <TextField
-                        value={props.moodleQrInput}
-                        onChangeText={props.onChangeMoodleQr}
-                        placeholder="moodlemobile://https://..."
-                    />
-                ) : null}
+            <ConnectedSetupCard
+                busy={props.busy}
+                showOptions={showMoodleOptions}
+                moodleQrInput={props.moodleQrInput}
+                onChangeMoodleQr={props.onChangeMoodleQr}
+                onScanMoodleQr={props.onScanMoodleQr}
+                onUseMoodleQrValue={props.onUseMoodleQrValue}
+                onMoodleQrImportError={props.onMoodleQrImportError}
+                onToggleOptions={() =>
+                    setShowMoodleOptions((current) => !current)
+                }
+            />
 
-                {showHelp ? <TroubleshootingInfo /> : null}
-            </View>
-
-            <View style={styles.connectSection}>
-                <Text style={styles.cardTitle}>Pair a browser session</Text>
-                <ActionRow>
-                    <PrimaryButton
-                        label="Scan"
-                        icon={ScanLine}
-                        onPress={props.onScanPairQr}
-                        disabled={props.busy}
-                    />
-                    <SecondaryButton
-                        label={showPairPaste ? 'Submit' : 'Use paste'}
-                        icon={Link2}
-                        onPress={
-                            showPairPaste
-                                ? props.onUsePairQr
-                                : () => setShowPairPaste(true)
-                        }
-                        disabled={props.busy}
-                    />
-                </ActionRow>
-                {showPairPaste ? (
-                    <TextField
-                        value={props.pairQrInput}
-                        onChangeText={props.onChangePairQr}
-                        placeholder="moodlereadonlyproxy://pair?pairId=..."
-                    />
-                ) : null}
-            </View>
+            <PairingCard
+                busy={props.busy}
+                showOptions={showPairOptions}
+                pairQrInput={props.pairQrInput}
+                onChangePairQr={props.onChangePairQr}
+                onScanPairQr={props.onScanPairQr}
+                onUsePairQrValue={props.onUsePairQrValue}
+                onPairQrImportError={props.onPairQrImportError}
+                onToggleOptions={() =>
+                    setShowPairOptions((current) => !current)
+                }
+            />
         </ScreenSection>
     );
 }
 
-function TroubleshootingInfo() {
+function DisconnectedConnectState(props: DisconnectedConnectStateProps) {
+    const { height } = useWindowDimensions();
+    const stageMinHeight = Math.max(height - 40, 640);
+
     return (
-        <View style={styles.infoPanel}>
-            <Text style={styles.cardTitle}>If QR login fails</Text>
-            <View style={styles.tipList}>
-                <Text style={styles.tipItem}>
-                    • Turn off any{' '}
-                    <Text style={styles.tipItemStrong}>school VPN</Text> on the
-                    phone.
-                </Text>
-                <Text style={styles.tipItem}>
-                    • Keep the phone and the Moodle page on the{' '}
-                    <Text style={styles.tipItemStrong}>same Wi-Fi</Text>.
-                </Text>
-                <Text style={styles.tipItem}>
-                    • Disable{' '}
-                    <Text style={styles.tipItemStrong}>
-                        iCloud Private Relay
-                    </Text>{' '}
-                    while connecting.
-                </Text>
-            </View>
+        <ScreenSection>
+            <ImageBackground
+                source={loginBackground}
+                style={[styles.connectStage, { minHeight: stageMinHeight }]}
+                imageStyle={styles.connectStageBackgroundImage as ImageStyle}
+                resizeMode="cover">
+                <View
+                    style={styles.connectStageSideGradientLeft}
+                    pointerEvents="none"
+                />
+                <View
+                    style={styles.connectStageSideGradientRight}
+                    pointerEvents="none"
+                />
+                <View
+                    style={styles.connectStageBottomGradient}
+                    pointerEvents="none"
+                />
+                <View style={styles.connectStageContent}>
+                    <View style={styles.connectWelcomeHero}>
+                        <Image
+                            source={moodleClientLogo}
+                            style={styles.connectWelcomeLogo as ImageStyle}
+                            resizeMode="contain"
+                            accessibilityLabel="Moodle Client logo"
+                        />
+                        <View style={styles.connectWelcomeCopy}>
+                            <Text style={styles.connectWelcomeTitle}>
+                                Moodle Client
+                            </Text>
+                            <Text style={styles.connectWelcomeBody}>
+                                Scan the QR code on your Moodle login page.
+                            </Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.connectWelcomeActions}>
+                        <PrimaryButton
+                            label={props.busy ? 'Working...' : 'Scan QR Code'}
+                            icon={ScanLine}
+                            onPress={props.onScanMoodleQr}
+                            disabled={props.busy}
+                            style={styles.connectWelcomePrimaryButton}
+                            labelStyle={styles.connectWelcomePrimaryButtonText}
+                        />
+                        <QRImportMenu
+                            open={props.showOptions}
+                            busy={props.busy}
+                            revealLabel="No camera?"
+                            title="Import Moodle QR"
+                            placeholder="moodlemobile://..."
+                            value={props.moodleQrInput}
+                            submitLabel="Continue with value"
+                            uploadLabel="Upload image"
+                            onToggle={props.onToggleOptions}
+                            onChangeValue={props.onChangeMoodleQr}
+                            onResolvedValue={props.onUseMoodleQrValue}
+                            onError={props.onMoodleQrImportError}
+                        />
+                    </View>
+                </View>
+            </ImageBackground>
+        </ScreenSection>
+    );
+}
+
+function ConnectedSetupCard(props: ConnectedSetupCardProps) {
+    return (
+        <View style={styles.connectSection}>
+            <SectionHeader kicker="Moodle" title="Scan QR Code" />
+            <PrimaryButton
+                label={props.busy ? 'Working…' : 'Scan QR Code'}
+                icon={ScanLine}
+                onPress={props.onScanMoodleQr}
+                disabled={props.busy}
+            />
+            <QRImportMenu
+                open={props.showOptions}
+                busy={props.busy}
+                revealLabel="No camera?"
+                title="Import Moodle QR"
+                placeholder="moodlemobile://..."
+                value={props.moodleQrInput}
+                submitLabel="Continue with value"
+                uploadLabel="Upload image"
+                onToggle={props.onToggleOptions}
+                onChangeValue={props.onChangeMoodleQr}
+                onResolvedValue={props.onUseMoodleQrValue}
+                onError={props.onMoodleQrImportError}
+            />
+        </View>
+    );
+}
+
+function PairingCard(props: PairingCardProps) {
+    return (
+        <View style={styles.connectSection}>
+            <SectionHeader kicker="Browser" title="Pair Session" />
+            <PrimaryButton
+                label="Scan QR Code"
+                icon={ScanLine}
+                onPress={props.onScanPairQr}
+                disabled={props.busy}
+            />
+            <QRImportMenu
+                open={props.showOptions}
+                busy={props.busy}
+                revealLabel="No camera?"
+                title="Import Pairing QR"
+                description="Choose one import method: upload the QR image, paste an image URL or data URL, or paste the pairing value directly."
+                placeholder="moodlereadonlyproxy://pair?pairId=..."
+                value={props.pairQrInput}
+                submitLabel="Continue with value"
+                uploadLabel="Upload image"
+                onToggle={props.onToggleOptions}
+                onChangeValue={props.onChangePairQr}
+                onResolvedValue={props.onUsePairQrValue}
+                onError={props.onPairQrImportError}
+            />
         </View>
     );
 }

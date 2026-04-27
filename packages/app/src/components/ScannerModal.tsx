@@ -1,83 +1,311 @@
-import { useEffect, useRef, useState } from "react";
-import { Modal, Platform, SafeAreaView, Text, View } from "react-native";
-import { StatusBar } from "expo-status-bar";
-import { CameraView, type BarcodeScanningResult } from "expo-camera";
+import { CameraView, type BarcodeScanningResult } from 'expo-camera';
+import { StatusBar } from 'expo-status-bar';
+import { Dialog } from 'heroui-native';
+import { CircleHelp, X } from 'lucide-react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { SecondaryButton } from "./ui";
-import { WebQRScanner } from "./WebQRScanner";
-import { styles } from "../styles";
-import type { ScannerMode } from "../types";
+import { parseMobileQRLink } from '../moodle';
+import { parseMobilePairTarget } from '../pairing';
+import { styles } from '../styles';
+import type { ScannerMode } from '../types';
+
+import { WebQRScanner } from './WebQRScanner';
 
 export function ScannerModal(props: {
-  visible: boolean;
-  mode: ScannerMode;
-  hasCamera: boolean;
-  onClose: () => void;
-  onBarcodeScanned: (result: BarcodeScanningResult) => void;
-  onScannerError: (message: string) => void;
+    readonly visible: boolean;
+    readonly mode: ScannerMode;
+    readonly hasCamera: boolean;
+    readonly onClose: () => void;
+    readonly onBarcodeScanned: (result: BarcodeScanningResult) => void;
+    readonly onScannerError: (message: string) => void;
 }) {
-  const [scanComplete, setScanComplete] = useState(false);
-  const scanCompleteRef = useRef(false);
+    const [scanComplete, setScanComplete] = useState(false);
+    const scanCompleteRef = useRef(false);
+    const closeEnabledRef = useRef(false);
+    const openedAtRef = useRef(0);
+    function renderCameraContent() {
+        if (!props.hasCamera) {
+            return (
+                <View style={styles.permissionBox}>
+                    <Text style={styles.permissionText}>
+                        Camera permission is required to scan QR codes.
+                    </Text>
+                </View>
+            );
+        }
 
-  useEffect(() => {
-    if (props.visible) {
-      scanCompleteRef.current = false;
-      setScanComplete(false);
-    }
-  }, [props.visible, props.mode]);
+        if (Platform.OS === 'web') {
+            return (
+                <WebQRScanner
+                    active={!scanComplete}
+                    onScanned={handleScanned}
+                    onError={props.onScannerError}
+                />
+            );
+        }
 
-  function handleScanned(result: BarcodeScanningResult) {
-    if (scanCompleteRef.current) {
-      return;
-    }
-
-    scanCompleteRef.current = true;
-    setScanComplete(true);
-    props.onBarcodeScanned(result);
-  }
-
-  return (
-    <Modal visible={props.visible} animationType="slide" presentationStyle="fullScreen" transparent={false}>
-      <SafeAreaView style={styles.modalSafeArea}>
-        <StatusBar style="light" />
-        <View style={styles.modalHeader}>
-          <Text style={styles.eyebrow}>Scanner</Text>
-          <Text style={styles.modalTitle}>
-            {props.mode === "moodle" ? "Scan Moodle QR" : "Scan pairing QR"}
-          </Text>
-          <Text style={styles.modalBody}>
-            {props.mode === "moodle"
-              ? "Point the camera at the Moodle Mobile QR code. The app will unlock the Moodle session automatically."
-              : "Point the camera at the pairing QR shown by the web app or GPT OAuth page."}
-          </Text>
-          <SecondaryButton label="Close scanner" onPress={props.onClose} />
-        </View>
-
-        {props.hasCamera ? (
-          Platform.OS === "web" ? (
-            <WebQRScanner
-              active={props.visible && !scanComplete}
-              onScanned={handleScanned}
-              onError={props.onScannerError}
-            />
-          ) : (
-            <View style={styles.modalCameraFrame}>
-              <CameraView
+        return (
+            <CameraView
                 style={styles.camera}
                 facing="back"
-                barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                barcodeScannerSettings={{
+                    barcodeTypes: ['qr'],
+                }}
                 active={!scanComplete}
                 onBarcodeScanned={scanComplete ? undefined : handleScanned}
-              />
-              <View style={styles.scanGuide} />
+            />
+        );
+    }
+
+    useEffect(() => {
+        if (props.visible) {
+            openedAtRef.current = Date.now();
+            closeEnabledRef.current = false;
+            scanCompleteRef.current = false;
+            setScanComplete(false);
+            const timer = setTimeout(() => {
+                closeEnabledRef.current = true;
+            }, 250);
+
+            return () => {
+                clearTimeout(timer);
+            };
+        }
+
+        closeEnabledRef.current = false;
+    }, [props.visible, props.mode]);
+
+    function handleScanned(result: BarcodeScanningResult): boolean {
+        if (scanCompleteRef.current) {
+            return false;
+        }
+
+        if (Date.now() - openedAtRef.current < 1000) {
+            return false;
+        }
+
+        try {
+            if (props.mode === 'moodle') {
+                parseMobileQRLink(result.data);
+            } else {
+                parseMobilePairTarget(result.data);
+            }
+        } catch {
+            return false;
+        }
+
+        scanCompleteRef.current = true;
+        setScanComplete(true);
+        props.onBarcodeScanned(result);
+        return true;
+    }
+
+    const scannerContent = (
+        <View style={scannerStyles.shell}>
+            <View style={scannerStyles.header}>
+                <Pressable
+                    onPress={props.onClose}
+                    accessibilityLabel="Close scanner"
+                    style={scannerStyles.closeButton}>
+                    <X size={18} color="#f8fafc" />
+                </Pressable>
             </View>
-          )
-        ) : (
-          <View style={styles.permissionBox}>
-            <Text style={styles.permissionText}>Camera permission is required to scan QR codes.</Text>
-          </View>
-        )}
-      </SafeAreaView>
-    </Modal>
-  );
+
+            <View style={scannerStyles.cameraFrame}>
+                {renderCameraContent()}
+                {props.hasCamera ? (
+                    <View style={scannerStyles.scanGuide}>
+                        <View
+                            style={[
+                                scannerStyles.corner,
+                                scannerStyles.cornerTopLeft,
+                            ]}
+                        />
+                        <View
+                            style={[
+                                scannerStyles.corner,
+                                scannerStyles.cornerTopRight,
+                            ]}
+                        />
+                        <View
+                            style={[
+                                scannerStyles.corner,
+                                scannerStyles.cornerBottomLeft,
+                            ]}
+                        />
+                        <View
+                            style={[
+                                scannerStyles.corner,
+                                scannerStyles.cornerBottomRight,
+                            ]}
+                        />
+                    </View>
+                ) : null}
+            </View>
+
+            <View style={scannerStyles.helpRow}>
+                <CircleHelp size={14} color="#f8fafc" />
+                <Text style={scannerStyles.helpText}>
+                    {Platform.OS === 'web'
+                        ? 'On phone web, allow camera access. Your session stays in this browser.'
+                        : 'Need help?'}
+                </Text>
+            </View>
+        </View>
+    );
+
+    if (Platform.OS === 'web') {
+        if (!props.visible) {
+            return null;
+        }
+
+        return (
+            <View style={scannerStyles.webOverlay}>
+                <StatusBar style="light" />
+                {scannerContent}
+            </View>
+        );
+    }
+
+    return (
+        <Dialog
+            isOpen={props.visible}
+            onOpenChange={(nextOpen) => {
+                if (!nextOpen && closeEnabledRef.current) {
+                    props.onClose();
+                }
+            }}>
+            <StatusBar style="light" />
+            <Dialog.Portal>
+                <Dialog.Overlay style={scannerStyles.overlay} />
+                <Dialog.Content
+                    isSwipeable={true}
+                    style={scannerStyles.dialogContent}>
+                    {scannerContent}
+                </Dialog.Content>
+            </Dialog.Portal>
+        </Dialog>
+    );
 }
+
+const scannerStyles = StyleSheet.create({
+    overlay: {
+        backgroundColor: 'rgba(0, 0, 0, 0.48)',
+    },
+    webOverlay: {
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.48)',
+        bottom: 0,
+        justifyContent: 'center',
+        left: 0,
+        paddingHorizontal: 16,
+        ...({ position: 'fixed' } as object),
+        right: 0,
+        top: 0,
+        zIndex: 9999,
+    },
+    dialogContent: {
+        width: '92%',
+        maxWidth: 360,
+        padding: 0,
+        backgroundColor: 'transparent',
+        borderWidth: 0,
+        ...({ boxShadow: 'none' } as object),
+    },
+    shell: {
+        alignItems: 'center',
+        backgroundColor: 'rgba(12, 11, 10, 0.92)',
+        borderColor: 'rgba(255, 255, 255, 0.16)',
+        borderRadius: 28,
+        borderWidth: 1,
+        gap: 12,
+        paddingBottom: 22,
+        paddingHorizontal: 0,
+        paddingTop: 12,
+        overflow: 'hidden',
+    },
+    header: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        minHeight: 36,
+        paddingHorizontal: 18,
+        width: '100%',
+    },
+    closeButton: {
+        minHeight: 32,
+        minWidth: 32,
+        paddingHorizontal: 0,
+        paddingVertical: 0,
+    },
+    cameraFrame: {
+        aspectRatio: 1,
+        alignSelf: 'stretch',
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderRadius: 0,
+        marginHorizontal: 22,
+        maxWidth: 316,
+        minHeight: 250,
+        overflow: 'hidden',
+        position: 'relative',
+        width: '100%',
+    },
+    debugCameraPlaceholder: {
+        alignItems: 'center',
+        flex: 1,
+        justifyContent: 'center',
+    },
+    debugCameraText: {
+        color: 'rgba(248,250,252,0.7)',
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    scanGuide: {
+        ...StyleSheet.absoluteFillObject,
+    },
+    corner: {
+        borderColor: '#f8fafc',
+        height: 32,
+        position: 'absolute',
+        width: 32,
+    },
+    cornerTopLeft: {
+        borderLeftWidth: 4,
+        borderTopWidth: 4,
+        borderTopLeftRadius: 8,
+        left: 0,
+        top: 0,
+    },
+    cornerTopRight: {
+        borderRightWidth: 4,
+        borderTopWidth: 4,
+        borderTopRightRadius: 8,
+        right: 0,
+        top: 0,
+    },
+    cornerBottomLeft: {
+        borderBottomWidth: 4,
+        borderLeftWidth: 4,
+        borderBottomLeftRadius: 8,
+        bottom: 0,
+        left: 0,
+    },
+    cornerBottomRight: {
+        borderBottomWidth: 4,
+        borderRightWidth: 4,
+        borderBottomRightRadius: 8,
+        bottom: 0,
+        right: 0,
+    },
+    helpRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: 6,
+    },
+    helpText: {
+        color: 'rgba(248,250,252,0.82)',
+        fontSize: 13,
+        fontWeight: '700',
+    },
+});

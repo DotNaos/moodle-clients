@@ -1,5 +1,5 @@
 export function stripHtml(value: string): string {
-  return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return value.replaceAll(/<[^>]+>/g, " ").replaceAll(/\s+/g, " ").trim();
 }
 
 export function getSafeMessage(error: unknown): string {
@@ -8,6 +8,17 @@ export function getSafeMessage(error: unknown): string {
   }
 
   return "The request failed.";
+}
+
+export function getErrorDebugDetails(error: unknown): string[] {
+  if (!(error instanceof Error)) {
+    return [];
+  }
+
+  const details = (error as Error & { debugDetails?: unknown }).debugDetails;
+  return Array.isArray(details)
+    ? details.filter((detail): detail is string => typeof detail === "string" && Boolean(detail.trim()))
+    : [];
 }
 
 export function compactUrl(value: string): string {
