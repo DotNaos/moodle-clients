@@ -45,6 +45,13 @@ export type MoodleCourseModule = {
   contents: MoodleCourseFile[];
 };
 
+export type MoodleCourseSection = {
+  id?: number;
+  name: string;
+  summary: string;
+  modules: MoodleCourseModule[];
+};
+
 export type MoodleCourseFile = {
   filename: string;
   fileUrl: string;
@@ -229,6 +236,18 @@ export async function getSiteInfo(connection: MoodleConnection): Promise<MoodleS
   };
 }
 
+function resolveCategoryName(record: Record<string, unknown>, mappedName?: string): string {
+  const rawCategoryString = getOptionalString(record.category);
+  return (
+    mappedName ??
+    rawCategoryString ??
+    getOptionalString(record.categoryname) ??
+    getOptionalString(record.categoryName) ??
+    getOptionalString(record.categorysortorder) ??
+    "Other courses"
+  );
+}
+
 export async function getCourses(connection: MoodleConnection): Promise<MoodleCourse[]> {
   const raw = await callMoodleApi(connection, "core_enrol_get_users_courses", {
     userid: String(connection.moodleUserId),
@@ -236,6 +255,21 @@ export async function getCourses(connection: MoodleConnection): Promise<MoodleCo
 
   if (!Array.isArray(raw)) {
     throw new TypeError("Courses response is invalid.");
+  }
+
+  const categoryMap = new Map<number, string>();
+  try {
+      const categoriesRaw = await callMoodleApi(connection, "core_course_get_categories", {});
+      if (Array.isArray(categoriesRaw)) {
+          categoriesRaw.forEach((catItem) => {
+              const catRecord = asRecord(catItem, "category");
+              if (typeof catRecord.id === "number" && typeof catRecord.name === "string") {
+                  categoryMap.set(catRecord.id, catRecord.name);
+              }
+          });
+      }
+  } catch (err) {
+      logDevInfo("Failed to fetch course categories", { error: String(err) });
   }
 
   logDevInfo("Moodle course DTO fields", {
@@ -279,12 +313,15 @@ export async function getCourses(connection: MoodleConnection): Promise<MoodleCo
         }
     }
 
+    const courseCategoryId = typeof record.category === "number" ? record.category : undefined;
+
     return {
       id: requireNumber(record.id, "course.id"),
       fullName: requireString(record.fullname, "course.fullname"),
       shortName: requireString(record.shortname, "course.shortname"),
-      categoryId: typeof record.category === "number" ? record.category : undefined,
+      categoryId: courseCategoryId,
       categoryName:
+        (courseCategoryId ? categoryMap.get(courseCategoryId) : undefined) ??
         rawCategory ??
         getOptionalString(record.categoryname) ??
         getOptionalString(record.categoryName) ??
