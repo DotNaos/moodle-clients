@@ -132,13 +132,12 @@ export function CoursesScreen(props: CoursesScreenProps) {
 
     return (
         <ScreenSection>
-            <View style={styles.topBar}>
-                <Text style={styles.appTitle}>Courses</Text>
+            <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
                 <SecondaryButton
                     label="Refresh"
                     icon={RefreshCw}
                     onPress={props.onRefresh}
-                    fullWidth={false}
+                    fullWidth={true}
                 />
             </View>
             {coursesContent}
