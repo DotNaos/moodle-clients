@@ -2,7 +2,14 @@ import { useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
 import { HeroUINativeProvider } from 'heroui-native';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, Platform, ScrollView, Text, View } from 'react-native';
+import {
+    Linking,
+    Platform,
+    Pressable,
+    ScrollView,
+    Text,
+    View,
+} from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
@@ -30,7 +37,8 @@ import { ConnectScreen } from './src/screens/ConnectScreen';
 import { CoursesScreen } from './src/screens/CoursesScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { loadStoredConnection, storeConnection } from './src/storage';
-import { styles } from './src/styles';
+import { palette, styles } from './src/styles';
+import { RefreshCw } from './src/icons';
 import type { AppView, ScannerMode } from './src/types';
 
 export default function App() {
@@ -341,23 +349,25 @@ export default function App() {
                         <StatusBar style="light" />
                         <View style={styles.appShell}>
                             {connected && (
-                                <View style={styles.topBar}>
-                                    <View style={styles.brandRow}>
-                                        <View style={styles.brandCopy}>
-                                            <Text style={styles.brandLabel}>
-                                                Moodle Client
-                                            </Text>
-                                            <Text style={styles.appTitle}>
-                                                {getScreenTitle(activeView)}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                    <Text style={styles.appSubtitle}>
-                                        {getScreenSubtitle(
-                                            activeView,
-                                            connected,
-                                        )}
+                                <View style={[styles.topBar, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+                                    <Text style={styles.appTitle}>
+                                        {getScreenTitle(activeView)}
                                     </Text>
+                                    {activeView === 'courses' ? (
+                                        <Pressable 
+                                            onPress={() => {
+                                                if (connection) {
+                                                    void refreshDashboard(connection);
+                                                }
+                                            }}
+                                            style={({ pressed }) => ({
+                                                padding: 8,
+                                                opacity: pressed ? 0.7 : 1,
+                                            })}
+                                        >
+                                            <RefreshCw size={24} color={palette.text} />
+                                        </Pressable>
+                                    ) : null}
                                 </View>
                             )}
 
@@ -411,13 +421,6 @@ export default function App() {
                                         currentCourse={currentCourse}
                                         loadingDashboard={loadingDashboard}
                                         loadingCourseId={loadingCourseId}
-                                        onRefresh={() => {
-                                            if (connection) {
-                                                void refreshDashboard(
-                                                    connection,
-                                                );
-                                            }
-                                        }}
                                         onOpenConnect={() =>
                                             setActiveView('connect')
                                         }
@@ -535,7 +538,7 @@ function getScreenSubtitle(view: AppView, connected: boolean): string {
 
     switch (view) {
         case 'courses':
-            return 'Grouped by semester.';
+            return '';
         case 'connect':
             return 'QR login and browser pairing.';
         case 'profile':

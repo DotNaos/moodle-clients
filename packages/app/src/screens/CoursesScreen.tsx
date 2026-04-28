@@ -5,10 +5,9 @@ import {
     Card,
     EmptyState,
     ScreenSection,
-    SecondaryButton,
 } from '../components/ui';
 import { sanitizeCourseName, stripHtml } from '../format';
-import { ChevronLeft, ChevronRight, FileText, RefreshCw } from '../icons';
+import { ChevronLeft, ChevronRight, FileText } from '../icons';
 import type {
     MoodleConnection,
     MoodleCourse,
@@ -25,7 +24,6 @@ type CoursesScreenProps = {
     readonly currentCourse: MoodleCourse | null;
     readonly loadingDashboard: boolean;
     readonly loadingCourseId: number | null;
-    readonly onRefresh: () => void;
     readonly onOpenConnect: () => void;
     readonly onSelectCourse: (courseId: number) => void;
     readonly onBackToCourses: () => void;
@@ -132,14 +130,6 @@ export function CoursesScreen(props: CoursesScreenProps) {
 
     return (
         <ScreenSection>
-            <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-                <SecondaryButton
-                    label="Refresh"
-                    icon={RefreshCw}
-                    onPress={props.onRefresh}
-                    fullWidth={true}
-                />
-            </View>
             {coursesContent}
         </ScreenSection>
     );
