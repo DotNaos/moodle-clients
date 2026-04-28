@@ -6,12 +6,12 @@ import { palette, styles } from "../styles";
 
 declare const require: (id: string) => { WebView: React.ComponentType<any> };
 
-export function PdfViewerModal(props: {
+export function PdfViewerModal(props: Readonly<{
   visible: boolean;
   title: string;
   url: string | null;
   onClose: () => void;
-}) {
+}>) {
   return (
     <Modal animationType="slide" visible={props.visible} onRequestClose={props.onClose}>
       <View style={styles.pdfModal}>
@@ -31,7 +31,7 @@ export function PdfViewerModal(props: {
   );
 }
 
-function PdfSurface(props: { url: string }) {
+function PdfSurface(props: Readonly<{ url: string }>) {
   if (Platform.OS === "web") {
     return (
       <View style={styles.pdfFrame}>
@@ -53,9 +53,19 @@ function PdfSurface(props: { url: string }) {
   }
 
   const NativeWebView = require("react-native-webview").WebView;
+
+  // On Android, WKWebView equivalent doesn't natively render PDFs.
+  // Fall back to Google Docs Viewer.
+  const targetUrl =
+    Platform.OS === "android"
+      ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(
+          props.url
+        )}`
+      : props.url;
+
   return (
     <NativeWebView
-      source={{ uri: props.url }}
+      source={{ uri: targetUrl }}
       style={styles.pdfWebView}
       startInLoadingState
       allowsBackForwardNavigationGestures

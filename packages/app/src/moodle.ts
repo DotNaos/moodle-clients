@@ -389,6 +389,7 @@ export async function getCourseContents(
 export function getAuthenticatedFileUrl(connection: MoodleConnection, fileUrl: string): string {
   const parsed = new URL(fileUrl);
   parsed.searchParams.set("token", connection.moodleMobileToken);
+  parsed.searchParams.set("offline", "1");
   return parsed.toString();
 }
 
