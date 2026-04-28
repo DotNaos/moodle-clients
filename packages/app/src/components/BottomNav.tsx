@@ -3,7 +3,6 @@ import { View } from 'react-native';
 
 import {
     BookOpen,
-    CalendarDays,
     Link2,
     UserRound,
     type IconComponent,
@@ -12,7 +11,6 @@ import { styles } from '../styles';
 import type { AppView } from '../types';
 
 const navItems: Array<{ id: AppView; label: string; icon: IconComponent }> = [
-    { id: 'today', label: 'Today', icon: CalendarDays },
     { id: 'courses', label: 'Courses', icon: BookOpen },
     { id: 'connect', label: 'Connect', icon: Link2 },
     { id: 'profile', label: 'Profile', icon: UserRound },

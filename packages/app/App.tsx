@@ -29,14 +29,13 @@ import { completeMobilePairing, parseMobilePairTarget } from './src/pairing';
 import { ConnectScreen } from './src/screens/ConnectScreen';
 import { CoursesScreen } from './src/screens/CoursesScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
-import { TodayScreen } from './src/screens/TodayScreen';
 import { loadStoredConnection, storeConnection } from './src/storage';
 import { styles } from './src/styles';
 import type { AppView, ScannerMode } from './src/types';
 
 export default function App() {
     const [permission, requestPermission] = useCameraPermissions();
-    const [activeView, setActiveView] = useState<AppView>('today');
+    const [activeView, setActiveView] = useState<AppView>('courses');
     const [scannerMode, setScannerMode] = useState<ScannerMode>(null);
     const [busy, setBusy] = useState(false);
     const [loadingDashboard, setLoadingDashboard] = useState(false);
@@ -281,7 +280,7 @@ export default function App() {
             await storeConnection(nextConnection);
             setConnection(nextConnection);
             setScannerMode(null);
-            setActiveView('today');
+            setActiveView('courses');
             setInfoMessage(
                 `Connected to Moodle as user ${nextConnection.moodleUserId}.`,
             );
@@ -404,28 +403,6 @@ export default function App() {
                                     />
                                 ) : null}
 
-                                {connected && activeView === 'today' ? (
-                                    <TodayScreen
-                                        connection={connection}
-                                        siteInfo={siteInfo}
-                                        courses={courses}
-                                        loading={loadingDashboard}
-                                        onRefresh={() => {
-                                            if (connection) {
-                                                void refreshDashboard(
-                                                    connection,
-                                                );
-                                            }
-                                        }}
-                                        onOpenConnect={() =>
-                                            setActiveView('connect')
-                                        }
-                                        onOpenCourses={() =>
-                                            setActiveView('courses')
-                                        }
-                                    />
-                                ) : null}
-
                                 {connected && activeView === 'courses' ? (
                                     <CoursesScreen
                                         connection={connection}
@@ -540,8 +517,6 @@ export default function App() {
 
 function getScreenTitle(view: AppView): string {
     switch (view) {
-        case 'today':
-            return 'Today';
         case 'courses':
             return 'Courses';
         case 'connect':
@@ -559,8 +534,6 @@ function getScreenSubtitle(view: AppView, connected: boolean): string {
     }
 
     switch (view) {
-        case 'today':
-            return 'Daily overview.';
         case 'courses':
             return 'Grouped by semester.';
         case 'connect':
