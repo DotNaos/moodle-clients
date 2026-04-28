@@ -105,9 +105,9 @@ export function Card(props: CardProps) {
     const variant = props.ready || props.raised ? 'secondary' : 'default';
 
     return (
-        <HeroCard
-            variant={variant}
-            animation="disable-all"
+        <View
+            
+            
             style={[
                 styles.surfaceFrame,
                 props.raised && styles.surfaceFrameRaised,
@@ -122,15 +122,15 @@ export function Card(props: CardProps) {
                 ]}>
                 {props.children}
             </View>
-        </HeroCard>
+        </View>
     );
 }
 
 export function HeroPanel(props: HeroPanelProps) {
     return (
-        <HeroCard
-            variant={props.ready ? 'secondary' : 'default'}
-            animation="disable-all"
+        <View
+            
+            
             style={[
                 styles.surfaceFrame,
                 styles.heroSurface,
@@ -148,7 +148,7 @@ export function HeroPanel(props: HeroPanelProps) {
                 <Text style={styles.heroBody}>{props.body}</Text>
                 {props.children}
             </View>
-        </HeroCard>
+        </View>
     );
 }
 
@@ -158,7 +158,7 @@ export function PrimaryButton(props: AppButtonProps) {
 
     return (
         <Button
-            variant="primary"
+            
             size="lg"
             feedbackVariant="scale"
             isDisabled={props.disabled}
@@ -186,7 +186,7 @@ export function SecondaryButton(props: AppButtonProps) {
 
     return (
         <Button
-            variant="secondary"
+            
             size="lg"
             feedbackVariant="scale"
             isDisabled={props.disabled}
@@ -214,7 +214,7 @@ export function GhostButton(props: AppButtonProps) {
 
     return (
         <Button
-            variant="ghost"
+            
             size="lg"
             feedbackVariant="scale"
             isDisabled={props.disabled}
@@ -241,7 +241,7 @@ export function ActionRow(props: ScreenSectionProps) {
 
 export function MetricTile(props: MetricTileProps) {
     return (
-        <HeroCard variant="tertiary" animation="disable-all" className="flex-1">
+        <View   style={{ flex: 1 }}>
             <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>{props.label}</Text>
                 {props.loading ? (
@@ -253,14 +253,14 @@ export function MetricTile(props: MetricTileProps) {
                     <Text style={styles.metricHint}>{props.hint}</Text>
                 ) : null}
             </View>
-        </HeroCard>
+        </View>
     );
 }
 
 export function TextField({ style, ...inputProps }: AppTextFieldProps) {
     return (
         <HeroInput
-            variant="secondary"
+            
             autoCapitalize="none"
             autoCorrect={false}
             placeholderTextColor="rgba(248, 250, 252, 0.4)"
@@ -273,9 +273,9 @@ export function TextField({ style, ...inputProps }: AppTextFieldProps) {
 export function CourseRow(props: CourseRowProps) {
     const isHidden = props.course.visible === 0;
     const content = (
-        <HeroCard
-            variant={props.active ? 'secondary' : 'tertiary'}
-            animation="disable-all">
+        <View
+            
+            >
             <View
                 style={[styles.listRow, props.active && styles.listRowActive]}>
                 <View style={styles.courseAvatar}>
@@ -297,7 +297,7 @@ export function CourseRow(props: CourseRowProps) {
                     </View>
                 ) : null}
             </View>
-        </HeroCard>
+        </View>
     );
 
     if (!props.onPress) {

@@ -133,7 +133,7 @@ export function CoursesScreen(props: CoursesScreenProps) {
 
     return (
         <ScreenSection>
-            <View style={styles.courseTopBar}>
+            <View style={styles.topBar}>
                 <Text style={styles.appTitle}>Courses</Text>
                 <SecondaryButton
                     label="Refresh"
@@ -261,7 +261,7 @@ function CourseListRow(props: CourseListRowProps) {
             onPress={props.onPress}
             style={({ pressed }) => [
                 styles.courseListRowPlain,
-                pressed ? [styles.dimmed, { opacity: 0.8 }] : null,
+                pressed ? [styles.pressed, { opacity: 0.8 }] : null,
             ]}>
             <View style={styles.courseImagePreview}>
                 {props.course.courseImage ? (

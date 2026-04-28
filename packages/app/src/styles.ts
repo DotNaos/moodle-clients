@@ -28,17 +28,14 @@ export const styles = StyleSheet.create({
   },
   surfaceFrame: {
     backgroundColor: palette.surface,
-    borderColor: palette.border,
     borderRadius: 24,
-    borderWidth: 1,
     overflow: "hidden",
   },
   surfaceFrameRaised: {
     backgroundColor: palette.surfaceRaised,
-    borderColor: palette.borderStrong,
   },
   surfaceFrameReady: {
-    borderColor: "rgba(140,199,255,0.22)",
+    backgroundColor: "rgba(140,199,255,0.06)",
   },
   heroSurface: {
     backgroundColor: "#101720",
