@@ -56,8 +56,7 @@ type CourseListRowProps = {
     readonly onPress: () => void;
 };
 
-type FileRowProps = {
-    readonly file: MoodleCourseFile;
+type FileRowProps = {    readonly moduleName?: string;    readonly file: MoodleCourseFile;
     readonly onPress: () => void;
 };
 
@@ -180,26 +179,24 @@ function CourseDetail(props: CourseDetailProps) {
 
     return (
         <ScreenSection>
-            <Card>
-                <View style={styles.drilldownHeader}>
+                <View style={styles.courseHeader}>
                     <Pressable
                         onPress={props.onBack}
                         style={({ pressed }) => [
                             styles.backButton,
                             pressed && styles.pressed,
                         ]}>
-                        <ChevronLeft color={palette.text} size={20} />
+                        <ChevronLeft color={palette.text} size={24} />
                     </Pressable>
-                    <View style={styles.rowText}>
-                        <Text style={styles.sectionKicker}>
+                    <View style={styles.courseHeaderContent}>
+                        <Text style={styles.courseHeaderLabel}>
                             {props.course.categoryName}
                         </Text>
-                        <Text style={styles.sectionTitle} numberOfLines={2}>
-                            {props.course.fullName}
+                        <Text style={styles.courseHeaderTitle} numberOfLines={3}>
+                            {sanitizeCourseName(props.course.fullName)}
                         </Text>
                     </View>
                 </View>
-            </Card>
             {detailContent}
         </ScreenSection>
     );
@@ -210,9 +207,13 @@ function CourseSection(props: CourseSectionProps) {
         (module) => module.contents.length > 0,
     );
 
+    if (modulesWithFiles.length === 0 && !props.section.summary) {
+        return null; // Skip completely empty sections to keep UI clean
+    }
+
     return (
-        <Card>
-            <Text style={styles.rowTitle}>
+        <View style={styles.courseSection}>
+            <Text style={styles.courseSectionTitle} numberOfLines={2}>
                 {props.section.name || `Section ${props.index + 1}`}
             </Text>
             {props.section.summary ? (
@@ -222,7 +223,7 @@ function CourseSection(props: CourseSectionProps) {
             ) : null}
 
             {modulesWithFiles.length > 0 ? (
-                <View style={styles.fileList}>
+                <View style={styles.courseFileList}>
                     {modulesWithFiles.map((module, moduleIndex) => (
                         <ModuleFiles
                             key={`${module.id ?? moduleIndex}-${module.name}`}
@@ -231,23 +232,21 @@ function CourseSection(props: CourseSectionProps) {
                         />
                     ))}
                 </View>
-            ) : (
-                <Text style={styles.emptyText}>No files in this section.</Text>
-            )}
-        </Card>
+            ) : null}
+        </View>
     );
 }
 
 function ModuleFiles(props: ModuleFilesProps) {
+    // Determine the label to show. Often, the resource 'name' and the 'filename' are 
+    // functionally the same or we only want to show the resource name to avoid nesting.
     return (
-        <View style={styles.resourceGroup}>
-            <Text style={styles.resourceGroupTitle} numberOfLines={2}>
-                {props.module.name}
-            </Text>
-            {props.module.contents.map((file) => (
+        <View>
+            {props.module.contents.map((file, i) => (
                 <FileRow
                     key={`${file.fileUrl}-${file.filename}`}
                     file={file}
+                    moduleName={i === 0 ? props.module.name : undefined}
                     onPress={() => props.onOpenFile(file)}
                 />
             ))}
@@ -291,27 +290,32 @@ function FileRow(props: FileRowProps) {
         props.file.mimeType === 'application/pdf' ||
         props.file.filename.toLowerCase().endsWith('.pdf');
 
+    // Use moduleName if provided, otherwise fall back to filename
+    // Typically the filename is redundant or less clean than the module label
+    const displayName = props.moduleName || props.file.filename;
+
     return (
         <Pressable
             onPress={props.onPress}
-            style={({ pressed }) => [pressed && styles.pressed]}>
-            <Card compact raised>
-                <View style={styles.fileRow}>
-                    <FileText
-                        color={isPdf ? palette.red : palette.blue}
-                        size={18}
-                    />
-                    <View style={styles.rowText}>
-                        <Text style={styles.rowTitle} numberOfLines={2}>
-                            {props.file.filename}
-                        </Text>
-                        <Text style={styles.rowSubtitle}>
-                            {isPdf ? 'PDF' : props.file.mimeType || 'File'}
-                        </Text>
-                    </View>
-                    <ChevronRight color={palette.subtle} size={18} />
-                </View>
-            </Card>
+            style={({ pressed }) => [
+                styles.courseListRowPlain,
+                pressed ? [styles.pressed, { opacity: 0.8 }] : null,
+            ]}>
+            <View style={styles.courseImagePreview}>
+                <FileText
+                    color={isPdf ? palette.red : palette.text}
+                    size={28}
+                />
+            </View>
+            <View style={styles.courseListRowContent}>
+                <Text style={styles.rowTitle} numberOfLines={2}>
+                    {displayName}
+                </Text>
+                <Text style={styles.rowSubtitle}>
+                    {isPdf ? 'PDF' : props.file.mimeType || 'File'}
+                </Text>
+            </View>
+            <ChevronRight color={palette.subtle} size={18} />
         </Pressable>
     );
 }

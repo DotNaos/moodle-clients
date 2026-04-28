@@ -749,6 +749,42 @@ export const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
   },
+  courseSection: {
+    gap: 8,
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  courseSectionTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  courseHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 16,
+    gap: 16,
+  },
+  courseHeaderContent: {
+    flex: 1,
+    gap: 4,
+  },
+  courseHeaderLabel: {
+    color: palette.subtle,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  courseHeaderTitle: {
+    color: palette.text,
+    fontSize: 24,
+    fontWeight: "800",
+    lineHeight: 30,
+  },
+  courseFileList: {
+    gap: 8,
+  },
   fileRow: {
     alignItems: "center",
     flexDirection: "row",
