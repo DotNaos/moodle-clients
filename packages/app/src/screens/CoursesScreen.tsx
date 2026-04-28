@@ -7,7 +7,7 @@ import {
     ScreenSection,
     SecondaryButton,
 } from '../components/ui';
-import { stripHtml } from '../format';
+import { sanitizeCourseName, stripHtml } from '../format';
 import { ChevronLeft, ChevronRight, FileText, RefreshCw } from '../icons';
 import type {
     MoodleConnection,
@@ -278,10 +278,7 @@ function CourseListRow(props: CourseListRowProps) {
             </View>
             <View style={styles.courseListRowContent}>
                 <Text style={styles.rowTitle} numberOfLines={2}>
-                    {props.course.fullName}
-                </Text>
-                <Text style={styles.rowSubtitle} numberOfLines={1}>
-                    {props.course.shortName}
+                    {sanitizeCourseName(props.course.fullName)}
                 </Text>
             </View>
             <ChevronRight color={palette.subtle} size={18} />
