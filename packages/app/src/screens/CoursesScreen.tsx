@@ -301,18 +301,13 @@ function FileRow(props: FileRowProps) {
                 styles.courseListRowPlain,
                 pressed ? [styles.pressed, { opacity: 0.8 }] : null,
             ]}>
-            <View style={styles.courseImagePreview}>
-                <FileText
-                    color={isPdf ? palette.red : palette.text}
-                    size={28}
-                />
-            </View>
+            <FileText
+                color={isPdf ? palette.red : palette.text}
+                size={22}
+            />
             <View style={styles.courseListRowContent}>
                 <Text style={styles.rowTitle} numberOfLines={2}>
-                    {displayName}
-                </Text>
-                <Text style={styles.rowSubtitle}>
-                    {isPdf ? 'PDF' : props.file.mimeType || 'File'}
+                    {stripHtml(displayName)}
                 </Text>
             </View>
             <ChevronRight color={palette.subtle} size={18} />
