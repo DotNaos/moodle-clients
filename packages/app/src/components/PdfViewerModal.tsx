@@ -32,6 +32,13 @@ export function PdfViewerModal(props: Readonly<{
 }
 
 function PdfSurface(props: Readonly<{ url: string }>) {
+  const targetUrl =
+    Platform.OS === "android" || Platform.OS === "web"
+      ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(
+          props.url
+        )}`
+      : props.url;
+
   if (Platform.OS === "web") {
     return (
       <View style={styles.pdfFrame}>
@@ -40,7 +47,7 @@ function PdfSurface(props: Readonly<{ url: string }>) {
           iOS and Android use the WebView below.
         */}
         {React.createElement("iframe", {
-          src: props.url,
+          src: targetUrl,
           style: {
             border: 0,
             height: "100%",
@@ -53,15 +60,6 @@ function PdfSurface(props: Readonly<{ url: string }>) {
   }
 
   const NativeWebView = require("react-native-webview").WebView;
-
-  // On Android, WKWebView equivalent doesn't natively render PDFs.
-  // Fall back to Google Docs Viewer.
-  const targetUrl =
-    Platform.OS === "android"
-      ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(
-          props.url
-        )}`
-      : props.url;
 
   return (
     <NativeWebView
