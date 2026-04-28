@@ -371,46 +371,46 @@ export default function App() {
                                 </View>
                             )}
 
-                            <ScrollView
-                                style={styles.mainScroll}
-                                contentContainerStyle={styles.scrollContent}>
+                            <View style={styles.mainScroll}>
                                 {!connected || activeView === 'connect' ? (
-                                    <ConnectScreen
-                                        busy={busy}
-                                        connection={connection}
-                                        moodleQrInput={moodleQrInput}
-                                        pairQrInput={pairQrInput}
-                                        onChangeMoodleQr={setMoodleQrInput}
-                                        onChangePairQr={setPairQrInput}
-                                        onScanMoodleQr={() =>
-                                            void openScanner('moodle')
-                                        }
-                                        onUseMoodleQrValue={(value) => {
-                                            setMoodleQrInput(value);
-                                            void connectMoodle(value);
-                                        }}
-                                        onMoodleQrImportError={setErrorMessage}
-                                        onScanPairQr={() => {
-                                            if (!connection) {
-                                                setErrorMessage(
-                                                    'Connect Moodle first.',
-                                                );
-                                                return;
+                                    <ScrollView contentContainerStyle={styles.scrollContent}>
+                                        <ConnectScreen
+                                            busy={busy}
+                                            connection={connection}
+                                            moodleQrInput={moodleQrInput}
+                                            pairQrInput={pairQrInput}
+                                            onChangeMoodleQr={setMoodleQrInput}
+                                            onChangePairQr={setPairQrInput}
+                                            onScanMoodleQr={() =>
+                                                void openScanner('moodle')
                                             }
-                                            void openScanner('pair');
-                                        }}
-                                        onUsePairQrValue={(value) => {
-                                            if (!connection) {
-                                                setErrorMessage(
-                                                    'Connect Moodle first.',
-                                                );
-                                                return;
-                                            }
-                                            setPairQrInput(value);
-                                            void sendPairing(value, connection);
-                                        }}
-                                        onPairQrImportError={setErrorMessage}
-                                    />
+                                            onUseMoodleQrValue={(value) => {
+                                                setMoodleQrInput(value);
+                                                void connectMoodle(value);
+                                            }}
+                                            onMoodleQrImportError={setErrorMessage}
+                                            onScanPairQr={() => {
+                                                if (!connection) {
+                                                    setErrorMessage(
+                                                        'Connect Moodle first.',
+                                                    );
+                                                    return;
+                                                }
+                                                void openScanner('pair');
+                                            }}
+                                            onUsePairQrValue={(value) => {
+                                                if (!connection) {
+                                                    setErrorMessage(
+                                                        'Connect Moodle first.',
+                                                    );
+                                                    return;
+                                                }
+                                                setPairQrInput(value);
+                                                void sendPairing(value, connection);
+                                            }}
+                                            onPairQrImportError={setErrorMessage}
+                                        />
+                                    </ScrollView>
                                 ) : null}
 
                                 {connected && activeView === 'courses' ? (
@@ -468,16 +468,18 @@ export default function App() {
                                 ) : null}
 
                                 {connected && activeView === 'profile' ? (
-                                    <ProfileScreen
-                                        connection={connection}
-                                        siteInfo={siteInfo}
-                                        courseCount={courses.length}
-                                        onOpenConnect={() =>
-                                            setActiveView('connect')
-                                        }
-                                    />
+                                    <ScrollView contentContainerStyle={styles.scrollContent}>
+                                        <ProfileScreen
+                                            connection={connection}
+                                            siteInfo={siteInfo}
+                                            courseCount={courses.length}
+                                            onOpenConnect={() =>
+                                                setActiveView('connect')
+                                            }
+                                        />
+                                    </ScrollView>
                                 ) : null}
-                            </ScrollView>
+                            </View>
 
                             {connected && (
                                 <BottomNav

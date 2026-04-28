@@ -1,8 +1,14 @@
 import { useMemo } from 'react';
-import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
+    runOnJS,
+} from 'react-native-reanimated';
 
 import {
-    Card,
     EmptyState,
     ScreenSection,
 } from '../components/ui';
@@ -98,26 +104,27 @@ export function CoursesScreen(props: CoursesScreenProps) {
             </View>
         );
     } else if (groupedCourses.length > 0) {
-// Removes the SectionHeader and double Cards
         coursesContent = (
-            <View style={styles.courseListOuter}>
-                {groupedCourses.map((group) => (
-                    <View key={group.name} style={styles.courseGroup}>
-                        <Text style={styles.groupTitlePlain}>{group.name}</Text>
-                        <View style={styles.plainList}>
-                            {group.courses.map((course) => (
-                                <CourseListRow
-                                    key={course.id}
-                                    course={course}
-                                    onPress={() =>
-                                        props.onSelectCourse(course.id)
-                                    }
-                                />
-                            ))}
+            <ScrollView contentContainerStyle={styles.scrollContent}>
+                <View style={styles.courseListOuter}>
+                    {groupedCourses.map((group) => (
+                        <View key={group.name} style={styles.courseGroup}>
+                            <Text style={styles.groupTitlePlain}>{group.name}</Text>
+                            <View style={styles.plainList}>
+                                {group.courses.map((course) => (
+                                    <CourseListRow
+                                        key={course.id}
+                                        course={course}
+                                        onPress={() =>
+                                            props.onSelectCourse(course.id)
+                                        }
+                                    />
+                                ))}
+                            </View>
                         </View>
-                    </View>
-                ))}
-            </View>
+                    ))}
+                </View>
+            </ScrollView>
         );
     } else {
         coursesContent = (
@@ -136,6 +143,36 @@ export function CoursesScreen(props: CoursesScreenProps) {
 }
 
 function CourseDetail(props: CourseDetailProps) {
+    const x = useSharedValue(0);
+
+    const panGesture = Gesture.Pan()
+        .activeOffsetX(20)
+        .failOffsetY([-20, 20])
+        .onUpdate((e) => {
+            if (e.translationX > 0) {
+                x.value = e.translationX;
+            }
+        })
+        .onEnd((e) => {
+            // If swiped far enough or fast enough, go back
+            if (e.translationX > 100 || e.velocityX > 500) {
+                x.value = withSpring(
+                    300,
+                    { velocity: e.velocityX },
+                    () => {
+                        runOnJS(props.onBack)();
+                    }
+                );
+            } else {
+                x.value = withSpring(0);
+            }
+        });
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        flex: 1,
+        transform: [{ translateX: x.value }],
+    }));
+
     let detailContent: React.ReactNode;
 
     if (props.loading) {
@@ -167,7 +204,8 @@ function CourseDetail(props: CourseDetailProps) {
     }
 
     return (
-        <ScreenSection>
+        <GestureDetector gesture={panGesture}>
+            <Animated.View style={[{ flex: 1, backgroundColor: palette.background }, animatedStyle]}>
                 <View style={styles.courseHeader}>
                     <Pressable
                         onPress={props.onBack}
@@ -186,8 +224,11 @@ function CourseDetail(props: CourseDetailProps) {
                         </Text>
                     </View>
                 </View>
-            {detailContent}
-        </ScreenSection>
+                <ScrollView contentContainerStyle={styles.scrollContent}>
+                    {detailContent}
+                </ScrollView>
+            </Animated.View>
+        </GestureDetector>
     );
 }
 
