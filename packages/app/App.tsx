@@ -1,21 +1,25 @@
 import { useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
+import { HeroUINativeProvider } from 'heroui-native';
 import { useEffect, useRef, useState } from 'react';
 import {
     Linking,
     Platform,
-    SafeAreaView,
+    Pressable,
     ScrollView,
     Text,
     View,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { BottomNav } from './src/components/BottomNav';
 import { PdfViewerModal } from './src/components/PdfViewerModal';
 import { ScannerModal } from './src/components/ScannerModal';
 import { StatusBanner } from './src/components/StatusBanner';
 import { logDevError, logDevInfo } from './src/debug';
-import { getSafeMessage } from './src/format';
+import { getErrorDebugDetails, getSafeMessage } from './src/format';
+import { RefreshCw } from './src/icons';
 import {
     exchangeQRToken,
     getAuthenticatedFileUrl,
@@ -31,21 +35,26 @@ import {
 } from './src/moodle';
 import { completeMobilePairing, parseMobilePairTarget } from './src/pairing';
 import { ConnectScreen } from './src/screens/ConnectScreen';
+import { CodexScreen } from './src/screens/CodexScreen';
 import { CoursesScreen } from './src/screens/CoursesScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
-import { TodayScreen } from './src/screens/TodayScreen';
-import { loadStoredConnection, storeConnection } from './src/storage';
-import { styles } from './src/styles';
+import {
+    importMoodleCliConnection,
+    loadStoredConnection,
+    storeConnection,
+} from './src/storage';
+import { palette, styles } from './src/styles';
 import type { AppView, ScannerMode } from './src/types';
 
 export default function App() {
     const [permission, requestPermission] = useCameraPermissions();
-    const [activeView, setActiveView] = useState<AppView>('today');
+    const [activeView, setActiveView] = useState<AppView>('courses');
     const [scannerMode, setScannerMode] = useState<ScannerMode>(null);
     const [busy, setBusy] = useState(false);
     const [loadingDashboard, setLoadingDashboard] = useState(false);
     const [loadingCourseId, setLoadingCourseId] = useState<number | null>(null);
     const [errorMessage, setErrorMessage] = useState('');
+    const [errorDebugDetails, setErrorDebugDetails] = useState<string[]>([]);
     const [infoMessage, setInfoMessage] = useState(
         'Connect Moodle to load courses, or pair a browser session when needed.',
     );
@@ -68,16 +77,30 @@ export default function App() {
 
     useEffect(() => {
         let mounted = true;
-        void loadStoredConnection().then((storedConnection) => {
-            if (!mounted || !storedConnection) {
-                return;
-            }
+        void loadStoredConnection()
+            .then(async (storedConnection) => {
+                if (!mounted) {
+                    return;
+                }
 
-            setConnection(storedConnection);
-            setInfoMessage('Restored the local Moodle session.');
-        }).catch((error) => {
-            logDevError('Stored Moodle session restore failed', error);
-        });
+                if (storedConnection) {
+                    setConnection(storedConnection);
+                    setInfoMessage('Restored the local Moodle session.');
+                    return;
+                }
+
+                const importedConnection = await importMoodleCliConnection();
+                if (!mounted || !importedConnection) {
+                    return;
+                }
+
+                await storeConnection(importedConnection);
+                setConnection(importedConnection);
+                setInfoMessage('Imported the local Moodle CLI session.');
+            })
+            .catch((error) => {
+                logDevError('Stored Moodle session restore failed', error);
+            });
 
         return () => {
             mounted = false;
@@ -134,6 +157,7 @@ export default function App() {
     async function refreshDashboard(currentConnection: MoodleConnection) {
         setLoadingDashboard(true);
         setErrorMessage('');
+        setErrorDebugDetails([]);
 
         try {
             const [nextSiteInfo, nextCourses] = await Promise.all([
@@ -155,6 +179,7 @@ export default function App() {
                 'Moodle is connected. Courses and pairing are ready.',
             );
         } catch (error) {
+            setErrorDebugDetails(getErrorDebugDetails(error));
             setErrorMessage(getSafeMessage(error));
         } finally {
             setLoadingDashboard(false);
@@ -167,6 +192,7 @@ export default function App() {
     ) {
         setLoadingCourseId(courseId);
         setErrorMessage('');
+        setErrorDebugDetails([]);
 
         try {
             const sections = await getCourseContents(
@@ -178,6 +204,7 @@ export default function App() {
                 [courseId]: sections,
             }));
         } catch (error) {
+            setErrorDebugDetails(getErrorDebugDetails(error));
             setErrorMessage(getSafeMessage(error));
         } finally {
             setLoadingCourseId((current) =>
@@ -212,6 +239,7 @@ export default function App() {
 
     async function openScanner(nextMode: ScannerMode): Promise<void> {
         setErrorMessage('');
+        setErrorDebugDetails([]);
         if (Platform.OS === 'web') {
             setScannerMode(nextMode);
             return;
@@ -267,6 +295,7 @@ export default function App() {
     async function connectMoodle(rawQrLink: string): Promise<void> {
         setBusy(true);
         setErrorMessage('');
+        setErrorDebugDetails([]);
 
         try {
             logDevInfo('Moodle QR connection started', { rawQrLink });
@@ -276,7 +305,7 @@ export default function App() {
             await storeConnection(nextConnection);
             setConnection(nextConnection);
             setScannerMode(null);
-            setActiveView('today');
+            setActiveView('courses');
             setInfoMessage(
                 `Connected to Moodle as user ${nextConnection.moodleUserId}.`,
             );
@@ -289,6 +318,7 @@ export default function App() {
                 );
             }
             logDevError('Moodle QR connection failed', error);
+            setErrorDebugDetails(getErrorDebugDetails(error));
             setErrorMessage(getSafeMessage(error));
         } finally {
             setBusy(false);
@@ -301,6 +331,7 @@ export default function App() {
     ): Promise<void> {
         setBusy(true);
         setErrorMessage('');
+        setErrorDebugDetails([]);
 
         try {
             await completeMobilePairing(
@@ -312,6 +343,7 @@ export default function App() {
                 'Pairing complete. The browser should finish automatically.',
             );
         } catch (error) {
+            setErrorDebugDetails(getErrorDebugDetails(error));
             setErrorMessage(getSafeMessage(error));
         } finally {
             setBusy(false);
@@ -327,179 +359,228 @@ export default function App() {
     const connected = connection !== null;
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <StatusBar style="light" />
-            <View style={styles.appShell}>
-                <View style={styles.topBar}>
-                    <View style={styles.brandRow}>
-                        <View style={styles.brandCopy}>
-                            <Text style={styles.brandLabel}>Moodle Client</Text>
-                            <Text style={styles.appTitle}>
-                                {getScreenTitle(activeView)}
-                            </Text>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <SafeAreaProvider>
+                <HeroUINativeProvider>
+                    <SafeAreaView style={styles.safeArea}>
+                        <StatusBar style="light" />
+                        <View style={styles.appShell}>
+                            {(connected || activeView === 'codex') && (
+                                <View
+                                    style={[
+                                        styles.topBar,
+                                        {
+                                            flexDirection: 'row',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                        },
+                                    ]}>
+                                    <Text style={styles.appTitle}>
+                                        {getScreenTitle(activeView)}
+                                    </Text>
+                                    {activeView === 'courses' ? (
+                                        <Pressable
+                                            onPress={() => {
+                                                if (connection) {
+                                                    void refreshDashboard(
+                                                        connection,
+                                                    );
+                                                }
+                                            }}
+                                            style={({ pressed }) => ({
+                                                padding: 8,
+                                                opacity: pressed ? 0.7 : 1,
+                                            })}>
+                                            <RefreshCw
+                                                size={24}
+                                                color={palette.text}
+                                            />
+                                        </Pressable>
+                                    ) : null}
+                                </View>
+                            )}
+
+                            <View style={styles.mainScroll}>
+                                {(!connected && activeView !== 'codex') ||
+                                activeView === 'connect' ? (
+                                    <ScrollView
+                                        contentContainerStyle={
+                                            styles.scrollContent
+                                        }>
+                                        <ConnectScreen
+                                            busy={busy}
+                                            connection={connection}
+                                            moodleQrInput={moodleQrInput}
+                                            pairQrInput={pairQrInput}
+                                            onChangeMoodleQr={setMoodleQrInput}
+                                            onChangePairQr={setPairQrInput}
+                                            onScanMoodleQr={() =>
+                                                void openScanner('moodle')
+                                            }
+                                            onUseMoodleQrValue={(value) => {
+                                                setMoodleQrInput(value);
+                                                void connectMoodle(value);
+                                            }}
+                                            onMoodleQrImportError={
+                                                setErrorMessage
+                                            }
+                                            onScanPairQr={() => {
+                                                if (!connection) {
+                                                    setErrorMessage(
+                                                        'Connect Moodle first.',
+                                                    );
+                                                    return;
+                                                }
+                                                void openScanner('pair');
+                                            }}
+                                            onUsePairQrValue={(value) => {
+                                                if (!connection) {
+                                                    setErrorMessage(
+                                                        'Connect Moodle first.',
+                                                    );
+                                                    return;
+                                                }
+                                                setPairQrInput(value);
+                                                void sendPairing(
+                                                    value,
+                                                    connection,
+                                                );
+                                            }}
+                                            onPairQrImportError={
+                                                setErrorMessage
+                                            }
+                                        />
+                                    </ScrollView>
+                                ) : null}
+
+                                {connected && activeView === 'courses' ? (
+                                    <CoursesScreen
+                                        connection={connection}
+                                        courses={courses}
+                                        sections={currentSections}
+                                        currentCourse={currentCourse}
+                                        loadingDashboard={loadingDashboard}
+                                        loadingCourseId={loadingCourseId}
+                                        onOpenConnect={() =>
+                                            setActiveView('connect')
+                                        }
+                                        onSelectCourse={(courseId) => {
+                                            setSelectedCourseId(courseId);
+                                            if (
+                                                connection &&
+                                                !courseContentsById[courseId]
+                                            ) {
+                                                void loadCourseContents(
+                                                    connection,
+                                                    courseId,
+                                                );
+                                            }
+                                        }}
+                                        onBackToCourses={() =>
+                                            setSelectedCourseId(null)
+                                        }
+                                        onOpenFile={(file) => {
+                                            if (!connection) {
+                                                return;
+                                            }
+
+                                            const url = getAuthenticatedFileUrl(
+                                                connection,
+                                                file.fileUrl,
+                                            );
+                                            if (
+                                                file.mimeType ===
+                                                    'application/pdf' ||
+                                                file.filename
+                                                    .toLowerCase()
+                                                    .endsWith('.pdf')
+                                            ) {
+                                                setPdfPreview({
+                                                    title: file.filename,
+                                                    url,
+                                                });
+                                                return;
+                                            }
+
+                                            void Linking.openURL(url);
+                                        }}
+                                    />
+                                ) : null}
+
+                                {activeView === 'profile' ? (
+                                    <ScrollView
+                                        contentContainerStyle={
+                                            styles.scrollContent
+                                        }>
+                                        <ProfileScreen
+                                            connection={connection}
+                                            siteInfo={siteInfo}
+                                            courseCount={courses.length}
+                                            onOpenConnect={() =>
+                                                setActiveView('connect')
+                                            }
+                                        />
+                                    </ScrollView>
+                                ) : null}
+
+                                {activeView === 'codex' ? (
+                                    <CodexScreen
+                                        connection={connection}
+                                        courses={courses}
+                                        courseContentsById={courseContentsById}
+                                    />
+                                ) : null}
+                            </View>
+
+                            {activeView !== 'codex' ? (
+                                <BottomNav
+                                    activeView={activeView}
+                                    onChangeView={setActiveView}
+                                />
+                            ) : null}
+
+                            {activeView !== 'codex' ? (
+                                <StatusBanner
+                                    busy={busy || loadingDashboard}
+                                    infoMessage={infoMessage}
+                                    errorMessage={errorMessage}
+                                    errorDetails={errorDebugDetails}
+                                    withBottomNav
+                                />
+                            ) : null}
                         </View>
-                    </View>
-                    <Text style={styles.appSubtitle}>
-                        {getScreenSubtitle(activeView, connected)}
-                    </Text>
-                </View>
 
-                <ScrollView
-                    style={styles.mainScroll}
-                    contentContainerStyle={styles.scrollContent}>
-                    {activeView === 'today' ? (
-                        <TodayScreen
-                            connection={connection}
-                            siteInfo={siteInfo}
-                            courses={courses}
-                            loading={loadingDashboard}
-                            onRefresh={() => {
-                                if (connection) {
-                                    void refreshDashboard(connection);
-                                }
-                            }}
-                            onOpenConnect={() => setActiveView('connect')}
-                            onOpenCourses={() => setActiveView('courses')}
-                        />
-                    ) : null}
-
-                    {activeView === 'courses' ? (
-                        <CoursesScreen
-                            connection={connection}
-                            courses={courses}
-                            selectedCourseId={selectedCourseId}
-                            sections={currentSections}
-                            currentCourse={currentCourse}
-                            loadingDashboard={loadingDashboard}
-                            loadingCourseId={loadingCourseId}
-                            onRefresh={() => {
-                                if (connection) {
-                                    void refreshDashboard(connection);
-                                }
-                            }}
-                            onOpenConnect={() => setActiveView('connect')}
-                            onSelectCourse={(courseId) => {
-                                setSelectedCourseId(courseId);
-                                if (
-                                    connection &&
-                                    !courseContentsById[courseId]
-                                ) {
-                                    void loadCourseContents(
-                                        connection,
-                                        courseId,
-                                    );
-                                }
-                            }}
-                            onBackToCourses={() => setSelectedCourseId(null)}
-                            onOpenFile={(file) => {
-                                if (!connection) {
-                                    return;
-                                }
-
-                                const url = getAuthenticatedFileUrl(
-                                    connection,
-                                    file.fileUrl,
-                                );
-                                if (
-                                    file.mimeType === 'application/pdf' ||
-                                    file.filename.toLowerCase().endsWith('.pdf')
-                                ) {
-                                    setPdfPreview({
-                                        title: file.filename,
-                                        url,
-                                    });
-                                    return;
-                                }
-
-                                void Linking.openURL(url);
+                        <ScannerModal
+                            visible={scannerMode !== null}
+                            mode={scannerMode}
+                            hasCamera={hasCamera}
+                            onClose={() => setScannerMode(null)}
+                            onScannerError={setErrorMessage}
+                            onBarcodeScanned={(result) => {
+                                void handleBarcodeScanned(result);
                             }}
                         />
-                    ) : null}
-
-                    {activeView === 'connect' ? (
-                        <ConnectScreen
-                            busy={busy}
-                            connection={connection}
-                            moodleQrInput={moodleQrInput}
-                            pairQrInput={pairQrInput}
-                            onChangeMoodleQr={setMoodleQrInput}
-                            onChangePairQr={setPairQrInput}
-                            onScanMoodleQr={() => void openScanner('moodle')}
-                            onUseMoodleQr={() =>
-                                void connectMoodle(moodleQrInput)
-                            }
-                            onUseMoodleQrValue={(value) => {
-                                setMoodleQrInput(value);
-                                void connectMoodle(value);
-                            }}
-                            onMoodleQrUploadError={setErrorMessage}
-                            onScanPairQr={() => {
-                                if (!connection) {
-                                    setErrorMessage('Connect Moodle first.');
-                                    return;
-                                }
-                                void openScanner('pair');
-                            }}
-                            onUsePairQr={() => {
-                                if (!connection) {
-                                    setErrorMessage('Connect Moodle first.');
-                                    return;
-                                }
-                                void sendPairing(pairQrInput, connection);
-                            }}
+                        <PdfViewerModal
+                            visible={pdfPreview !== null}
+                            title={pdfPreview?.title ?? ''}
+                            url={pdfPreview?.url ?? null}
+                            onClose={() => setPdfPreview(null)}
                         />
-                    ) : null}
-
-                    {activeView === 'profile' ? (
-                        <ProfileScreen
-                            connection={connection}
-                            siteInfo={siteInfo}
-                            courseCount={courses.length}
-                            onOpenConnect={() => setActiveView('connect')}
-                        />
-                    ) : null}
-
-                    <StatusBanner
-                        busy={busy || loadingDashboard}
-                        infoMessage={infoMessage}
-                        errorMessage={errorMessage}
-                    />
-                </ScrollView>
-
-                <BottomNav
-                    activeView={activeView}
-                    onChangeView={setActiveView}
-                />
-            </View>
-
-            <ScannerModal
-                visible={scannerMode !== null}
-                mode={scannerMode}
-                hasCamera={hasCamera}
-                onClose={() => setScannerMode(null)}
-                onScannerError={setErrorMessage}
-                onBarcodeScanned={(result) => {
-                    void handleBarcodeScanned(result);
-                }}
-            />
-            <PdfViewerModal
-                visible={pdfPreview !== null}
-                title={pdfPreview?.title ?? ''}
-                url={pdfPreview?.url ?? null}
-                onClose={() => setPdfPreview(null)}
-            />
-        </SafeAreaView>
+                    </SafeAreaView>
+                </HeroUINativeProvider>
+            </SafeAreaProvider>
+        </GestureHandlerRootView>
     );
 }
 
 function getScreenTitle(view: AppView): string {
     switch (view) {
-        case 'today':
-            return 'Today';
         case 'courses':
             return 'Courses';
         case 'connect':
             return 'Connect';
+        case 'codex':
+            return 'Codex';
         case 'profile':
             return 'Profile';
     }
@@ -513,12 +594,12 @@ function getScreenSubtitle(view: AppView, connected: boolean): string {
     }
 
     switch (view) {
-        case 'today':
-            return 'Daily overview.';
         case 'courses':
-            return 'Grouped by semester.';
+            return '';
         case 'connect':
             return 'QR login and browser pairing.';
+        case 'codex':
+            return 'Run Codex with ChatGPT sign-in.';
         case 'profile':
             return 'Local session details.';
     }

@@ -6,6 +6,10 @@ import type { MoodleConnection } from "./moodle";
 const CONNECTION_KEY = "moodle-clients.connection.v1";
 const KEYCHAIN_AFTER_FIRST_UNLOCK = "AFTER_FIRST_UNLOCK";
 
+declare const process:
+  | { env?: { EXPO_PUBLIC_MOODLE_SESSION_IMPORT_URL?: string } }
+  | undefined;
+
 type SecureStoreModule = {
   AFTER_FIRST_UNLOCK: string;
   deleteItemAsync: (key: string) => Promise<void>;
@@ -55,6 +59,43 @@ export async function storeConnection(connection: MoodleConnection): Promise<voi
     siteUrl: connection.moodleSiteUrl,
     userId: connection.moodleUserId,
   });
+}
+
+export async function importMoodleCliConnection(): Promise<MoodleConnection | null> {
+  if (Platform.OS !== "web") {
+    return null;
+  }
+
+  const importUrl = process?.env?.EXPO_PUBLIC_MOODLE_SESSION_IMPORT_URL?.trim();
+  if (!importUrl) {
+    return null;
+  }
+
+  const response = await fetch(importUrl, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+    },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error("The local Moodle CLI session could not be imported.");
+  }
+
+  const parsed = (await response.json()) as Partial<MoodleConnection>;
+  if (
+    typeof parsed.moodleSiteUrl === "string" &&
+    typeof parsed.moodleUserId === "number" &&
+    typeof parsed.moodleMobileToken === "string"
+  ) {
+    return parsed as MoodleConnection;
+  }
+
+  throw new Error("The local Moodle CLI session has an unexpected format.");
 }
 
 export async function clearStoredConnection(): Promise<void> {
