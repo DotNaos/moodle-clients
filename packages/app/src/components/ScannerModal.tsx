@@ -24,6 +24,8 @@ export function ScannerModal(props: {
     const scanCompleteRef = useRef(false);
     const closeEnabledRef = useRef(false);
     const openedAtRef = useRef(0);
+    const isWeb = Platform.OS === 'web';
+
     function renderCameraContent() {
         if (!props.hasCamera) {
             return (
@@ -35,7 +37,7 @@ export function ScannerModal(props: {
             );
         }
 
-        if (Platform.OS === 'web') {
+        if (isWeb) {
             return (
                 <WebQRScanner
                     active={!scanComplete}
@@ -112,42 +114,48 @@ export function ScannerModal(props: {
                 </Pressable>
             </View>
 
-            <View style={scannerStyles.cameraFrame}>
-                {renderCameraContent()}
-                {props.hasCamera ? (
-                    <View style={scannerStyles.scanGuide}>
-                        <View
-                            style={[
-                                scannerStyles.corner,
-                                scannerStyles.cornerTopLeft,
-                            ]}
-                        />
-                        <View
-                            style={[
-                                scannerStyles.corner,
-                                scannerStyles.cornerTopRight,
-                            ]}
-                        />
-                        <View
-                            style={[
-                                scannerStyles.corner,
-                                scannerStyles.cornerBottomLeft,
-                            ]}
-                        />
-                        <View
-                            style={[
-                                scannerStyles.corner,
-                                scannerStyles.cornerBottomRight,
-                            ]}
-                        />
-                    </View>
-                ) : null}
-            </View>
+            {isWeb ? (
+                <View style={scannerStyles.webCameraStage}>
+                    {renderCameraContent()}
+                </View>
+            ) : (
+                <View style={scannerStyles.cameraFrame}>
+                    {renderCameraContent()}
+                    {props.hasCamera ? (
+                        <View style={scannerStyles.scanGuide}>
+                            <View
+                                style={[
+                                    scannerStyles.corner,
+                                    scannerStyles.cornerTopLeft,
+                                ]}
+                            />
+                            <View
+                                style={[
+                                    scannerStyles.corner,
+                                    scannerStyles.cornerTopRight,
+                                ]}
+                            />
+                            <View
+                                style={[
+                                    scannerStyles.corner,
+                                    scannerStyles.cornerBottomLeft,
+                                ]}
+                            />
+                            <View
+                                style={[
+                                    scannerStyles.corner,
+                                    scannerStyles.cornerBottomRight,
+                                ]}
+                            />
+                        </View>
+                    ) : null}
+                </View>
+            )}
 
             <View style={scannerStyles.helpRow}>
                 <CircleHelp size={14} color="#f8fafc" />
                 <Text style={scannerStyles.helpText}>
-                    {Platform.OS === 'web'
+                    {isWeb
                         ? 'On phone web, allow camera access. Your session stays in this browser.'
                         : 'Need help?'}
                 </Text>
@@ -155,7 +163,7 @@ export function ScannerModal(props: {
         </View>
     );
 
-    if (Platform.OS === 'web') {
+    if (isWeb) {
         if (!props.visible) {
             return null;
         }
@@ -200,6 +208,7 @@ const scannerStyles = StyleSheet.create({
         justifyContent: 'center',
         left: 0,
         paddingHorizontal: 16,
+        paddingVertical: 16,
         ...({ position: 'fixed' } as object),
         right: 0,
         top: 0,
@@ -220,10 +229,12 @@ const scannerStyles = StyleSheet.create({
         borderRadius: 28,
         borderWidth: 1,
         gap: 12,
+        maxWidth: 440,
         paddingBottom: 22,
-        paddingHorizontal: 0,
+        paddingHorizontal: 22,
         paddingTop: 12,
         overflow: 'hidden',
+        width: '100%',
     },
     header: {
         alignItems: 'center',
@@ -244,12 +255,15 @@ const scannerStyles = StyleSheet.create({
         alignSelf: 'stretch',
         backgroundColor: 'rgba(255,255,255,0.06)',
         borderRadius: 0,
-        marginHorizontal: 22,
         maxWidth: 316,
         minHeight: 250,
         overflow: 'hidden',
         position: 'relative',
         width: '100%',
+    },
+    webCameraStage: {
+        alignSelf: 'stretch',
+        minHeight: 360,
     },
     debugCameraPlaceholder: {
         alignItems: 'center',
@@ -302,9 +316,11 @@ const scannerStyles = StyleSheet.create({
         alignItems: 'center',
         flexDirection: 'row',
         gap: 6,
+        width: '100%',
     },
     helpText: {
         color: 'rgba(248,250,252,0.82)',
+        flex: 1,
         fontSize: 13,
         fontWeight: '700',
     },

@@ -1,18 +1,14 @@
 import { Button, useThemeColor } from 'heroui-native';
 import { View } from 'react-native';
 
-import {
-    BookOpen,
-    Link2,
-    UserRound,
-    type IconComponent,
-} from '../icons';
+import { Bot, BookOpen, Link2, UserRound, type IconComponent } from '../icons';
 import { styles } from '../styles';
 import type { AppView } from '../types';
 
 const navItems: Array<{ id: AppView; label: string; icon: IconComponent }> = [
     { id: 'courses', label: 'Courses', icon: BookOpen },
     { id: 'connect', label: 'Connect', icon: Link2 },
+    { id: 'codex', label: 'Codex', icon: Bot },
     { id: 'profile', label: 'Profile', icon: UserRound },
 ];
 

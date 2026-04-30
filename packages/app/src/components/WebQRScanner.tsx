@@ -1,7 +1,7 @@
 import type { BarcodeScanningResult } from 'expo-camera';
 import jsQR from 'jsqr';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { styles } from '../styles';
 
@@ -26,6 +26,16 @@ export function WebQRScanner(
     const scanLockedRef = useRef(false);
     const [devices, setDevices] = useState<MediaDevice[]>([]);
     const [selectedDeviceId, setSelectedDeviceId] = useState(AUTO_CAMERA_ID);
+    const cameraOptions = useMemo(
+        () => [
+            {
+                deviceId: AUTO_CAMERA_ID,
+                label: 'Back camera (recommended)',
+            },
+            ...devices,
+        ],
+        [devices],
+    );
 
     const selectedDevice = useMemo(
         () =>
@@ -35,6 +45,12 @@ export function WebQRScanner(
                       (device) => device.deviceId === selectedDeviceId,
                   ) ?? null),
         [devices, selectedDeviceId],
+    );
+    const selectedDeviceLabel = useMemo(
+        () =>
+            cameraOptions.find((device) => device.deviceId === selectedDeviceId)
+                ?.label ?? 'Back camera (recommended)',
+        [cameraOptions, selectedDeviceId],
     );
 
     useEffect(() => {
@@ -224,44 +240,47 @@ export function WebQRScanner(
         }
     }
 
+    function handleSwitchCamera() {
+        if (cameraOptions.length <= 2) {
+            return;
+        }
+
+        setSelectedDeviceId((currentDeviceId) => {
+            const currentIndex = cameraOptions.findIndex(
+                (device) => device.deviceId === currentDeviceId,
+            );
+            const nextIndex =
+                currentIndex >= 0
+                    ? (currentIndex + 1) % cameraOptions.length
+                    : 0;
+
+            return cameraOptions[nextIndex]?.deviceId ?? AUTO_CAMERA_ID;
+        });
+    }
+
     return (
         <View style={styles.webScannerShell}>
             <View style={styles.webCameraPicker}>
-                {React.createElement(
-                    'select',
-                    {
-                        value: selectedDeviceId,
-                        onChange: (
-                            event: React.ChangeEvent<HTMLSelectElement>,
-                        ) => {
-                            setSelectedDeviceId(event.currentTarget.value);
-                        },
-                        style: {
-                            background: '#121820',
-                            border: '1px solid rgba(255,255,255,0.18)',
-                            borderRadius: 14,
-                            color: '#f8fafc',
-                            fontFamily:
-                                "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-                            fontSize: 16,
-                            minHeight: 56,
-                            padding: '8px 16px',
-                            cursor: 'pointer',
-                        },
-                    },
-                    React.createElement(
-                        'option',
-                        { value: AUTO_CAMERA_ID },
-                        'Back camera (recommended)',
-                    ),
-                    devices.map((device) =>
-                        React.createElement(
-                            'option',
-                            { key: device.deviceId, value: device.deviceId },
-                            device.label,
-                        ),
-                    ),
-                )}
+                <View style={styles.webCameraToolbar}>
+                    <View style={styles.webCameraPill}>
+                        <Text numberOfLines={1} style={styles.webCameraLabel}>
+                            {selectedDeviceLabel}
+                        </Text>
+                    </View>
+
+                    {cameraOptions.length > 2 ? (
+                        <Pressable
+                            onPress={handleSwitchCamera}
+                            style={({ pressed }) => [
+                                styles.webCameraSwitch,
+                                pressed && styles.pressed,
+                            ]}>
+                            <Text style={styles.webCameraSwitchText}>
+                                Switch
+                            </Text>
+                        </Pressable>
+                    ) : null}
+                </View>
             </View>
             <View style={styles.webVideoFrame}>
                 {React.createElement('video', {
@@ -269,6 +288,7 @@ export function WebQRScanner(
                     muted: true,
                     playsInline: true,
                     style: {
+                        display: 'block',
                         height: '100%',
                         objectFit: 'cover',
                         width: '100%',

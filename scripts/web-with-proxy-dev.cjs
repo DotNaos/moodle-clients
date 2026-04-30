@@ -5,6 +5,12 @@ const proxyPort = process.env.MOODLE_PROXY_PORT || "3000";
 const proxyBaseUrl =
   process.env.EXPO_PUBLIC_MOODLE_PROXY_BASE_URL ||
   `http://localhost:${proxyPort}/api/moodle-proxy`;
+const codexRunUrl =
+  process.env.EXPO_PUBLIC_CODEX_RUN_URL ||
+  `http://localhost:${proxyPort}/api/codex-run`;
+const moodleSessionImportUrl =
+  process.env.EXPO_PUBLIC_MOODLE_SESSION_IMPORT_URL ||
+  `http://localhost:${proxyPort}/api/moodle-cli-session`;
 const rootDir = path.resolve(__dirname, "..");
 const children = [];
 
@@ -23,6 +29,8 @@ const webProcess = spawn(getPnpmCommand(), ["--filter", "@moodle-clients/web", "
   env: {
     ...process.env,
     EXPO_PUBLIC_MOODLE_PROXY_BASE_URL: proxyBaseUrl,
+    EXPO_PUBLIC_CODEX_RUN_URL: codexRunUrl,
+    EXPO_PUBLIC_MOODLE_SESSION_IMPORT_URL: moodleSessionImportUrl,
   },
   stdio: "inherit",
 });

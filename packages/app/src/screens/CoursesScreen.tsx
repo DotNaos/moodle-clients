@@ -1,17 +1,21 @@
 import { useMemo } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from 'react-native';
+import {
+    ActivityIndicator,
+    Image,
+    Pressable,
+    ScrollView,
+    Text,
+    View,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+    runOnJS,
     useAnimatedStyle,
     useSharedValue,
     withSpring,
-    runOnJS,
 } from 'react-native-reanimated';
 
-import {
-    EmptyState,
-    ScreenSection,
-} from '../components/ui';
+import { EmptyState, ScreenSection } from '../components/ui';
 import { sanitizeCourseName, stripHtml } from '../format';
 import { ChevronLeft, ChevronRight, FileText } from '../icons';
 import type {
@@ -60,7 +64,9 @@ type CourseListRowProps = {
     readonly onPress: () => void;
 };
 
-type FileRowProps = {    readonly moduleName?: string;    readonly file: MoodleCourseFile;
+type FileRowProps = {
+    readonly moduleName?: string;
+    readonly file: MoodleCourseFile;
     readonly onPress: () => void;
 };
 
@@ -109,7 +115,9 @@ export function CoursesScreen(props: CoursesScreenProps) {
                 <View style={styles.courseListOuter}>
                     {groupedCourses.map((group) => (
                         <View key={group.name} style={styles.courseGroup}>
-                            <Text style={styles.groupTitlePlain}>{group.name}</Text>
+                            <Text style={styles.groupTitlePlain}>
+                                {group.name}
+                            </Text>
                             <View style={styles.plainList}>
                                 {group.courses.map((course) => (
                                     <CourseListRow
@@ -135,11 +143,7 @@ export function CoursesScreen(props: CoursesScreenProps) {
         );
     }
 
-    return (
-        <ScreenSection>
-            {coursesContent}
-        </ScreenSection>
-    );
+    return <ScreenSection>{coursesContent}</ScreenSection>;
 }
 
 function CourseDetail(props: CourseDetailProps) {
@@ -156,13 +160,9 @@ function CourseDetail(props: CourseDetailProps) {
         .onEnd((e) => {
             // If swiped far enough or fast enough, go back
             if (e.translationX > 100 || e.velocityX > 500) {
-                x.value = withSpring(
-                    300,
-                    { velocity: e.velocityX },
-                    () => {
-                        runOnJS(props.onBack)();
-                    }
-                );
+                x.value = withSpring(300, { velocity: e.velocityX }, () => {
+                    runOnJS(props.onBack)();
+                });
             } else {
                 x.value = withSpring(0);
             }
@@ -205,7 +205,11 @@ function CourseDetail(props: CourseDetailProps) {
 
     return (
         <GestureDetector gesture={panGesture}>
-            <Animated.View style={[{ flex: 1, backgroundColor: palette.background }, animatedStyle]}>
+            <Animated.View
+                style={[
+                    { flex: 1, backgroundColor: palette.background },
+                    animatedStyle,
+                ]}>
                 <View style={styles.courseHeader}>
                     <Pressable
                         onPress={props.onBack}
@@ -219,7 +223,9 @@ function CourseDetail(props: CourseDetailProps) {
                         <Text style={styles.courseHeaderLabel}>
                             {props.course.categoryName}
                         </Text>
-                        <Text style={styles.courseHeaderTitle} numberOfLines={3}>
+                        <Text
+                            style={styles.courseHeaderTitle}
+                            numberOfLines={3}>
                             {sanitizeCourseName(props.course.fullName)}
                         </Text>
                     </View>
@@ -268,7 +274,7 @@ function CourseSection(props: CourseSectionProps) {
 }
 
 function ModuleFiles(props: ModuleFilesProps) {
-    // Determine the label to show. Often, the resource 'name' and the 'filename' are 
+    // Determine the label to show. Often, the resource 'name' and the 'filename' are
     // functionally the same or we only want to show the resource name to avoid nesting.
     return (
         <View>
@@ -294,9 +300,9 @@ function CourseListRow(props: CourseListRowProps) {
             ]}>
             <View style={styles.courseImagePreview}>
                 {props.course.courseImage ? (
-                    <Image 
-                        source={{ uri: props.course.courseImage }} 
-                        style={{ width: '100%', height: '100%' }} 
+                    <Image
+                        source={{ uri: props.course.courseImage }}
+                        style={{ width: '100%', height: '100%' }}
                         resizeMode="cover"
                     />
                 ) : (
@@ -331,10 +337,7 @@ function FileRow(props: FileRowProps) {
                 styles.courseListRowPlain,
                 pressed ? [styles.pressed, { opacity: 0.8 }] : null,
             ]}>
-            <FileText
-                color={isPdf ? palette.red : palette.text}
-                size={22}
-            />
+            <FileText color={isPdf ? palette.red : palette.text} size={22} />
             <View style={styles.courseListRowContent}>
                 <Text style={styles.rowTitle} numberOfLines={2}>
                     {stripHtml(displayName)}

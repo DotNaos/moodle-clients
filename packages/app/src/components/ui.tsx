@@ -1,4 +1,4 @@
-import { Button, Card as HeroCard, Input as HeroInput } from 'heroui-native';
+import { Button, Input as HeroInput } from 'heroui-native';
 import {
     ActivityIndicator,
     Pressable,
@@ -50,6 +50,10 @@ type AppButtonProps = {
     readonly labelStyle?: StyleProp<TextStyle>;
 };
 
+type GhostButtonProps = AppButtonProps & {
+    readonly size?: 'sm' | 'lg';
+};
+
 type MetricTileProps = {
     readonly label: string;
     readonly value: string;
@@ -76,12 +80,7 @@ type SessionCardProps = {
     readonly userName?: string;
 };
 
-type AppTextFieldProps = {
-    readonly value?: string;
-    readonly onChangeText?: (value: string) => void;
-    readonly placeholder?: string;
-    readonly style?: TextInputProps['style'];
-};
+type AppTextFieldProps = TextInputProps;
 
 export function ScreenSection(props: ScreenSectionProps) {
     return <View style={styles.screen}>{props.children}</View>;
@@ -102,12 +101,8 @@ export function SectionHeader(props: SectionHeaderProps) {
 }
 
 export function Card(props: CardProps) {
-    const variant = props.ready || props.raised ? 'secondary' : 'default';
-
     return (
         <View
-            
-            
             style={[
                 styles.surfaceFrame,
                 props.raised && styles.surfaceFrameRaised,
@@ -129,8 +124,6 @@ export function Card(props: CardProps) {
 export function HeroPanel(props: HeroPanelProps) {
     return (
         <View
-            
-            
             style={[
                 styles.surfaceFrame,
                 styles.heroSurface,
@@ -158,7 +151,6 @@ export function PrimaryButton(props: AppButtonProps) {
 
     return (
         <Button
-            
             size="lg"
             feedbackVariant="scale"
             isDisabled={props.disabled}
@@ -186,7 +178,6 @@ export function SecondaryButton(props: AppButtonProps) {
 
     return (
         <Button
-            
             size="lg"
             feedbackVariant="scale"
             isDisabled={props.disabled}
@@ -208,27 +199,36 @@ export function SecondaryButton(props: AppButtonProps) {
     );
 }
 
-export function GhostButton(props: AppButtonProps) {
+export function GhostButton(props: GhostButtonProps) {
     const Icon = props.icon;
     const shouldFillWidth = props.fullWidth === true;
 
     return (
         <Button
-            
-            size="lg"
+            size={props.size ?? 'lg'}
             feedbackVariant="scale"
             isDisabled={props.disabled}
             onPress={props.onPress}
             style={[
                 styles.ghostButton,
+                props.size === 'sm' && styles.buttonSmall,
                 shouldFillWidth && styles.buttonFill,
                 props.style,
                 props.disabled && styles.buttonDisabled,
             ]}>
-            {Icon ? <Icon color={palette.text} size={18} /> : null}
+            {Icon ? (
+                <Icon
+                    color={palette.text}
+                    size={props.size === 'sm' ? 14 : 18}
+                />
+            ) : null}
             <Button.Label
                 numberOfLines={1}
-                style={[styles.ghostButtonText, props.labelStyle]}>
+                style={[
+                    styles.ghostButtonText,
+                    props.size === 'sm' && styles.buttonSmallText,
+                    props.labelStyle,
+                ]}>
                 {props.label}
             </Button.Label>
         </Button>
@@ -241,7 +241,7 @@ export function ActionRow(props: ScreenSectionProps) {
 
 export function MetricTile(props: MetricTileProps) {
     return (
-        <View   style={{ flex: 1 }}>
+        <View style={{ flex: 1 }}>
             <View style={styles.metricCard}>
                 <Text style={styles.metricLabel}>{props.label}</Text>
                 {props.loading ? (
@@ -260,7 +260,6 @@ export function MetricTile(props: MetricTileProps) {
 export function TextField({ style, ...inputProps }: AppTextFieldProps) {
     return (
         <HeroInput
-            
             autoCapitalize="none"
             autoCorrect={false}
             placeholderTextColor="rgba(248, 250, 252, 0.4)"
@@ -273,9 +272,7 @@ export function TextField({ style, ...inputProps }: AppTextFieldProps) {
 export function CourseRow(props: CourseRowProps) {
     const isHidden = props.course.visible === 0;
     const content = (
-        <View
-            
-            >
+        <View>
             <View
                 style={[styles.listRow, props.active && styles.listRowActive]}>
                 <View style={styles.courseAvatar}>

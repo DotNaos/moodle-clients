@@ -19,6 +19,7 @@ import { ScannerModal } from './src/components/ScannerModal';
 import { StatusBanner } from './src/components/StatusBanner';
 import { logDevError, logDevInfo } from './src/debug';
 import { getErrorDebugDetails, getSafeMessage } from './src/format';
+import { RefreshCw } from './src/icons';
 import {
     exchangeQRToken,
     getAuthenticatedFileUrl,
@@ -34,11 +35,15 @@ import {
 } from './src/moodle';
 import { completeMobilePairing, parseMobilePairTarget } from './src/pairing';
 import { ConnectScreen } from './src/screens/ConnectScreen';
+import { CodexScreen } from './src/screens/CodexScreen';
 import { CoursesScreen } from './src/screens/CoursesScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
-import { loadStoredConnection, storeConnection } from './src/storage';
+import {
+    importMoodleCliConnection,
+    loadStoredConnection,
+    storeConnection,
+} from './src/storage';
 import { palette, styles } from './src/styles';
-import { RefreshCw } from './src/icons';
 import type { AppView, ScannerMode } from './src/types';
 
 export default function App() {
@@ -73,13 +78,25 @@ export default function App() {
     useEffect(() => {
         let mounted = true;
         void loadStoredConnection()
-            .then((storedConnection) => {
-                if (!mounted || !storedConnection) {
+            .then(async (storedConnection) => {
+                if (!mounted) {
                     return;
                 }
 
-                setConnection(storedConnection);
-                setInfoMessage('Restored the local Moodle session.');
+                if (storedConnection) {
+                    setConnection(storedConnection);
+                    setInfoMessage('Restored the local Moodle session.');
+                    return;
+                }
+
+                const importedConnection = await importMoodleCliConnection();
+                if (!mounted || !importedConnection) {
+                    return;
+                }
+
+                await storeConnection(importedConnection);
+                setConnection(importedConnection);
+                setInfoMessage('Imported the local Moodle CLI session.');
             })
             .catch((error) => {
                 logDevError('Stored Moodle session restore failed', error);
@@ -348,32 +365,48 @@ export default function App() {
                     <SafeAreaView style={styles.safeArea}>
                         <StatusBar style="light" />
                         <View style={styles.appShell}>
-                            {connected && (
-                                <View style={[styles.topBar, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+                            {(connected || activeView === 'codex') && (
+                                <View
+                                    style={[
+                                        styles.topBar,
+                                        {
+                                            flexDirection: 'row',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                        },
+                                    ]}>
                                     <Text style={styles.appTitle}>
                                         {getScreenTitle(activeView)}
                                     </Text>
                                     {activeView === 'courses' ? (
-                                        <Pressable 
+                                        <Pressable
                                             onPress={() => {
                                                 if (connection) {
-                                                    void refreshDashboard(connection);
+                                                    void refreshDashboard(
+                                                        connection,
+                                                    );
                                                 }
                                             }}
                                             style={({ pressed }) => ({
                                                 padding: 8,
                                                 opacity: pressed ? 0.7 : 1,
-                                            })}
-                                        >
-                                            <RefreshCw size={24} color={palette.text} />
+                                            })}>
+                                            <RefreshCw
+                                                size={24}
+                                                color={palette.text}
+                                            />
                                         </Pressable>
                                     ) : null}
                                 </View>
                             )}
 
                             <View style={styles.mainScroll}>
-                                {!connected || activeView === 'connect' ? (
-                                    <ScrollView contentContainerStyle={styles.scrollContent}>
+                                {(!connected && activeView !== 'codex') ||
+                                activeView === 'connect' ? (
+                                    <ScrollView
+                                        contentContainerStyle={
+                                            styles.scrollContent
+                                        }>
                                         <ConnectScreen
                                             busy={busy}
                                             connection={connection}
@@ -388,7 +421,9 @@ export default function App() {
                                                 setMoodleQrInput(value);
                                                 void connectMoodle(value);
                                             }}
-                                            onMoodleQrImportError={setErrorMessage}
+                                            onMoodleQrImportError={
+                                                setErrorMessage
+                                            }
                                             onScanPairQr={() => {
                                                 if (!connection) {
                                                     setErrorMessage(
@@ -406,9 +441,14 @@ export default function App() {
                                                     return;
                                                 }
                                                 setPairQrInput(value);
-                                                void sendPairing(value, connection);
+                                                void sendPairing(
+                                                    value,
+                                                    connection,
+                                                );
                                             }}
-                                            onPairQrImportError={setErrorMessage}
+                                            onPairQrImportError={
+                                                setErrorMessage
+                                            }
                                         />
                                     </ScrollView>
                                 ) : null}
@@ -467,8 +507,11 @@ export default function App() {
                                     />
                                 ) : null}
 
-                                {connected && activeView === 'profile' ? (
-                                    <ScrollView contentContainerStyle={styles.scrollContent}>
+                                {activeView === 'profile' ? (
+                                    <ScrollView
+                                        contentContainerStyle={
+                                            styles.scrollContent
+                                        }>
                                         <ProfileScreen
                                             connection={connection}
                                             siteInfo={siteInfo}
@@ -479,22 +522,32 @@ export default function App() {
                                         />
                                     </ScrollView>
                                 ) : null}
+
+                                {activeView === 'codex' ? (
+                                    <CodexScreen
+                                        connection={connection}
+                                        courses={courses}
+                                        courseContentsById={courseContentsById}
+                                    />
+                                ) : null}
                             </View>
 
-                            {connected && (
+                            {activeView !== 'codex' ? (
                                 <BottomNav
                                     activeView={activeView}
                                     onChangeView={setActiveView}
                                 />
-                            )}
+                            ) : null}
 
-                            <StatusBanner
-                                busy={busy || loadingDashboard}
-                                infoMessage={infoMessage}
-                                errorMessage={errorMessage}
-                                errorDetails={errorDebugDetails}
-                                withBottomNav={!!connected}
-                            />
+                            {activeView !== 'codex' ? (
+                                <StatusBanner
+                                    busy={busy || loadingDashboard}
+                                    infoMessage={infoMessage}
+                                    errorMessage={errorMessage}
+                                    errorDetails={errorDebugDetails}
+                                    withBottomNav
+                                />
+                            ) : null}
                         </View>
 
                         <ScannerModal
@@ -526,6 +579,8 @@ function getScreenTitle(view: AppView): string {
             return 'Courses';
         case 'connect':
             return 'Connect';
+        case 'codex':
+            return 'Codex';
         case 'profile':
             return 'Profile';
     }
@@ -543,6 +598,8 @@ function getScreenSubtitle(view: AppView, connected: boolean): string {
             return '';
         case 'connect':
             return 'QR login and browser pairing.';
+        case 'codex':
+            return 'Run Codex with ChatGPT sign-in.';
         case 'profile':
             return 'Local session details.';
     }

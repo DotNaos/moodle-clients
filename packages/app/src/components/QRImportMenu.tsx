@@ -1,8 +1,15 @@
 import { Dialog, Tabs } from 'heroui-native';
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+    Modal,
+    Platform,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
+} from 'react-native';
 
-import { CircleHelp, FileText, Link2, Upload, X } from '../icons';
+import { FileText, Keyboard, Link2, Upload, X } from '../icons';
 import { palette } from '../styles';
 
 import {
@@ -244,16 +251,21 @@ export function QRImportMenu(props: QRImportMenuProps) {
         return (
             <View>
                 <GhostButton
+                    size="sm"
                     label={props.revealLabel}
-                    icon={CircleHelp}
+                    icon={Keyboard}
                     onPress={props.onToggle}
                     disabled={props.busy}
                 />
-                {props.open ? (
+                <Modal
+                    visible={props.open}
+                    transparent={true}
+                    animationType="fade"
+                    onRequestClose={props.onToggle}>
                     <View style={importPopupStyles.webOverlay}>
                         {popupContent}
                     </View>
-                ) : null}
+                </Modal>
             </View>
         );
     }
@@ -262,7 +274,7 @@ export function QRImportMenu(props: QRImportMenuProps) {
         <View>
             <GhostButton
                 label={props.revealLabel}
-                icon={CircleHelp}
+                icon={Keyboard}
                 onPress={props.onToggle}
                 disabled={props.busy}
             />

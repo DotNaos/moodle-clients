@@ -45,7 +45,7 @@ export function getInitials(value: string): string {
 export function sanitizeCourseName(name: string): string {
   if (!name) return name;
   let clean = stripHtml(name);
-  
+
   // Replace HTML entities
   clean = clean
     .replaceAll(/&amp;/g, "&")

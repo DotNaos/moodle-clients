@@ -1,23 +1,29 @@
 {
-  "name": "moodle-clients",
-  "private": true,
-  "packageManager": "pnpm@10.30.2",
-  "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev --parallel",
-    "lint": "turbo run lint",
-    "typecheck": "turbo run typecheck",
-    "proxy:dev": "node ./scripts/moodle-proxy-dev.cjs",
-    "web:dev": "pnpm --filter @moodle-clients/web dev",
-    "web:dev:expo": "pnpm --filter @moodle-clients/web dev:expo",
-    "web:build": "pnpm --filter @moodle-clients/web build",
-    "mobile:start": "pnpm --filter @moodle-clients/mobile start",
-    "extension:dev": "pnpm --filter @moodle-clients/extension dev",
-    "extension:build": "pnpm --filter @moodle-clients/extension build"
-  },
-  "devDependencies": {
-    "eas-cli": "^18.8.1",
-    "turbo": "^2.6.1",
-    "typescript": "~5.9.3"
-  }
+    "name": "moodle-clients",
+    "private": true,
+    "packageManager": "pnpm@10.30.2",
+    "scripts": {
+        "build": "turbo run build",
+        "dev": "turbo run dev --parallel",
+        "lint": "turbo run lint",
+        "typecheck": "turbo run typecheck",
+        "proxy:dev": "node ./scripts/moodle-proxy-dev.cjs",
+        "web:dev": "pnpm --filter @moodle-clients/web dev",
+        "web:dev:expo": "pnpm --filter @moodle-clients/web dev:expo",
+        "web:build": "pnpm --filter @moodle-clients/web build",
+        "mobile:dev": "pnpm --filter @moodle-clients/mobile start",
+        "mobile:start": "pnpm --filter @moodle-clients/mobile start",
+        "mobile:ios": "pnpm --filter @moodle-clients/mobile ios",
+        "mobile:android": "pnpm --filter @moodle-clients/mobile android",
+        "extension:dev": "pnpm --filter @moodle-clients/extension dev",
+        "extension:build": "pnpm --filter @moodle-clients/extension build"
+    },
+    "devDependencies": {
+        "eas-cli": "^18.8.1",
+        "turbo": "^2.6.1",
+        "typescript": "~5.9.3"
+    },
+    "dependencies": {
+        "@openai/codex-sdk": "0.125.0"
+    }
 }

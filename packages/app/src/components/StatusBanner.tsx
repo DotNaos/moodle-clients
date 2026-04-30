@@ -69,7 +69,9 @@ export function StatusBanner(
                                 {props.errorMessage}
                             </Text>
                             {props.errorDetails?.map((detail) => (
-                                <Text key={detail} style={styles.statusDebugText}>
+                                <Text
+                                    key={detail}
+                                    style={styles.statusDebugText}>
                                     {detail}
                                 </Text>
                             ))}
