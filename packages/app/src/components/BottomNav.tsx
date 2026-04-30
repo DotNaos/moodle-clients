@@ -1,8 +1,8 @@
-import { Button, useThemeColor } from 'heroui-native';
-import { View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Bot, BookOpen, Link2, UserRound, type IconComponent } from '../icons';
-import { styles } from '../styles';
+import { palette, styles } from '../styles';
 import type { AppView } from '../types';
 
 const navItems: Array<{ id: AppView; label: string; icon: IconComponent }> = [
@@ -18,39 +18,44 @@ type BottomNavProps = {
 };
 
 export function BottomNav(props: BottomNavProps) {
-    const [activeIconColor, inactiveIconColor] = useThemeColor([
-        'accent-foreground',
-        'default-foreground',
-    ]);
+    const insets = useSafeAreaInsets();
 
     return (
-        <View style={styles.bottomNav}>
+        <View
+            style={[
+                styles.bottomNav,
+                { paddingBottom: Math.max(insets.bottom, 14) + 6 },
+            ]}>
             {navItems.map((item) => {
                 const active = props.activeView === item.id;
                 const Icon = item.icon;
-                const buttonVariant = active ? 'primary' : 'ghost';
-                const iconColor = active ? activeIconColor : inactiveIconColor;
 
                 return (
-                    <Button
+                    <Pressable
                         key={item.id}
-                        variant={buttonVariant}
-                        feedbackVariant="scale"
-                        size="md"
+                        style={({ pressed }) => [
+                            styles.navItemButton,
+                            active && styles.navItemButtonActive,
+                            pressed && styles.navItemButtonPressed,
+                        ]}
                         onPress={() => props.onChangeView(item.id)}
-                        className="flex-1"
-                        accessibilityLabel={item.label}>
-                        <View style={styles.navItem}>
-                            <Icon color={iconColor} size={21} />
-                            <Button.Label
-                                style={[
-                                    styles.navLabel,
-                                    active && styles.navLabelActive,
-                                ]}>
-                                {item.label}
-                            </Button.Label>
-                        </View>
-                    </Button>
+                        accessibilityLabel={item.label}
+                        accessibilityRole="button">
+                        <Icon
+                            color={
+                                active ? palette.blue : palette.subtle
+                            }
+                            size={21}
+                        />
+                        <Text
+                            style={[
+                                styles.navLabel,
+                                active && styles.navLabelActive,
+                            ]}
+                            numberOfLines={1}>
+                            {item.label}
+                        </Text>
+                    </Pressable>
                 );
             })}
         </View>

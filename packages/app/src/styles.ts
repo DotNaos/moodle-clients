@@ -801,16 +801,28 @@ export const styles = StyleSheet.create({
   bottomNav: {
     backgroundColor: "rgba(11,15,20,0.96)",
     flexDirection: "row",
-    gap: 8,
-    paddingBottom: 18,
-    paddingHorizontal: 12,
-    paddingTop: 10,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+  },
+  navItemButton: {
+    alignItems: "center",
+    borderRadius: 14,
+    flex: 1,
+    gap: 4,
+    justifyContent: "center",
+    paddingVertical: 8,
+  },
+  navItemButtonActive: {
+    backgroundColor: palette.blueSoft,
+  },
+  navItemButtonPressed: {
+    opacity: 0.7,
   },
   navItem: {
     alignItems: "center",
     flex: 1,
     gap: 4,
-    minHeight: 54,
     justifyContent: "center",
   },
   navItemActive: {
