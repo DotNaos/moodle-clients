@@ -32,7 +32,7 @@ export default async function handler(
 
   response.statusCode = proxyResponse.status;
   Object.entries(proxyResponse.headers).forEach(([key, value]) => {
-    response.setHeader(key, value);
+    response.setHeader(key, String(value));
   });
   response.end(proxyResponse.body);
 }
