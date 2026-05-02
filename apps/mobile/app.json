@@ -9,6 +9,7 @@
     "newArchEnabled": true,
     "scheme": [
       "moodle-client",
+      "moodleauth",
       "moodlemobile"
     ],
     "splash": {

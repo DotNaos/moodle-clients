@@ -18,6 +18,7 @@ import {
 } from '../components/ui';
 import { ScanLine } from '../icons';
 import type { MoodleConnection } from '../moodle';
+import type { MobilePairTarget } from '../pairing';
 import { styles } from '../styles';
 
 const moodleClientLogo = require('../../../../apps/mobile/assets/splash-icon.png');
@@ -26,6 +27,7 @@ const loginBackground = require('../../../../assets/new_other_aspect.png');
 type ConnectScreenProps = Readonly<{
     busy: boolean;
     connection: MoodleConnection | null;
+    pendingPairTarget: MobilePairTarget | null;
     moodleQrInput: string;
     pairQrInput: string;
     onChangeMoodleQr: (value: string) => void;
@@ -35,6 +37,8 @@ type ConnectScreenProps = Readonly<{
     onMoodleQrImportError: (message: string) => void;
     onScanPairQr: () => void;
     onUsePairQrValue: (value: string) => void;
+    onConfirmPairing: () => void;
+    onCancelPairing: () => void;
     onPairQrImportError: (message: string) => void;
 }>;
 
@@ -63,10 +67,13 @@ type ConnectedSetupCardProps = Readonly<{
 type PairingCardProps = Readonly<{
     busy: boolean;
     showOptions: boolean;
+    pendingTarget: MobilePairTarget | null;
     pairQrInput: string;
     onChangePairQr: (value: string) => void;
     onScanPairQr: () => void;
     onUsePairQrValue: (value: string) => void;
+    onConfirmPairing: () => void;
+    onCancelPairing: () => void;
     onPairQrImportError: (message: string) => void;
     onToggleOptions: () => void;
 }>;
@@ -99,10 +106,13 @@ export function ConnectScreen(props: ConnectScreenProps) {
             <PairingCard
                 busy={props.busy}
                 showOptions={showPairOptions}
+                pendingTarget={props.pendingPairTarget}
                 pairQrInput={props.pairQrInput}
                 onChangePairQr={props.onChangePairQr}
                 onScanPairQr={props.onScanPairQr}
                 onUsePairQrValue={props.onUsePairQrValue}
+                onConfirmPairing={props.onConfirmPairing}
+                onCancelPairing={props.onCancelPairing}
                 onPairQrImportError={props.onPairQrImportError}
                 onToggleOptions={() =>
                     setShowPairOptions((current) => !current)
@@ -233,16 +243,16 @@ function PairingCard(props: PairingCardProps) {
     return (
         <View style={styles.connectSection}>
             <SectionHeader
-                kicker="Browser Extension"
-                title="Pair Session"
+                kicker="Authenticator"
+                title="Share Moodle Login"
                 action={
                     <QRImportMenu
                         open={props.showOptions}
                         busy={props.busy}
                         revealLabel="Keyboard"
-                        title="Import Pairing QR"
-                        description="Choose one import method: upload the QR image, paste an image URL or data URL, or paste the pairing value directly."
-                        placeholder="moodlereadonlyproxy://pair?pairId=..."
+                        title="Import Bridge QR"
+                        description="Paste a bridge QR from Moodle Web, ChatGPT, or another app. The target app provides its own origin and endpoint in the QR."
+                        placeholder="moodleauth://bridge?origin=..."
                         value={props.pairQrInput}
                         submitLabel="Continue with value"
                         uploadLabel="Upload image"
@@ -253,12 +263,55 @@ function PairingCard(props: PairingCardProps) {
                     />
                 }
             />
+            <Text style={styles.connectSectionBody}>
+                Scan a bridge QR from another app, then approve the target
+                before this phone shares its Moodle token.
+            </Text>
+            {props.pendingTarget ? (
+                <View style={styles.bridgeApprovalPanel}>
+                    <Text style={styles.bridgeApprovalKicker}>
+                        Ready to share with
+                    </Text>
+                    <Text style={styles.bridgeApprovalTitle}>
+                        {props.pendingTarget.appName ??
+                            compactHost(props.pendingTarget.origin)}
+                    </Text>
+                    <Text style={styles.bridgeApprovalBody}>
+                        Origin: {compactHost(props.pendingTarget.origin)}
+                        {'\n'}
+                        Endpoint: {compactHost(props.pendingTarget.endpoint)}
+                    </Text>
+                    <View style={styles.actionRow}>
+                        <PrimaryButton
+                            label={props.busy ? 'Sharing...' : 'Share Login'}
+                            icon={ScanLine}
+                            onPress={props.onConfirmPairing}
+                            disabled={props.busy}
+                            fullWidth={false}
+                        />
+                        <SecondaryButton
+                            label="Cancel"
+                            onPress={props.onCancelPairing}
+                            disabled={props.busy}
+                            fullWidth={false}
+                        />
+                    </View>
+                </View>
+            ) : null}
             <PrimaryButton
-                label="Scan Extension QR"
+                label="Scan Bridge QR"
                 icon={ScanLine}
                 onPress={props.onScanPairQr}
                 disabled={props.busy}
             />
         </View>
     );
+}
+
+function compactHost(origin: string): string {
+    try {
+        return new URL(origin).host;
+    } catch {
+        return origin;
+    }
 }

@@ -33,7 +33,11 @@ import {
     type MoodleCourseSection,
     type MoodleSiteInfo,
 } from './src/moodle';
-import { completeMobilePairing, parseMobilePairTarget } from './src/pairing';
+import {
+    completeMobilePairing,
+    parseMobilePairTarget,
+    type MobilePairTarget,
+} from './src/pairing';
 import { ConnectScreen } from './src/screens/ConnectScreen';
 import { CodexScreen } from './src/screens/CodexScreen';
 import { CoursesScreen } from './src/screens/CoursesScreen';
@@ -60,6 +64,8 @@ export default function App() {
     );
     const [moodleQrInput, setMoodleQrInput] = useState('');
     const [pairQrInput, setPairQrInput] = useState('');
+    const [pendingPairTarget, setPendingPairTarget] =
+        useState<MobilePairTarget | null>(null);
     const [connection, setConnection] = useState<MoodleConnection | null>(null);
     const [siteInfo, setSiteInfo] = useState<MoodleSiteInfo | null>(null);
     const [courses, setCourses] = useState<MoodleCourse[]>([]);
@@ -227,8 +233,8 @@ export default function App() {
         try {
             if (currentScannerMode === 'moodle') {
                 await connectMoodle(result.data);
-            } else if (connection) {
-                await sendPairing(result.data, connection);
+            } else {
+                reviewPairing(result.data);
             }
         } finally {
             setTimeout(() => {
@@ -281,15 +287,25 @@ export default function App() {
 
         logDevInfo('Incoming link received', { source, rawUrl });
 
-        if (!rawUrl.toLowerCase().startsWith('moodlemobile://')) {
+        if (rawUrl.toLowerCase().startsWith('moodlemobile://')) {
+            setActiveView('connect');
+            setInfoMessage(
+                'Received a Moodle QR login link from the operating system.',
+            );
+            await connectMoodle(rawUrl);
             return;
         }
 
-        setActiveView('connect');
-        setInfoMessage(
-            'Received a Moodle QR login link from the operating system.',
-        );
-        await connectMoodle(rawUrl);
+        try {
+            const target = parseMobilePairTarget(rawUrl);
+            setActiveView('connect');
+            setPendingPairTarget(target);
+            setInfoMessage(
+                `Review the bridge request from ${target.appName ?? target.origin}.`,
+            );
+        } catch {
+            return;
+        }
     }
 
     async function connectMoodle(rawQrLink: string): Promise<void> {
@@ -304,6 +320,7 @@ export default function App() {
             );
             await storeConnection(nextConnection);
             setConnection(nextConnection);
+            setPendingPairTarget(null);
             setScannerMode(null);
             setActiveView('courses');
             setInfoMessage(
@@ -325,8 +342,23 @@ export default function App() {
         }
     }
 
+    function reviewPairing(rawPairQr: string): void {
+        try {
+            const target = parseMobilePairTarget(rawPairQr);
+            setPendingPairTarget(target);
+            setScannerMode(null);
+            setActiveView('connect');
+            setInfoMessage(
+                `Review the bridge request from ${target.appName ?? target.origin}.`,
+            );
+        } catch (error) {
+            setErrorDebugDetails(getErrorDebugDetails(error));
+            setErrorMessage(getSafeMessage(error));
+        }
+    }
+
     async function sendPairing(
-        rawPairQr: string,
+        target: MobilePairTarget,
         currentConnection: MoodleConnection,
     ): Promise<void> {
         setBusy(true);
@@ -334,13 +366,12 @@ export default function App() {
         setErrorDebugDetails([]);
 
         try {
-            await completeMobilePairing(
-                parseMobilePairTarget(rawPairQr),
-                currentConnection,
-            );
+            await completeMobilePairing(target, currentConnection);
             setScannerMode(null);
+            setPendingPairTarget(null);
+            setPairQrInput('');
             setInfoMessage(
-                'Pairing complete. The browser should finish automatically.',
+                `Login shared with ${target.appName ?? target.origin}.`,
             );
         } catch (error) {
             setErrorDebugDetails(getErrorDebugDetails(error));
@@ -410,6 +441,9 @@ export default function App() {
                                         <ConnectScreen
                                             busy={busy}
                                             connection={connection}
+                                            pendingPairTarget={
+                                                pendingPairTarget
+                                            }
                                             moodleQrInput={moodleQrInput}
                                             pairQrInput={pairQrInput}
                                             onChangeMoodleQr={setMoodleQrInput}
@@ -441,9 +475,28 @@ export default function App() {
                                                     return;
                                                 }
                                                 setPairQrInput(value);
+                                                reviewPairing(value);
+                                            }}
+                                            onConfirmPairing={() => {
+                                                if (
+                                                    !connection ||
+                                                    !pendingPairTarget
+                                                ) {
+                                                    setErrorMessage(
+                                                        'Scan a bridge QR first.',
+                                                    );
+                                                    return;
+                                                }
                                                 void sendPairing(
-                                                    value,
+                                                    pendingPairTarget,
                                                     connection,
+                                                );
+                                            }}
+                                            onCancelPairing={() => {
+                                                setPendingPairTarget(null);
+                                                setPairQrInput('');
+                                                setInfoMessage(
+                                                    'Bridge request cancelled.',
                                                 );
                                             }}
                                             onPairQrImportError={
