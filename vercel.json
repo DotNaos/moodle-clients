@@ -1,5 +1,5 @@
 {
+  "framework": "nextjs",
   "buildCommand": "pnpm --filter @moodle-clients/web build",
-  "outputDirectory": "apps/web/dist",
   "installCommand": "pnpm install --frozen-lockfile"
 }

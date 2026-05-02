@@ -1,4 +1,4 @@
 export * from "./generated";
 
 export const moodleServicesApiBaseUrl =
-  "https://moodle-services.vercel.app";
+  "https://moodle-services.os-home.net";

@@ -4,6 +4,8 @@ node_modules/
 # Expo / React Native
 .expo/
 dist/
+.next/
+apps/*/.next/
 web-build/
 expo-env.d.ts
 ios/
