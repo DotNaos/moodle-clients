@@ -1,16 +1,16 @@
 "use client";
 
 import {
-  BookOpen,
   CheckCircle2,
   ExternalLink,
   FileText,
   Loader2,
-  LogOut,
   RefreshCw,
   Search,
+  ShieldCheck,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Show, SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/nextjs";
+import { useEffect, useMemo, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-const API_BASE_URL =
+const MOODLE_API_BASE_URL = "/api/moodle";
+const MOODLE_SERVICES_URL =
   process.env.NEXT_PUBLIC_MOODLE_SERVICES_URL ??
   "https://moodle-services.os-home.net";
 
@@ -51,11 +52,8 @@ type Material = {
   fileType?: string;
 };
 
-const SESSION_STORAGE_KEY = "moodle-web-api-key";
-
 export default function Home() {
-  const [apiKey, setApiKey] = useState("");
-  const [draftKey, setDraftKey] = useState("");
+  const { isLoaded, isSignedIn } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -66,18 +64,21 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const storedKey = window.localStorage.getItem(SESSION_STORAGE_KEY);
-    if (storedKey) {
-      setApiKey(storedKey);
-      setDraftKey(storedKey);
+    if (!isLoaded) {
+      return;
     }
-  }, []);
 
-  useEffect(() => {
-    if (apiKey) {
-      void loadDashboard(apiKey);
+    if (!isSignedIn) {
+      setUser(null);
+      setCourses([]);
+      setMaterials([]);
+      setSelectedCourseId(null);
+      setError(null);
+      return;
     }
-  }, [apiKey]);
+
+    void loadDashboard();
+  }, [isLoaded, isSignedIn]);
 
   const selectedCourse = useMemo(
     () => courses.find((course) => String(course.id) === selectedCourseId) ?? null,
@@ -108,14 +109,14 @@ export default function Home() {
     return [...groups.entries()];
   }, [materials]);
 
-  async function loadDashboard(key: string) {
+  async function loadDashboard() {
     setLoading(true);
     setError(null);
 
     try {
       const [userResponse, coursesResponse] = await Promise.all([
-        apiRequest<User>("/api/me", key),
-        apiRequest<{ courses?: Course[] } | Course[]>("/api/courses", key),
+        apiRequest<User>("/me"),
+        apiRequest<{ courses?: Course[] } | Course[]>("/courses"),
       ]);
       const courseList = normalizeCourses(coursesResponse);
       const firstCourseId = String(courseList[0]?.id ?? "");
@@ -125,7 +126,7 @@ export default function Home() {
       setSelectedCourseId((current) => current ?? firstCourseId);
 
       if (firstCourseId) {
-        await loadMaterials(key, firstCourseId);
+        await loadMaterials(firstCourseId);
       }
     } catch (loadError) {
       setUser(null);
@@ -138,15 +139,14 @@ export default function Home() {
     }
   }
 
-  async function loadMaterials(key: string, courseId: string) {
+  async function loadMaterials(courseId: string) {
     setMaterialsLoading(true);
     setError(null);
     setSelectedCourseId(courseId);
 
     try {
       const response = await apiRequest<{ materials?: Material[] } | Material[]>(
-        `/api/courses/${encodeURIComponent(courseId)}/materials`,
-        key,
+        `/courses/${encodeURIComponent(courseId)}/materials`,
       );
       setMaterials(normalizeMaterials(response));
     } catch (loadError) {
@@ -157,209 +157,192 @@ export default function Home() {
     }
   }
 
-  function handleConnect(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmed = draftKey.trim();
-    if (!trimmed) {
-      setError("Enter your Moodle Services API key.");
-      return;
-    }
-
-    window.localStorage.setItem(SESSION_STORAGE_KEY, trimmed);
-    setApiKey(trimmed);
-  }
-
-  function handleDisconnect() {
-    window.localStorage.removeItem(SESSION_STORAGE_KEY);
-    setApiKey("");
-    setDraftKey("");
-    setUser(null);
-    setCourses([]);
-    setMaterials([]);
-    setSelectedCourseId(null);
-    setError(null);
-  }
-
-  const connectedUser = apiKey ? user : null;
-
-  if (!connectedUser) {
-    return (
-      <main className="grid min-h-screen place-items-center px-4 py-10">
-        <Card className="w-full max-w-md">
-          <CardHeader className="pb-4">
-            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <BookOpen aria-hidden />
-            </div>
-            <CardTitle>Moodle</CardTitle>
-            <CardDescription>
-              Connect with your private Moodle Services API key.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-4" onSubmit={handleConnect}>
-              <div className="space-y-2">
-                <label className="text-sm font-medium" htmlFor="api-key">
-                  API key
-                </label>
-                <Input
-                  id="api-key"
-                  type="password"
-                  value={draftKey}
-                  onChange={(event) => setDraftKey(event.target.value)}
-                  placeholder="moodle_live_..."
-                  autoComplete="off"
-                />
-              </div>
-
-              {error ? <Alert>{error}</Alert> : null}
-
-              <Button className="w-full" size="lg" type="submit">
-                Connect <CheckCircle2 aria-hidden />
-              </Button>
-
-              <Button asChild className="w-full" variant="ghost">
-                <a href={`${API_BASE_URL}/api/docs`} target="_blank" rel="noreferrer">
-                  API docs <ExternalLink aria-hidden />
-                </a>
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </main>
-    );
+  if (!isLoaded) {
+    return <FullPageLoading />;
   }
 
   return (
-    <main className="min-h-screen px-4 py-4 sm:px-6">
-      <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-7xl flex-col gap-4">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="truncate text-2xl font-semibold tracking-tight">Moodle</h1>
-              <Badge>Connected</Badge>
-            </div>
-            <p className="truncate text-sm text-muted-foreground">
-              {connectedUser.displayName} · {connectedUser.moodleSiteUrl}
-            </p>
-          </div>
+    <>
+      <Show when="signed-out">
+        <SignedOutHome />
+      </Show>
 
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={() => void loadDashboard(apiKey)}>
-              {loading ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />}
-              Refresh
-            </Button>
-            <Button variant="ghost" onClick={handleDisconnect}>
-              <LogOut aria-hidden />
-              Disconnect
-            </Button>
-          </div>
-        </header>
-
-        {error ? <Alert>{error}</Alert> : null}
-
-        <section className="grid min-h-0 flex-1 gap-4 lg:h-[calc(100vh-6rem)] lg:grid-cols-[340px_minmax(0,1fr)]">
-          <Card className="flex min-h-[420px] flex-col overflow-hidden">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Courses</CardTitle>
-              <div className="relative">
-                <Search
-                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  aria-hidden
-                />
-                <Input
-                  className="pl-11"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search courses"
-                />
-              </div>
-            </CardHeader>
-            <CardContent className="min-h-0 flex-1 overflow-auto px-3 pb-3">
-              {loading ? (
-                <LoadingRows />
-              ) : filteredCourses.length === 0 ? (
-                <EmptyState title="No courses found" description="Try a different search." />
-              ) : (
-                <div className="space-y-1">
-                  {filteredCourses.map((course) => {
-                    const active = String(course.id) === selectedCourseId;
-                    return (
-                      <button
-                        key={course.id}
-                        className={cn(
-                          "w-full rounded-2xl px-3 py-3 text-left transition-colors",
-                          active
-                            ? "bg-primary text-primary-foreground"
-                            : "hover:bg-accent hover:text-accent-foreground",
-                        )}
-                        type="button"
-                        onClick={() => void loadMaterials(apiKey, String(course.id))}
-                      >
-                        <span className="line-clamp-2 block text-sm font-medium leading-5">
-                          {courseTitle(course)}
-                        </span>
-                        <span
-                          className={cn(
-                            "mt-1 block truncate text-xs",
-                            active ? "text-primary-foreground/70" : "text-muted-foreground",
-                          )}
-                        >
-                          {courseSubtitle(course)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="flex min-h-[520px] flex-col overflow-hidden">
-            <CardHeader className="gap-4 pb-4 sm:flex-row sm:items-start sm:justify-between">
+      <Show when="signed-in">
+        <main className="min-h-screen px-4 py-4 sm:px-6">
+          <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-7xl flex-col gap-4">
+            <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <CardDescription>Selected course</CardDescription>
-                <CardTitle className="mt-1 line-clamp-2">
-                  {selectedCourse ? courseTitle(selectedCourse) : "No course selected"}
-                </CardTitle>
-                <p className="mt-1 truncate text-sm text-muted-foreground">
-                  {selectedCourse ? courseSubtitle(selectedCourse) : "Choose a course to load materials."}
+                <div className="flex items-center gap-2">
+                  <h1 className="truncate text-2xl font-semibold tracking-tight">Moodle</h1>
+                  <Badge>Signed in</Badge>
+                </div>
+                <p className="truncate text-sm text-muted-foreground">
+                  {user ? `${user.displayName} · ${user.moodleSiteUrl}` : "Loading Moodle workspace"}
                 </p>
               </div>
 
-              {selectedCourse?.viewUrl ? (
-                <Button asChild variant="secondary">
-                  <a href={selectedCourse.viewUrl} target="_blank" rel="noreferrer">
-                    Open Moodle <ExternalLink aria-hidden />
-                  </a>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" onClick={() => void loadDashboard()}>
+                  {loading ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />}
+                  Refresh
                 </Button>
-              ) : null}
-            </CardHeader>
+                <UserButton />
+              </div>
+            </header>
 
-            <CardContent className="min-h-0 flex-1 overflow-auto">
-              {materialsLoading ? (
-                <LoadingRows />
-              ) : materials.length === 0 ? (
-                <EmptyState
-                  title="No materials loaded"
-                  description="Pick a course on the left. Files, PDFs, links, and folders appear here."
-                />
-              ) : (
-                <div className="space-y-6">
-                  {materialsBySection.map(([section, sectionMaterials]) => (
-                    <section key={section} className="space-y-2">
-                      <h2 className="px-1 text-sm font-medium text-muted-foreground">{section}</h2>
-                      <div className="space-y-2">
-                        {sectionMaterials.map((material) => (
-                          <MaterialRow key={material.id} material={material} />
-                        ))}
-                      </div>
-                    </section>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </section>
+            {error ? <Alert>{error}</Alert> : null}
+
+            <section className="grid min-h-0 flex-1 gap-4 lg:h-[calc(100vh-6rem)] lg:grid-cols-[340px_minmax(0,1fr)]">
+              <Card className="flex min-h-[420px] flex-col overflow-hidden">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Courses</CardTitle>
+                  <div className="relative">
+                    <Search
+                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <Input
+                      className="pl-11"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Search courses"
+                    />
+                  </div>
+                </CardHeader>
+                <CardContent className="min-h-0 flex-1 overflow-auto px-3 pb-3">
+                  {loading ? (
+                    <LoadingRows />
+                  ) : filteredCourses.length === 0 ? (
+                    <EmptyState title="No courses found" description="Try a different search." />
+                  ) : (
+                    <div className="space-y-1">
+                      {filteredCourses.map((course) => {
+                        const active = String(course.id) === selectedCourseId;
+                        return (
+                          <button
+                            key={course.id}
+                            className={cn(
+                              "w-full rounded-2xl px-3 py-3 text-left transition-colors",
+                              active
+                                ? "bg-primary text-primary-foreground"
+                                : "hover:bg-accent hover:text-accent-foreground",
+                            )}
+                            type="button"
+                            onClick={() => void loadMaterials(String(course.id))}
+                          >
+                            <span className="line-clamp-2 block text-sm font-medium leading-5">
+                              {courseTitle(course)}
+                            </span>
+                            <span
+                              className={cn(
+                                "mt-1 block truncate text-xs",
+                                active ? "text-primary-foreground/70" : "text-muted-foreground",
+                              )}
+                            >
+                              {courseSubtitle(course)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="flex min-h-[520px] flex-col overflow-hidden">
+                <CardHeader className="gap-4 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <CardDescription>Selected course</CardDescription>
+                    <CardTitle className="mt-1 line-clamp-2">
+                      {selectedCourse ? courseTitle(selectedCourse) : "No course selected"}
+                    </CardTitle>
+                    <p className="mt-1 truncate text-sm text-muted-foreground">
+                      {selectedCourse ? courseSubtitle(selectedCourse) : "Choose a course to load materials."}
+                    </p>
+                  </div>
+
+                  {selectedCourse?.viewUrl ? (
+                    <Button asChild variant="secondary">
+                      <a href={selectedCourse.viewUrl} target="_blank" rel="noreferrer">
+                        Open Moodle <ExternalLink aria-hidden />
+                      </a>
+                    </Button>
+                  ) : null}
+                </CardHeader>
+
+                <CardContent className="min-h-0 flex-1 overflow-auto">
+                  {materialsLoading ? (
+                    <LoadingRows />
+                  ) : materials.length === 0 ? (
+                    <EmptyState
+                      title="No materials loaded"
+                      description="Pick a course on the left. Files, PDFs, links, and folders appear here."
+                    />
+                  ) : (
+                    <div className="space-y-6">
+                      {materialsBySection.map(([section, sectionMaterials]) => (
+                        <section key={section} className="space-y-2">
+                          <h2 className="px-1 text-sm font-medium text-muted-foreground">{section}</h2>
+                          <div className="space-y-2">
+                            {sectionMaterials.map((material) => (
+                              <MaterialRow key={material.id} material={material} />
+                            ))}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </section>
+          </div>
+        </main>
+      </Show>
+    </>
+  );
+}
+
+function SignedOutHome() {
+  return (
+    <main className="grid min-h-screen place-items-center px-4 py-10">
+      <Card className="w-full max-w-md">
+        <CardHeader className="pb-4">
+          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <ShieldCheck aria-hidden />
+          </div>
+          <CardTitle>Moodle</CardTitle>
+          <CardDescription>
+            Sign in to open your private Moodle workspace.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <SignInButton mode="modal">
+            <Button className="w-full" size="lg">
+              Sign in <CheckCircle2 aria-hidden />
+            </Button>
+          </SignInButton>
+          <SignUpButton mode="modal">
+            <Button className="w-full" variant="secondary">
+              Create account
+            </Button>
+          </SignUpButton>
+          <Button asChild className="w-full" variant="ghost">
+            <a href={`${MOODLE_SERVICES_URL}/api/docs`} target="_blank" rel="noreferrer">
+              API docs <ExternalLink aria-hidden />
+            </a>
+          </Button>
+        </CardContent>
+      </Card>
+    </main>
+  );
+}
+
+function FullPageLoading() {
+  return (
+    <main className="grid min-h-screen place-items-center px-4 py-10">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="animate-spin" aria-hidden />
+        Loading
       </div>
     </main>
   );
@@ -417,13 +400,8 @@ function MaterialRow({ material }: { material: Material }) {
   );
 }
 
-async function apiRequest<T>(path: string, apiKey: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "X-Moodle-App-Key": apiKey,
-    },
-  });
-
+async function apiRequest<T>(path: string): Promise<T> {
+  const response = await fetch(`${MOODLE_API_BASE_URL}${path}`);
   const text = await response.text();
   const payload = text ? JSON.parse(text) : null;
 
