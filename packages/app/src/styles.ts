@@ -217,6 +217,35 @@ export const styles = StyleSheet.create({
     paddingBottom: 18,
     paddingTop: 4,
   },
+  connectSectionBody: {
+    color: palette.muted,
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  bridgeApprovalPanel: {
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 24,
+    gap: 8,
+    padding: 16,
+  },
+  bridgeApprovalKicker: {
+    color: palette.subtle,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.7,
+    textTransform: "uppercase",
+  },
+  bridgeApprovalTitle: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: "900",
+    lineHeight: 24,
+  },
+  bridgeApprovalBody: {
+    color: palette.muted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
   connectWelcomeHero: {
     alignItems: "center",
     flex: 1,
