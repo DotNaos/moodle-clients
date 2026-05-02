@@ -1,33 +1,43 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f7f9;
-  --foreground: #111318;
-  --muted: #687280;
-  --surface: #ffffff;
-  --surface-subtle: #eef1f5;
-  --line: #dde2ea;
-  --accent: #2563eb;
-  --accent-strong: #1747b7;
-  --accent-soft: #e8f0ff;
-  --success: #14784f;
-  --danger: #b42318;
+  --background: #f7f7f6;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --secondary: #ededeb;
+  --secondary-foreground: #27272a;
+  --muted: #efefed;
+  --muted-foreground: #71717a;
+  --accent: #e7eefb;
+  --accent-foreground: #172554;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --border: #dededb;
+  --ring: #18181b;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
-  --color-surface: var(--surface);
-  --color-surface-subtle: var(--surface-subtle);
-  --color-line: var(--line);
+  --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
-  --color-accent-strong: var(--accent-strong);
-  --color-accent-soft: var(--accent-soft);
-  --color-success: var(--success);
-  --color-danger: var(--danger);
-  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, SFMono-Regular, monospace;
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
 * {
@@ -61,5 +71,5 @@ button:disabled {
 }
 
 ::selection {
-  background: #c7d9ff;
+  background: #d8e5ff;
 }
