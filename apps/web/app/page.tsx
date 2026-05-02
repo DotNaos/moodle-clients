@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MoodleConnectCard } from "@/components/moodle-connect-card";
 import { cn } from "@/lib/utils";
 
 const MOODLE_API_BASE_URL = "/api/moodle";
@@ -62,6 +63,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [materialsLoading, setMaterialsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsConnection, setNeedsConnection] = useState(false);
 
   useEffect(() => {
     if (!isLoaded) {
@@ -74,6 +76,7 @@ export default function Home() {
       setMaterials([]);
       setSelectedCourseId(null);
       setError(null);
+      setNeedsConnection(false);
       return;
     }
 
@@ -123,6 +126,7 @@ export default function Home() {
 
       setUser(userResponse);
       setCourses(courseList);
+      setNeedsConnection(false);
       setSelectedCourseId((current) => current ?? firstCourseId);
 
       if (firstCourseId) {
@@ -133,7 +137,13 @@ export default function Home() {
       setCourses([]);
       setMaterials([]);
       setSelectedCourseId(null);
-      setError(getErrorMessage(loadError));
+      if (isMoodleNotConnected(loadError)) {
+        setNeedsConnection(true);
+        setError(null);
+      } else {
+        setNeedsConnection(false);
+        setError(getErrorMessage(loadError));
+      }
     } finally {
       setLoading(false);
     }
@@ -192,6 +202,16 @@ export default function Home() {
 
             {error ? <Alert>{error}</Alert> : null}
 
+            {needsConnection ? (
+              <section className="grid flex-1 place-items-center py-8">
+                <MoodleConnectCard
+                  onConnected={() => {
+                    setNeedsConnection(false);
+                    void loadDashboard();
+                  }}
+                />
+              </section>
+            ) : (
             <section className="grid min-h-0 flex-1 gap-4 lg:h-[calc(100vh-6rem)] lg:grid-cols-[340px_minmax(0,1fr)]">
               <Card className="flex min-h-[420px] flex-col overflow-hidden">
                 <CardHeader className="pb-3">
@@ -295,6 +315,7 @@ export default function Home() {
                 </CardContent>
               </Card>
             </section>
+            )}
           </div>
         </main>
       </Show>
@@ -406,10 +427,24 @@ async function apiRequest<T>(path: string): Promise<T> {
   const payload = text ? JSON.parse(text) : null;
 
   if (!response.ok) {
-    throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+    throw new APIRequestError(payload?.error ?? `Request failed with ${response.status}`, response.status, payload?.code);
   }
 
   return payload as T;
+}
+
+class APIRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+  }
+}
+
+function isMoodleNotConnected(error: unknown): boolean {
+  return error instanceof APIRequestError && error.status === 409 && error.code === "moodle_not_connected";
 }
 
 function normalizeCourses(response: { courses?: Course[] } | Course[]): Course[] {
