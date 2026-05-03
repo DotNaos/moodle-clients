@@ -7,11 +7,15 @@ import type { Course, Material } from "@/lib/dashboard-data";
 import { courseImageUrl } from "@/lib/dashboard-data";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 
-export function LoadingRows() {
+export function LoadingRows({ label = "Loading" }: { label?: string }) {
   return (
-    <div className="flex flex-col gap-2">
-      <Skeleton className="h-14" />
+    <div className="flex flex-col gap-2 px-1">
+      <div className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-3 text-sm text-muted-foreground">
+        <Spinner aria-hidden />
+        {label}
+      </div>
       <Skeleton className="h-14" />
       <Skeleton className="h-14" />
     </div>
@@ -69,32 +73,56 @@ export function CourseThumbnail({
   );
 }
 
-export function MaterialRow({ material }: { material: Material }) {
+export function MaterialRow({
+  active = false,
+  material,
+  onSelect,
+}: {
+  active?: boolean;
+  material: Material;
+  onSelect: () => void;
+}) {
   const isPdf = material.fileType?.toLowerCase() === "pdf" || material.url?.toLowerCase().includes(".pdf");
   const materialType = material.fileType?.toUpperCase() || material.type || "Resource";
 
   return (
-    <a
-      className="group flex min-h-14 items-center justify-between gap-3 rounded-2xl px-3 py-2 transition-colors hover:bg-secondary hover:text-secondary-foreground"
-      href={material.url ?? "#"}
-      target="_blank"
-      rel="noreferrer"
+    <div
+      className={cn(
+        "group flex min-h-14 items-center justify-between gap-2 rounded-2xl px-3 py-2 transition-colors",
+        active ? "bg-primary text-primary-foreground" : "hover:bg-secondary hover:text-secondary-foreground",
+      )}
     >
-      <span className="flex min-w-0 items-center gap-3">
+      <button className="flex min-w-0 flex-1 items-center gap-3 text-left" type="button" onClick={onSelect}>
         <span
           className={cn(
             "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground",
-            isPdf && "text-destructive",
+            isPdf && !active && "text-destructive",
+            active && "bg-primary-foreground/15 text-primary-foreground",
           )}
         >
           <FileText aria-hidden />
         </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium">{material.name}</span>
-          <span className="block truncate text-xs text-muted-foreground">{materialType}</span>
+          <span className={cn("block truncate text-xs", active ? "text-primary-foreground/70" : "text-muted-foreground")}>
+            {materialType}
+          </span>
         </span>
-      </span>
-      <ExternalLink className="shrink-0 text-muted-foreground transition-colors group-hover:text-current" aria-hidden />
-    </a>
+      </button>
+      {material.url ? (
+        <a
+          aria-label={`Open ${material.name} in Moodle`}
+          className={cn(
+            "grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-background hover:text-foreground",
+            active && "text-primary-foreground/70 hover:bg-primary-foreground/15 hover:text-primary-foreground",
+          )}
+          href={material.url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <ExternalLink aria-hidden />
+        </a>
+      ) : null}
+    </div>
   );
 }

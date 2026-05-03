@@ -3,7 +3,6 @@
 import {
   CheckCircle2,
   ExternalLink,
-  Loader2,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -28,7 +27,10 @@ import {
 } from "@/components/ui/select";
 import { APIKeyMenu } from "@/components/api-key-menu";
 import { CourseThumbnail, EmptyState, LoadingRows, MaterialRow } from "@/components/dashboard-ui";
+import { FileViewer } from "@/components/file-viewer";
 import { MoodleConnectCard } from "@/components/moodle-connect-card";
+import { Spinner } from "@/components/ui/spinner";
+import { readDashboardCache, writeDashboardCache } from "@/lib/dashboard-cache";
 import type { Course, Material, User } from "@/lib/dashboard-data";
 import {
   buildCategoryOptionGroups,
@@ -46,15 +48,17 @@ const MOODLE_SERVICES_URL =
   "https://moodle-services.os-home.net";
 
 export default function Home() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, userId } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [materialsByCourseId, setMaterialsByCourseId] = useState<Record<string, Material[]>>({});
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [materialsLoading, setMaterialsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsConnection, setNeedsConnection] = useState(false);
@@ -71,14 +75,32 @@ export default function Home() {
       setMaterials([]);
       setMaterialsByCourseId({});
       setSelectedCourseId(null);
+      setSelectedMaterialId(null);
       setSelectedCategory("all");
       setError(null);
       setNeedsConnection(false);
       return;
     }
 
-    void loadDashboard();
-  }, [isLoaded, isSignedIn]);
+    if (!userId) {
+      return;
+    }
+
+    const cached = readDashboardCache(userId);
+    if (cached) {
+      setUser(cached.user);
+      setCourses(cached.courses);
+      setMaterialsByCourseId(cached.materialsByCourseId);
+      setSelectedCourseId(cached.selectedCourseId);
+      setSelectedCategory(cached.selectedCategory);
+      setSelectedMaterialId(cached.selectedMaterialId);
+      setMaterials(cached.selectedCourseId ? cached.materialsByCourseId[cached.selectedCourseId] ?? [] : []);
+      setNeedsConnection(false);
+      setError(null);
+    }
+
+    void loadDashboard({ background: Boolean(cached) });
+  }, [isLoaded, isSignedIn, userId]);
 
   const selectedCourse = useMemo(
     () => courses.find((course) => String(course.id) === selectedCourseId) ?? null,
@@ -86,6 +108,11 @@ export default function Home() {
   );
 
   const categoryOptionGroups = useMemo(() => buildCategoryOptionGroups(courses), [courses]);
+
+  const selectedMaterial = useMemo(
+    () => materials.find((material) => material.id === selectedMaterialId) ?? null,
+    [materials, selectedMaterialId],
+  );
 
   const filteredCourses = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -116,9 +143,14 @@ export default function Home() {
     return [...groups.entries()];
   }, [materials]);
 
-  async function loadDashboard() {
+  async function loadDashboard(options: { background?: boolean } = {}) {
+    if (!userId) {
+      return;
+    }
+
     materialsRequestId.current += 1;
-    setLoading(true);
+    setLoading(!options.background && courses.length === 0);
+    setRefreshing(options.background || courses.length > 0);
     setMaterialsLoading(false);
     setError(null);
 
@@ -128,29 +160,47 @@ export default function Home() {
         apiRequest<{ courses?: Course[] } | Course[]>("/courses"),
       ]);
       const courseList = normalizeCourses(coursesResponse);
+      const nextMaterialsByCourseId = pruneMaterialCache(materialsByCourseId, courseList);
+      const nextSelectedCourseId =
+        selectedCourseId && courseList.some((course) => String(course.id) === selectedCourseId)
+          ? selectedCourseId
+          : null;
+      const nextMaterials = nextSelectedCourseId ? nextMaterialsByCourseId[nextSelectedCourseId] ?? [] : [];
+      const nextSelectedMaterialId =
+        selectedMaterialId && nextMaterials.some((material) => material.id === selectedMaterialId)
+          ? selectedMaterialId
+          : nextMaterials[0]?.id ?? null;
+      const nextSelectedCategory =
+        selectedCategory === "all" || courseList.some((course) => courseCategoryKey(course) === selectedCategory)
+          ? selectedCategory
+          : "all";
 
       setUser(userResponse);
       setCourses(courseList);
-      setMaterials([]);
-      setMaterialsByCourseId({});
+      setMaterials(nextMaterials);
+      setMaterialsByCourseId(nextMaterialsByCourseId);
       setNeedsConnection(false);
-      setSelectedCourseId((current) =>
-        current && courseList.some((course) => String(course.id) === current)
-          ? current
-          : null,
-      );
-      setSelectedCategory((current) =>
-        current === "all" || courseList.some((course) => courseCategoryKey(course) === current)
-          ? current
-          : "all",
-      );
+      setSelectedCourseId(nextSelectedCourseId);
+      setSelectedMaterialId(nextSelectedMaterialId);
+      setSelectedCategory(nextSelectedCategory);
+      writeDashboardCache(userId, {
+        user: userResponse,
+        courses: courseList,
+        materialsByCourseId: nextMaterialsByCourseId,
+        selectedCourseId: nextSelectedCourseId,
+        selectedCategory: nextSelectedCategory,
+        selectedMaterialId: nextSelectedMaterialId,
+      });
     } catch (loadError) {
-      setUser(null);
-      setCourses([]);
-      setMaterials([]);
-      setMaterialsByCourseId({});
-      setSelectedCourseId(null);
-      setSelectedCategory("all");
+      if (!options.background) {
+        setUser(null);
+        setCourses([]);
+        setMaterials([]);
+        setMaterialsByCourseId({});
+        setSelectedCourseId(null);
+        setSelectedMaterialId(null);
+        setSelectedCategory("all");
+      }
       if (isMoodleNotConnected(loadError)) {
         setNeedsConnection(true);
         setError(null);
@@ -160,16 +210,32 @@ export default function Home() {
       }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
   async function loadMaterials(courseId: string) {
     const cachedMaterials = materialsByCourseId[courseId];
     if (cachedMaterials) {
+      const nextSelectedMaterialId =
+        selectedMaterialId && cachedMaterials.some((material) => material.id === selectedMaterialId)
+          ? selectedMaterialId
+          : cachedMaterials[0]?.id ?? null;
       materialsRequestId.current += 1;
       setMaterialsLoading(false);
       setSelectedCourseId(courseId);
       setMaterials(cachedMaterials);
+      setSelectedMaterialId(nextSelectedMaterialId);
+      if (userId) {
+        writeDashboardCache(userId, {
+          user,
+          courses,
+          materialsByCourseId,
+          selectedCourseId: courseId,
+          selectedCategory,
+          selectedMaterialId: nextSelectedMaterialId,
+        });
+      }
       return;
     }
 
@@ -187,16 +253,32 @@ export default function Home() {
       if (materialsRequestId.current !== requestId) {
         return;
       }
+      const nextSelectedMaterialId = nextMaterials[0]?.id ?? null;
       setMaterials(nextMaterials);
+      setSelectedMaterialId(nextSelectedMaterialId);
       setMaterialsByCourseId((current) => ({
         ...current,
         [courseId]: nextMaterials,
       }));
+      if (userId) {
+        writeDashboardCache(userId, {
+          user,
+          courses,
+          materialsByCourseId: {
+            ...materialsByCourseId,
+            [courseId]: nextMaterials,
+          },
+          selectedCourseId: courseId,
+          selectedCategory,
+          selectedMaterialId: nextSelectedMaterialId,
+        });
+      }
     } catch (loadError) {
       if (materialsRequestId.current !== requestId) {
         return;
       }
       setMaterials([]);
+      setSelectedMaterialId(null);
       setError(getErrorMessage(loadError));
     } finally {
       if (materialsRequestId.current === requestId) {
@@ -231,8 +313,8 @@ export default function Home() {
 
               <div className="flex items-center gap-2">
                 <Button variant="secondary" onClick={() => void loadDashboard()}>
-                  {loading ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />}
-                  Refresh
+                  {loading || refreshing ? <Spinner aria-hidden /> : <RefreshCw aria-hidden />}
+                  {refreshing ? "Updating" : "Refresh"}
                 </Button>
                 <APIKeyMenu />
                 <UserButton />
@@ -267,6 +349,7 @@ export default function Home() {
                         setMaterialsLoading(false);
                         setSelectedCategory(value);
                         setSelectedCourseId(null);
+                        setSelectedMaterialId(null);
                         setMaterials([]);
                       }}
                     >
@@ -341,7 +424,7 @@ export default function Home() {
                   </div>
                   <div className="min-h-0 flex-1 overflow-auto px-3 pb-4">
                     {loading ? (
-                      <LoadingRows />
+                      <LoadingRows label="Loading courses" />
                     ) : filteredCourses.length === 0 ? (
                       <EmptyState title="No courses found" description="Try a different search." />
                     ) : (
@@ -382,53 +465,73 @@ export default function Home() {
                   </div>
                 </aside>
 
-                <section className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
-                  <div className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex min-w-0 items-start gap-4">
-                      {selectedCourse ? <CourseThumbnail course={selectedCourse} size="large" /> : null}
-                      <div className="min-w-0">
-                        <p className="text-sm text-muted-foreground">Selected course</p>
-                        <h2 className="mt-1 line-clamp-2 text-xl font-semibold tracking-tight">
-                          {selectedCourse ? courseTitle(selectedCourse) : "No course selected"}
-                        </h2>
-                        <p className="mt-1 truncate text-sm text-muted-foreground">
-                          {selectedCourse ? courseSubtitle(selectedCourse) : "Choose a course to load materials."}
-                        </p>
+                <section className="grid min-h-0 overflow-hidden rounded-[2rem] bg-card xl:grid-cols-[430px_minmax(0,1fr)]">
+                  <div className="flex min-h-0 flex-col overflow-hidden">
+                    <div className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-start sm:justify-between xl:flex-col">
+                      <div className="flex min-w-0 items-start gap-4">
+                        {selectedCourse ? <CourseThumbnail course={selectedCourse} size="large" /> : null}
+                        <div className="min-w-0">
+                          <p className="text-sm text-muted-foreground">Selected course</p>
+                          <h2 className="mt-1 line-clamp-2 text-xl font-semibold tracking-tight">
+                            {selectedCourse ? courseTitle(selectedCourse) : "No course selected"}
+                          </h2>
+                          <p className="mt-1 truncate text-sm text-muted-foreground">
+                            {selectedCourse ? courseSubtitle(selectedCourse) : "Choose a course to load materials."}
+                          </p>
+                        </div>
                       </div>
+
+                      {selectedCourse?.viewUrl ? (
+                        <Button asChild variant="secondary">
+                          <a href={selectedCourse.viewUrl} target="_blank" rel="noreferrer">
+                            Open Moodle <ExternalLink aria-hidden />
+                          </a>
+                        </Button>
+                      ) : null}
                     </div>
 
-                    {selectedCourse?.viewUrl ? (
-                      <Button asChild variant="secondary">
-                        <a href={selectedCourse.viewUrl} target="_blank" rel="noreferrer">
-                          Open Moodle <ExternalLink aria-hidden />
-                        </a>
-                      </Button>
-                    ) : null}
+                    <div className="min-h-0 flex-1 overflow-auto px-6 pb-6">
+                      {materialsLoading ? (
+                        <LoadingRows label="Loading materials" />
+                      ) : materials.length === 0 ? (
+                        <EmptyState
+                          title="No materials loaded"
+                          description="Pick a course on the left. Materials load only when you open a course."
+                        />
+                      ) : (
+                        <div className="flex flex-col gap-7">
+                          {materialsBySection.map(([section, sectionMaterials]) => (
+                            <section key={section} className="flex flex-col gap-2">
+                              <h2 className="px-1 text-sm font-medium text-muted-foreground">{section}</h2>
+                              <div className="flex flex-col gap-1">
+                                {sectionMaterials.map((material) => (
+                                  <MaterialRow
+                                    key={material.id}
+                                    active={material.id === selectedMaterialId}
+                                    material={material}
+                                    onSelect={() => {
+                                      setSelectedMaterialId(material.id);
+                                      if (userId) {
+                                        writeDashboardCache(userId, {
+                                          user,
+                                          courses,
+                                          materialsByCourseId,
+                                          selectedCourseId,
+                                          selectedCategory,
+                                          selectedMaterialId: material.id,
+                                        });
+                                      }
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            </section>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-
-                  <div className="min-h-0 flex-1 overflow-auto px-6 pb-6">
-                    {materialsLoading ? (
-                      <LoadingRows />
-                    ) : materials.length === 0 ? (
-                      <EmptyState
-                        title="No materials loaded"
-                        description="Pick a course on the left. Materials load only when you open a course."
-                      />
-                    ) : (
-                      <div className="flex flex-col gap-7">
-                        {materialsBySection.map(([section, sectionMaterials]) => (
-                          <section key={section} className="flex flex-col gap-2">
-                            <h2 className="px-1 text-sm font-medium text-muted-foreground">{section}</h2>
-                            <div className="flex flex-col gap-1">
-                              {sectionMaterials.map((material) => (
-                                <MaterialRow key={material.id} material={material} />
-                              ))}
-                            </div>
-                          </section>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <FileViewer courseId={selectedCourseId} material={selectedMaterial} />
                 </section>
               </section>
             )}
@@ -478,7 +581,7 @@ function FullPageLoading() {
   return (
     <main className="grid min-h-screen place-items-center px-4 py-10">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="animate-spin" aria-hidden />
+        <Spinner aria-hidden />
         Loading
       </div>
     </main>
@@ -513,4 +616,14 @@ function isMoodleNotConnected(error: unknown): boolean {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+function pruneMaterialCache(
+  materialsByCourseId: Record<string, Material[]>,
+  courses: Course[],
+): Record<string, Material[]> {
+  const courseIds = new Set(courses.map((course) => String(course.id)));
+  return Object.fromEntries(
+    Object.entries(materialsByCourseId).filter(([courseId]) => courseIds.has(courseId)),
+  );
 }
