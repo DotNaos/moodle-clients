@@ -1,0 +1,160 @@
+name: Mobile iOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "EAS build profile"
+        required: true
+        default: "preview"
+        type: choice
+        options:
+          - preview
+          - development
+      create_release:
+        description: "Create a GitHub release with the iOS build metadata"
+        required: true
+        default: true
+        type: boolean
+      release_tag:
+        description: "Optional release tag. Defaults to ios-${run_number}."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  ios:
+    name: Build iOS internal app
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 23.9.0
+          cache: pnpm
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Verify Expo token
+        run: |
+          if [ -z "${EXPO_TOKEN}" ]; then
+            echo "::error::Missing EXPO_TOKEN repository secret."
+            exit 1
+          fi
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck mobile app
+        run: pnpm --filter @moodle-clients/mobile typecheck
+
+      - name: Build iOS app with EAS
+        working-directory: apps/mobile
+        run: |
+          eas build \
+            --platform ios \
+            --profile "${{ inputs.profile }}" \
+            --non-interactive \
+            --wait \
+            --json > ../../mobile-ios-build.json
+
+      - name: Collect build links
+        id: build
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+
+          const raw = fs.readFileSync("mobile-ios-build.json", "utf8").trim();
+          const parsed = JSON.parse(raw);
+          const build = Array.isArray(parsed) ? parsed[0] : parsed;
+          const artifactUrl =
+            build?.artifacts?.buildUrl ??
+            build?.artifactUrl ??
+            build?.appArchiveUrl ??
+            build?.buildUrl ??
+            "";
+          const detailsUrl =
+            build?.buildDetailsPageUrl ??
+            build?.url ??
+            "";
+          const id = build?.id ?? build?.buildId ?? "";
+          const status = build?.status ?? "";
+          const tagInput = process.env.RELEASE_TAG?.trim();
+          const releaseTag = tagInput || `ios-${process.env.GITHUB_RUN_NUMBER}`;
+
+          fs.appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            [
+              `artifact_url=${artifactUrl}`,
+              `details_url=${detailsUrl}`,
+              `build_id=${id}`,
+              `build_status=${status}`,
+              `release_tag=${releaseTag}`,
+              "",
+            ].join("\n"),
+          );
+
+          const notes = [
+            "# Moodle Clients iOS build",
+            "",
+            `- Profile: ${process.env.BUILD_PROFILE}`,
+            `- EAS build id: ${id || "unknown"}`,
+            `- EAS status: ${status || "unknown"}`,
+            detailsUrl ? `- EAS install/details URL: ${detailsUrl}` : "",
+            artifactUrl ? `- iOS archive URL: ${artifactUrl}` : "",
+            "",
+            "Install note: this is an iOS internal/ad hoc build. The iPhone must be registered in the Apple provisioning profile used by EAS.",
+            "",
+          ].filter(Boolean).join("\n");
+          fs.writeFileSync("mobile-ios-release-notes.md", notes);
+          NODE
+        env:
+          BUILD_PROFILE: ${{ inputs.profile }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+
+      - name: Download iOS archive
+        if: ${{ steps.build.outputs.artifact_url != '' }}
+        run: |
+          curl --fail --location --output moodle-client-ios.ipa "${{ steps.build.outputs.artifact_url }}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: moodle-client-ios-${{ steps.build.outputs.release_tag }}
+          path: |
+            mobile-ios-build.json
+            mobile-ios-release-notes.md
+            moodle-client-ios.ipa
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Create GitHub release
+        if: ${{ inputs.create_release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.build.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: Moodle Clients iOS ${{ steps.build.outputs.release_tag }}
+          body_path: mobile-ios-release-notes.md
+          files: |
+            mobile-ios-build.json
+            mobile-ios-release-notes.md
+            moodle-client-ios.ipa
+          fail_on_unmatched_files: false
