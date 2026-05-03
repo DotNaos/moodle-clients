@@ -18,21 +18,21 @@ or by importing the helper from `scripts/playwright-op-config.mjs`.
 ## One-time setup
 
 ```bash
-pnpm install
-pnpm build
-pnpm playwright:install
+bun install
+bun run build
+bun run playwright:install
 ```
 
 ## Quick local launch
 
 ```bash
-pnpm playwright:extension
+bun run playwright:extension
 ```
 
 Optional URL override:
 
 ```bash
-pnpm playwright:extension "https://moodle.fhgr.ch/course/view.php?id=22583"
+bun run playwright:extension "https://moodle.fhgr.ch/course/view.php?id=22583"
 ```
 
 ## `playwright-interactive` js_repl launch cell
@@ -47,7 +47,7 @@ var userDataDir = path.resolve(process.cwd(), ".playwright/chromium-extension-pr
 var TARGET_URL = "https://moodle.fhgr.ch/my/courses.php";
 
 if (!fs.existsSync(extensionPath)) {
-  throw new Error("Missing dist/ build. Run `pnpm build` first.");
+  throw new Error("Missing dist/ build. Run `bun run build` first.");
 }
 
 if (context && context.browser()) {

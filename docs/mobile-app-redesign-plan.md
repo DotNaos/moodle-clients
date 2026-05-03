@@ -137,9 +137,9 @@ Change the experience:
 
 Before reporting back:
 
-- run `pnpm typecheck`
-- run `pnpm build`
-- run `pnpm lint`
+- run `bun run typecheck`
+- run `bun run build`
+- run `bun run lint`
 - render Expo Web locally
 - inspect mobile viewport visually
 - click through Today, Courses, Connect, and Profile

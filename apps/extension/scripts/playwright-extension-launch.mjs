@@ -9,13 +9,13 @@ const arg = process.argv[2]
 const targetUrl = arg && !arg.startsWith('-') ? arg : 'https://moodle.fhgr.ch/my/courses.php'
 
 if (arg === '--help' || arg === '-h') {
-  console.log('Usage: pnpm playwright:extension [url]')
-  console.log('Example: pnpm playwright:extension "https://moodle.fhgr.ch/my/courses.php"')
+  console.log('Usage: bun run playwright:extension [url]')
+  console.log('Example: bun run playwright:extension "https://moodle.fhgr.ch/my/courses.php"')
   process.exit(0)
 }
 
 if (!fs.existsSync(extensionPath)) {
-  console.error('Missing dist/ build. Run `pnpm build` first.')
+  console.error('Missing dist/ build. Run `bun run build` first.')
   process.exit(1)
 }
 

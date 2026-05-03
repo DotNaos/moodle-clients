@@ -35,16 +35,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.30.2
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 23.9.0
-          cache: pnpm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+
+      - name: Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
 
       - name: Setup Expo and EAS
         uses: expo/expo-github-action@v8
@@ -60,10 +67,10 @@ jobs:
           fi
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Typecheck mobile app
-        run: pnpm --filter @moodle-clients/mobile typecheck
+        run: bun run --filter @moodle-clients/mobile typecheck
 
       - name: Build iOS app with EAS
         working-directory: apps/mobile

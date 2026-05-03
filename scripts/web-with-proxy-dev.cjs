@@ -24,7 +24,7 @@ const proxyProcess = spawn(process.execPath, [path.join(rootDir, "scripts", "moo
 });
 children.push(proxyProcess);
 
-const webProcess = spawn(getPnpmCommand(), ["--filter", "@moodle-clients/web", "dev:expo"], {
+const webProcess = spawn(getBunCommand(), ["run", "--filter", "@moodle-clients/web", "dev:expo"], {
   cwd: rootDir,
   env: {
     ...process.env,
@@ -59,6 +59,6 @@ function shutdown(code) {
   process.exit(code);
 }
 
-function getPnpmCommand() {
-  return process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+function getBunCommand() {
+  return process.platform === "win32" ? "bun.exe" : "bun";
 }

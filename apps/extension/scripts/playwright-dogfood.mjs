@@ -1,7 +1,7 @@
 /**
  * Dogfood: launch with extension, login, visit all main screens, capture screenshots + console.
  * Output: dogfood-output/screenshots/, dogfood-output/console.log
- * Run: pnpm build && node scripts/playwright-dogfood.mjs
+ * Run: bun run build && node scripts/playwright-dogfood.mjs
  */
 
 import fs from 'node:fs'
@@ -33,7 +33,7 @@ async function takeScreenshot(page, name) {
 
 async function main() {
   if (!fs.existsSync(extensionPath)) {
-    console.error('Missing dist/. Run: pnpm build')
+    console.error('Missing dist/. Run: bun run build')
     process.exit(1)
   }
 

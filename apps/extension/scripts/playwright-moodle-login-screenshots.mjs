@@ -1,7 +1,7 @@
 /**
  * Playwright: launch with extension, log into Moodle (1Password), go to course, take screenshots.
- * Usage: pnpm run playwright:login-screenshots
- * Requires: pnpm build, op CLI + 1Password refs for FHGR username/password.
+ * Usage: bun run playwright:login-screenshots
+ * Requires: bun run build, op CLI + 1Password refs for FHGR username/password.
  */
 
 import fs from 'node:fs'
@@ -27,7 +27,7 @@ async function takeScreenshot(page, name) {
 
 async function main() {
   if (!fs.existsSync(extensionPath)) {
-    console.error('Missing dist/. Run: pnpm build')
+    console.error('Missing dist/. Run: bun run build')
     process.exit(1)
   }
 
