@@ -25,39 +25,39 @@ User-facing Moodle clients for Project School.
 Install dependencies:
 
 ```sh
-pnpm install
+bun install
 ```
 
 Run the web app:
 
 ```sh
-pnpm web:dev
+bun run web:dev
 ```
 
 Run the mobile app:
 
 ```sh
-pnpm mobile:start
+bun run mobile:start
 ```
 
 Build the Expo web app:
 
 ```sh
-pnpm web:build
+bun run web:build
 ```
 
 Build the extension:
 
 ```sh
-pnpm extension:build
+bun run extension:build
 ```
 
 ## Web deploy on Vercel
 
 The repository already includes a root `vercel.json` for the Expo web app:
 
-- install: `pnpm install --frozen-lockfile`
-- build: `pnpm --filter @moodle-clients/web build`
+- install: `bun install --frozen-lockfile`
+- build: `bun run --filter @moodle-clients/web build`
 - output: `apps/web/dist`
 
 So you can import the repository into Vercel and deploy the web version directly.

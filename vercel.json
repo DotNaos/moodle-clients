@@ -1,5 +1,5 @@
 {
   "framework": "nextjs",
-  "buildCommand": "pnpm --filter @moodle-clients/web build",
-  "installCommand": "pnpm install --frozen-lockfile"
+  "buildCommand": "bun run --filter @moodle-clients/web build",
+  "installCommand": "bun install --frozen-lockfile"
 }

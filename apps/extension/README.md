@@ -79,11 +79,11 @@ the DOM.
 
 ## Setup
 
-1. Install pnpm if it is not already available.
+1. Install Bun if it is not already available.
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 ## Build
@@ -91,14 +91,14 @@ pnpm install
 Build the extension into `dist/`:
 
 ```bash
-pnpm build
+bun run build
 ```
 
 Optional checks:
 
 ```bash
-pnpm lint
-pnpm typecheck
+bun run lint
+bun run typecheck
 ```
 
 ## Automated ZIP Builds
@@ -121,9 +121,9 @@ without rebuilding locally.
 For interactive browser debugging with the unpacked extension already loaded:
 
 ```bash
-pnpm build
-pnpm playwright:install
-pnpm playwright:extension
+bun run build
+bun run playwright:install
+bun run playwright:extension
 ```
 
 Project-specific notes for the `playwright-interactive` workflow live in
@@ -135,7 +135,7 @@ the repository.
 
 ## Load Unpacked In Chrome
 
-1. Run `pnpm build`.
+1. Run `bun run build`.
 2. Open Chrome and go to `chrome://extensions`.
 3. Enable `Developer mode`.
 4. Click `Load unpacked`.
