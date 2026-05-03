@@ -6,7 +6,6 @@ import { QRCodeSVG } from "qrcode.react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 type MoodleConnectCardProps = {
   onConnected: () => void;
@@ -126,66 +125,64 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
   }
 
   return (
-    <Card className="mx-auto w-full max-w-xl">
-      <CardHeader>
-        <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground">
+    <section className="mx-auto grid w-full max-w-5xl gap-6 rounded-[2rem] bg-card p-6 lg:grid-cols-[360px_minmax(0,1fr)] lg:items-center lg:p-8">
+      <div className="flex flex-col gap-4">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground">
           <QrCode aria-hidden />
         </div>
-        <CardTitle>Connect Moodle</CardTitle>
-        <CardDescription>
-          Open Moodle Client on your iPhone, scan this bridge QR, then approve sharing your Moodle login.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+        <div className="flex flex-col gap-2">
+          <h2 className="text-3xl font-semibold tracking-tight">Connect Moodle</h2>
+          <p className="max-w-2xl text-base leading-7 text-muted-foreground">
+            Open Moodle Client on your iPhone, scan this bridge QR, then approve sharing your Moodle login.
+          </p>
+        </div>
         {error ? <Alert>{error}</Alert> : null}
+      </div>
 
-        <div className="rounded-3xl bg-muted p-4">
-          <div className="grid gap-4 sm:grid-cols-[220px_1fr] sm:items-center">
-            <div className="grid aspect-square place-items-center rounded-2xl bg-white p-4">
-              {state === "starting" ? (
-                <Loader2 className="size-10 animate-spin text-primary" aria-hidden />
-              ) : bridgeUrl ? (
-                <QRCodeSVG value={bridgeUrl} size={184} marginSize={1} />
-              ) : (
-                <QrCode className="size-10 text-muted-foreground" aria-hidden />
-              )}
-            </div>
+      <div className="grid gap-5 rounded-[1.75rem] bg-muted p-5 sm:grid-cols-[320px_1fr] sm:items-center">
+        <div className="grid aspect-square place-items-center rounded-[1.5rem] bg-white p-5">
+          {state === "starting" ? (
+            <Loader2 className="size-12 animate-spin text-primary" aria-hidden />
+          ) : bridgeUrl ? (
+            <QRCodeSVG className="h-full w-full max-w-[280px]" value={bridgeUrl} size={280} marginSize={1} />
+          ) : (
+            <QrCode className="size-12 text-muted-foreground" aria-hidden />
+          )}
+        </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                {state === "connected" ? (
-                  <CheckCircle2 className="text-primary" aria-hidden />
-                ) : state === "waiting" ? (
-                  <Smartphone className="text-primary" aria-hidden />
-                ) : (
-                  <Loader2 className="animate-spin text-primary" aria-hidden />
-                )}
-                {getStatusLabel(state)}
-              </div>
-              <p className="text-sm leading-6 text-muted-foreground">
-                The QR only contains this website origin and a short-lived one-time challenge. Your Moodle token is sent
-                back only after you approve it on the phone.
-              </p>
-              {expiresAt ? (
-                <p className="text-xs text-muted-foreground">
-                  Expires at {new Date(expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
-                </p>
-              ) : null}
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" onClick={() => void copyBridgeURL()} disabled={!bridgeUrl}>
-                  <Copy aria-hidden />
-                  {copied ? "Copied" : "Copy"}
-                </Button>
-                <Button type="button" variant="secondary" onClick={() => void startBridge()}>
-                  <RefreshCw aria-hidden />
-                  New QR
-                </Button>
-              </div>
-            </div>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            {state === "connected" ? (
+              <CheckCircle2 className="text-primary" aria-hidden />
+            ) : state === "waiting" ? (
+              <Smartphone className="text-primary" aria-hidden />
+            ) : (
+              <Loader2 className="animate-spin text-primary" aria-hidden />
+            )}
+            {getStatusLabel(state)}
+          </div>
+          <p className="text-sm leading-6 text-muted-foreground">
+            The QR only contains this website origin and a short-lived one-time challenge. Your Moodle token is sent back
+            only after you approve it on the phone.
+          </p>
+          {expiresAt ? (
+            <p className="text-xs text-muted-foreground">
+              Expires at {new Date(expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={() => void copyBridgeURL()} disabled={!bridgeUrl}>
+              <Copy aria-hidden />
+              {copied ? "Copied" : "Copy"}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => void startBridge()}>
+              <RefreshCw aria-hidden />
+              New QR
+            </Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 

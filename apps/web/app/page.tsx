@@ -178,9 +178,9 @@ export default function Home() {
       </Show>
 
       <Show when="signed-in">
-        <main className="min-h-screen px-4 py-4 sm:px-6">
-          <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-7xl flex-col gap-4">
-            <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <main className="h-dvh max-h-dvh overflow-hidden px-4 py-4 sm:px-6">
+          <div className="mx-auto grid h-full max-w-[1680px] grid-rows-[auto_minmax(0,1fr)] gap-4">
+            <header className="flex min-h-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h1 className="truncate text-2xl font-semibold tracking-tight">Moodle</h1>
@@ -203,7 +203,7 @@ export default function Home() {
             {error ? <Alert>{error}</Alert> : null}
 
             {needsConnection ? (
-              <section className="grid flex-1 place-items-center py-8">
+              <section className="min-h-0 overflow-auto py-4">
                 <MoodleConnectCard
                   onConnected={() => {
                     setNeedsConnection(false);
@@ -212,109 +212,109 @@ export default function Home() {
                 />
               </section>
             ) : (
-            <section className="grid min-h-0 flex-1 gap-4 lg:h-[calc(100vh-6rem)] lg:grid-cols-[340px_minmax(0,1fr)]">
-              <Card className="flex min-h-[420px] flex-col overflow-hidden">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Courses</CardTitle>
-                  <div className="relative">
-                    <Search
-                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-                      aria-hidden
-                    />
-                    <Input
-                      className="pl-11"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder="Search courses"
-                    />
+              <section className="grid min-h-0 gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+                <aside className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
+                  <div className="flex flex-col gap-3 px-5 py-5">
+                    <h2 className="text-base font-semibold tracking-tight">Courses</h2>
+                    <div className="relative">
+                      <Search
+                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+                        aria-hidden
+                      />
+                      <Input
+                        className="pl-11"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder="Search courses"
+                      />
+                    </div>
                   </div>
-                </CardHeader>
-                <CardContent className="min-h-0 flex-1 overflow-auto px-3 pb-3">
-                  {loading ? (
-                    <LoadingRows />
-                  ) : filteredCourses.length === 0 ? (
-                    <EmptyState title="No courses found" description="Try a different search." />
-                  ) : (
-                    <div className="space-y-1">
-                      {filteredCourses.map((course) => {
-                        const active = String(course.id) === selectedCourseId;
-                        return (
-                          <button
-                            key={course.id}
-                            className={cn(
-                              "w-full rounded-2xl px-3 py-3 text-left transition-colors",
-                              active
-                                ? "bg-primary text-primary-foreground"
-                                : "hover:bg-accent hover:text-accent-foreground",
-                            )}
-                            type="button"
-                            onClick={() => void loadMaterials(String(course.id))}
-                          >
-                            <span className="line-clamp-2 block text-sm font-medium leading-5">
-                              {courseTitle(course)}
-                            </span>
-                            <span
+                  <div className="min-h-0 flex-1 overflow-auto px-3 pb-4">
+                    {loading ? (
+                      <LoadingRows />
+                    ) : filteredCourses.length === 0 ? (
+                      <EmptyState title="No courses found" description="Try a different search." />
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        {filteredCourses.map((course) => {
+                          const active = String(course.id) === selectedCourseId;
+                          return (
+                            <button
+                              key={course.id}
                               className={cn(
-                                "mt-1 block truncate text-xs",
-                                active ? "text-primary-foreground/70" : "text-muted-foreground",
+                                "w-full rounded-2xl px-3 py-3 text-left transition-colors",
+                                active
+                                  ? "bg-primary text-primary-foreground"
+                                  : "hover:bg-accent hover:text-accent-foreground",
                               )}
+                              type="button"
+                              onClick={() => void loadMaterials(String(course.id))}
                             >
-                              {courseSubtitle(course)}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                              <span className="line-clamp-2 block text-sm font-medium leading-5">
+                                {courseTitle(course)}
+                              </span>
+                              <span
+                                className={cn(
+                                  "mt-1 block truncate text-xs",
+                                  active ? "text-primary-foreground/70" : "text-muted-foreground",
+                                )}
+                              >
+                                {courseSubtitle(course)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </aside>
 
-              <Card className="flex min-h-[520px] flex-col overflow-hidden">
-                <CardHeader className="gap-4 pb-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <CardDescription>Selected course</CardDescription>
-                    <CardTitle className="mt-1 line-clamp-2">
-                      {selectedCourse ? courseTitle(selectedCourse) : "No course selected"}
-                    </CardTitle>
-                    <p className="mt-1 truncate text-sm text-muted-foreground">
-                      {selectedCourse ? courseSubtitle(selectedCourse) : "Choose a course to load materials."}
-                    </p>
+                <section className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
+                  <div className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-sm text-muted-foreground">Selected course</p>
+                      <h2 className="mt-1 line-clamp-2 text-xl font-semibold tracking-tight">
+                        {selectedCourse ? courseTitle(selectedCourse) : "No course selected"}
+                      </h2>
+                      <p className="mt-1 truncate text-sm text-muted-foreground">
+                        {selectedCourse ? courseSubtitle(selectedCourse) : "Choose a course to load materials."}
+                      </p>
+                    </div>
+
+                    {selectedCourse?.viewUrl ? (
+                      <Button asChild variant="secondary">
+                        <a href={selectedCourse.viewUrl} target="_blank" rel="noreferrer">
+                          Open Moodle <ExternalLink aria-hidden />
+                        </a>
+                      </Button>
+                    ) : null}
                   </div>
 
-                  {selectedCourse?.viewUrl ? (
-                    <Button asChild variant="secondary">
-                      <a href={selectedCourse.viewUrl} target="_blank" rel="noreferrer">
-                        Open Moodle <ExternalLink aria-hidden />
-                      </a>
-                    </Button>
-                  ) : null}
-                </CardHeader>
-
-                <CardContent className="min-h-0 flex-1 overflow-auto">
-                  {materialsLoading ? (
-                    <LoadingRows />
-                  ) : materials.length === 0 ? (
-                    <EmptyState
-                      title="No materials loaded"
-                      description="Pick a course on the left. Files, PDFs, links, and folders appear here."
-                    />
-                  ) : (
-                    <div className="space-y-6">
-                      {materialsBySection.map(([section, sectionMaterials]) => (
-                        <section key={section} className="space-y-2">
-                          <h2 className="px-1 text-sm font-medium text-muted-foreground">{section}</h2>
-                          <div className="space-y-2">
-                            {sectionMaterials.map((material) => (
-                              <MaterialRow key={material.id} material={material} />
-                            ))}
-                          </div>
-                        </section>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </section>
+                  <div className="min-h-0 flex-1 overflow-auto px-6 pb-6">
+                    {materialsLoading ? (
+                      <LoadingRows />
+                    ) : materials.length === 0 ? (
+                      <EmptyState
+                        title="No materials loaded"
+                        description="Pick a course on the left. Files, PDFs, links, and folders appear here."
+                      />
+                    ) : (
+                      <div className="flex flex-col gap-7">
+                        {materialsBySection.map(([section, sectionMaterials]) => (
+                          <section key={section} className="flex flex-col gap-2">
+                            <h2 className="px-1 text-sm font-medium text-muted-foreground">{section}</h2>
+                            <div className="flex flex-col gap-1">
+                              {sectionMaterials.map((material) => (
+                                <MaterialRow key={material.id} material={material} />
+                              ))}
+                            </div>
+                          </section>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              </section>
             )}
           </div>
         </main>
@@ -336,7 +336,7 @@ function SignedOutHome() {
             Sign in to open your private Moodle workspace.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="flex flex-col gap-3">
           <SignInButton mode="modal">
             <Button className="w-full" size="lg">
               Sign in <CheckCircle2 aria-hidden />
@@ -371,7 +371,7 @@ function FullPageLoading() {
 
 function LoadingRows() {
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       <Skeleton className="h-14" />
       <Skeleton className="h-14" />
       <Skeleton className="h-14" />
@@ -381,7 +381,7 @@ function LoadingRows() {
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="grid min-h-[260px] place-items-center rounded-2xl bg-muted px-6 text-center">
+    <div className="grid min-h-[260px] place-items-center px-6 text-center">
       <div>
         <FileText className="mx-auto mb-3 text-muted-foreground" aria-hidden />
         <p className="font-medium">{title}</p>
@@ -397,7 +397,7 @@ function MaterialRow({ material }: { material: Material }) {
 
   return (
     <a
-      className="group flex items-center justify-between gap-3 rounded-2xl bg-secondary px-4 py-3 transition-colors hover:bg-accent hover:text-accent-foreground"
+      className="group flex min-h-14 items-center justify-between gap-3 rounded-2xl px-3 py-2 transition-colors hover:bg-secondary hover:text-secondary-foreground"
       href={material.url ?? "#"}
       target="_blank"
       rel="noreferrer"
@@ -405,7 +405,7 @@ function MaterialRow({ material }: { material: Material }) {
       <span className="flex min-w-0 items-center gap-3">
         <span
           className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground",
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground",
             isPdf && "text-destructive",
           )}
         >
