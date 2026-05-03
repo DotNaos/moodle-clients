@@ -3,23 +3,31 @@
 import {
   CheckCircle2,
   ExternalLink,
-  FileText,
   Loader2,
   RefreshCw,
   Search,
   ShieldCheck,
 } from "lucide-react";
 import { Show, SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/nextjs";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { APIKeyMenu } from "@/components/api-key-menu";
+import { CourseThumbnail, EmptyState, LoadingRows, MaterialRow } from "@/components/dashboard-ui";
 import { MoodleConnectCard } from "@/components/moodle-connect-card";
+import type { Course, Material, User } from "@/lib/dashboard-data";
+import {
+  buildCategoryOptions,
+  courseCategoryKey,
+  courseSubtitle,
+  courseTitle,
+  normalizeCourses,
+  normalizeMaterials,
+} from "@/lib/dashboard-data";
 import { cn } from "@/lib/utils";
 
 const MOODLE_API_BASE_URL = "/api/moodle";
@@ -27,44 +35,20 @@ const MOODLE_SERVICES_URL =
   process.env.NEXT_PUBLIC_MOODLE_SERVICES_URL ??
   "https://moodle-services.os-home.net";
 
-type User = {
-  id: string;
-  displayName: string;
-  moodleSiteUrl: string;
-  moodleUserId: number;
-};
-
-type Course = {
-  id: number | string;
-  fullname?: string;
-  fullName?: string;
-  shortname?: string;
-  shortName?: string;
-  category?: string;
-  categoryName?: string;
-  viewUrl?: string;
-};
-
-type Material = {
-  id: string;
-  name: string;
-  url?: string;
-  type?: string;
-  sectionName?: string;
-  fileType?: string;
-};
-
 export default function Home() {
   const { isLoaded, isSignedIn } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
+  const [materialsByCourseId, setMaterialsByCourseId] = useState<Record<string, Material[]>>({});
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState("all");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [materialsLoading, setMaterialsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsConnection, setNeedsConnection] = useState(false);
+  const materialsRequestId = useRef(0);
 
   useEffect(() => {
     if (!isLoaded) {
@@ -75,7 +59,9 @@ export default function Home() {
       setUser(null);
       setCourses([]);
       setMaterials([]);
+      setMaterialsByCourseId({});
       setSelectedCourseId(null);
+      setSelectedCategory("all");
       setError(null);
       setNeedsConnection(false);
       return;
@@ -89,20 +75,27 @@ export default function Home() {
     [courses, selectedCourseId],
   );
 
+  const categoryOptions = useMemo(() => buildCategoryOptions(courses), [courses]);
+
   const filteredCourses = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
+    const categoryFiltered =
+      selectedCategory === "all"
+        ? courses
+        : courses.filter((course) => courseCategoryKey(course) === selectedCategory);
+
     if (!normalizedQuery) {
-      return courses;
+      return categoryFiltered;
     }
 
-    return courses.filter((course) =>
+    return categoryFiltered.filter((course) =>
       [courseTitle(course), courseSubtitle(course), course.category, course.categoryName]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
         .includes(normalizedQuery),
     );
-  }, [courses, query]);
+  }, [courses, query, selectedCategory]);
 
   const materialsBySection = useMemo(() => {
     const groups = new Map<string, Material[]>();
@@ -114,7 +107,9 @@ export default function Home() {
   }, [materials]);
 
   async function loadDashboard() {
+    materialsRequestId.current += 1;
     setLoading(true);
+    setMaterialsLoading(false);
     setError(null);
 
     try {
@@ -123,21 +118,29 @@ export default function Home() {
         apiRequest<{ courses?: Course[] } | Course[]>("/courses"),
       ]);
       const courseList = normalizeCourses(coursesResponse);
-      const firstCourseId = String(courseList[0]?.id ?? "");
 
       setUser(userResponse);
       setCourses(courseList);
+      setMaterials([]);
+      setMaterialsByCourseId({});
       setNeedsConnection(false);
-      setSelectedCourseId((current) => current ?? firstCourseId);
-
-      if (firstCourseId) {
-        await loadMaterials(firstCourseId);
-      }
+      setSelectedCourseId((current) =>
+        current && courseList.some((course) => String(course.id) === current)
+          ? current
+          : null,
+      );
+      setSelectedCategory((current) =>
+        current === "all" || courseList.some((course) => courseCategoryKey(course) === current)
+          ? current
+          : "all",
+      );
     } catch (loadError) {
       setUser(null);
       setCourses([]);
       setMaterials([]);
+      setMaterialsByCourseId({});
       setSelectedCourseId(null);
+      setSelectedCategory("all");
       if (isMoodleNotConnected(loadError)) {
         setNeedsConnection(true);
         setError(null);
@@ -151,20 +154,44 @@ export default function Home() {
   }
 
   async function loadMaterials(courseId: string) {
+    const cachedMaterials = materialsByCourseId[courseId];
+    if (cachedMaterials) {
+      materialsRequestId.current += 1;
+      setMaterialsLoading(false);
+      setSelectedCourseId(courseId);
+      setMaterials(cachedMaterials);
+      return;
+    }
+
     setMaterialsLoading(true);
     setError(null);
     setSelectedCourseId(courseId);
+    const requestId = materialsRequestId.current + 1;
+    materialsRequestId.current = requestId;
 
     try {
       const response = await apiRequest<{ materials?: Material[] } | Material[]>(
         `/courses/${encodeURIComponent(courseId)}/materials`,
       );
-      setMaterials(normalizeMaterials(response));
+      const nextMaterials = normalizeMaterials(response);
+      if (materialsRequestId.current !== requestId) {
+        return;
+      }
+      setMaterials(nextMaterials);
+      setMaterialsByCourseId((current) => ({
+        ...current,
+        [courseId]: nextMaterials,
+      }));
     } catch (loadError) {
+      if (materialsRequestId.current !== requestId) {
+        return;
+      }
       setMaterials([]);
       setError(getErrorMessage(loadError));
     } finally {
-      setMaterialsLoading(false);
+      if (materialsRequestId.current === requestId) {
+        setMaterialsLoading(false);
+      }
     }
   }
 
@@ -217,7 +244,34 @@ export default function Home() {
               <section className="grid min-h-0 gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
                 <aside className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
                   <div className="flex flex-col gap-3 px-5 py-5">
-                    <h2 className="text-base font-semibold tracking-tight">Courses</h2>
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-base font-semibold tracking-tight">Courses</h2>
+                      <span className="text-xs text-muted-foreground">
+                        {filteredCourses.length} / {courses.length}
+                      </span>
+                    </div>
+                    <label className="sr-only" htmlFor="course-category">
+                      Course category
+                    </label>
+                    <select
+                      id="course-category"
+                      className="h-11 w-full rounded-full bg-secondary px-4 text-sm text-foreground outline-none transition-colors focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                      value={selectedCategory}
+                      onChange={(event) => {
+                        materialsRequestId.current += 1;
+                        setMaterialsLoading(false);
+                        setSelectedCategory(event.target.value);
+                        setSelectedCourseId(null);
+                        setMaterials([]);
+                      }}
+                    >
+                      <option value="all">All Moodle categories</option>
+                      {categoryOptions.map((category) => (
+                        <option key={category.key} value={category.key}>
+                          {category.label} ({category.count})
+                        </option>
+                      ))}
+                    </select>
                     <div className="relative">
                       <Search
                         className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -244,7 +298,7 @@ export default function Home() {
                             <button
                               key={course.id}
                               className={cn(
-                                "w-full rounded-2xl px-3 py-3 text-left transition-colors",
+                                "flex w-full items-center gap-3 rounded-3xl px-3 py-3 text-left transition-colors",
                                 active
                                   ? "bg-primary text-primary-foreground"
                                   : "hover:bg-accent hover:text-accent-foreground",
@@ -252,16 +306,19 @@ export default function Home() {
                               type="button"
                               onClick={() => void loadMaterials(String(course.id))}
                             >
-                              <span className="line-clamp-2 block text-sm font-medium leading-5">
-                                {courseTitle(course)}
-                              </span>
-                              <span
-                                className={cn(
-                                  "mt-1 block truncate text-xs",
-                                  active ? "text-primary-foreground/70" : "text-muted-foreground",
-                                )}
-                              >
-                                {courseSubtitle(course)}
+                              <CourseThumbnail course={course} active={active} />
+                              <span className="min-w-0 flex-1">
+                                <span className="line-clamp-2 block text-sm font-medium leading-5">
+                                  {courseTitle(course)}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "mt-1 block truncate text-xs",
+                                    active ? "text-primary-foreground/70" : "text-muted-foreground",
+                                  )}
+                                >
+                                  {courseSubtitle(course)}
+                                </span>
                               </span>
                             </button>
                           );
@@ -273,14 +330,17 @@ export default function Home() {
 
                 <section className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
                   <div className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <p className="text-sm text-muted-foreground">Selected course</p>
-                      <h2 className="mt-1 line-clamp-2 text-xl font-semibold tracking-tight">
-                        {selectedCourse ? courseTitle(selectedCourse) : "No course selected"}
-                      </h2>
-                      <p className="mt-1 truncate text-sm text-muted-foreground">
-                        {selectedCourse ? courseSubtitle(selectedCourse) : "Choose a course to load materials."}
-                      </p>
+                    <div className="flex min-w-0 items-start gap-4">
+                      {selectedCourse ? <CourseThumbnail course={selectedCourse} size="large" /> : null}
+                      <div className="min-w-0">
+                        <p className="text-sm text-muted-foreground">Selected course</p>
+                        <h2 className="mt-1 line-clamp-2 text-xl font-semibold tracking-tight">
+                          {selectedCourse ? courseTitle(selectedCourse) : "No course selected"}
+                        </h2>
+                        <p className="mt-1 truncate text-sm text-muted-foreground">
+                          {selectedCourse ? courseSubtitle(selectedCourse) : "Choose a course to load materials."}
+                        </p>
+                      </div>
                     </div>
 
                     {selectedCourse?.viewUrl ? (
@@ -298,7 +358,7 @@ export default function Home() {
                     ) : materials.length === 0 ? (
                       <EmptyState
                         title="No materials loaded"
-                        description="Pick a course on the left. Files, PDFs, links, and folders appear here."
+                        description="Pick a course on the left. Materials load only when you open a course."
                       />
                     ) : (
                       <div className="flex flex-col gap-7">
@@ -371,58 +431,6 @@ function FullPageLoading() {
   );
 }
 
-function LoadingRows() {
-  return (
-    <div className="flex flex-col gap-2">
-      <Skeleton className="h-14" />
-      <Skeleton className="h-14" />
-      <Skeleton className="h-14" />
-    </div>
-  );
-}
-
-function EmptyState({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="grid min-h-[260px] place-items-center px-6 text-center">
-      <div>
-        <FileText className="mx-auto mb-3 text-muted-foreground" aria-hidden />
-        <p className="font-medium">{title}</p>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-function MaterialRow({ material }: { material: Material }) {
-  const isPdf = material.fileType?.toLowerCase() === "pdf" || material.url?.toLowerCase().includes(".pdf");
-  const materialType = material.fileType?.toUpperCase() || material.type || "Resource";
-
-  return (
-    <a
-      className="group flex min-h-14 items-center justify-between gap-3 rounded-2xl px-3 py-2 transition-colors hover:bg-secondary hover:text-secondary-foreground"
-      href={material.url ?? "#"}
-      target="_blank"
-      rel="noreferrer"
-    >
-      <span className="flex min-w-0 items-center gap-3">
-        <span
-          className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground",
-            isPdf && "text-destructive",
-          )}
-        >
-          <FileText aria-hidden />
-        </span>
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium">{material.name}</span>
-          <span className="block truncate text-xs text-muted-foreground">{materialType}</span>
-        </span>
-      </span>
-      <ExternalLink className="shrink-0 text-muted-foreground transition-colors group-hover:text-current" aria-hidden />
-    </a>
-  );
-}
-
 async function apiRequest<T>(path: string): Promise<T> {
   const response = await fetch(`${MOODLE_API_BASE_URL}${path}`);
   const text = await response.text();
@@ -447,28 +455,6 @@ class APIRequestError extends Error {
 
 function isMoodleNotConnected(error: unknown): boolean {
   return error instanceof APIRequestError && error.status === 409 && error.code === "moodle_not_connected";
-}
-
-function normalizeCourses(response: { courses?: Course[] } | Course[]): Course[] {
-  if (Array.isArray(response)) {
-    return response;
-  }
-  return response.courses ?? [];
-}
-
-function normalizeMaterials(response: { materials?: Material[] } | Material[]): Material[] {
-  if (Array.isArray(response)) {
-    return response;
-  }
-  return response.materials ?? [];
-}
-
-function courseTitle(course: Course): string {
-  return course.fullname ?? course.fullName ?? "Untitled course";
-}
-
-function courseSubtitle(course: Course): string {
-  return course.shortname ?? course.shortName ?? course.category ?? course.categoryName ?? `Course ${course.id}`;
 }
 
 function getErrorMessage(error: unknown): string {
