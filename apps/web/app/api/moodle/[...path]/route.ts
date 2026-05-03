@@ -1,10 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
 
-import { decodeMoodleSession, MOODLE_SESSION_COOKIE } from "@/lib/moodle-session";
-
-const MOODLE_SERVICES_URL =
-  process.env.MOODLE_SERVICES_URL ?? "https://moodle-services.os-home.net";
+import { decodeMoodleSession, encodeMoodleSession, MOODLE_SESSION_COOKIE } from "@/lib/moodle-session";
+import {
+  getMoodleInternalSecret,
+  MOODLE_SERVICES_URL,
+  readServiceJSON,
+} from "@/lib/moodle-services";
 
 type RouteContext = {
   params: Promise<{ path?: string[] }> | { path?: string[] };
@@ -19,18 +21,16 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   const cookieStore = await cookies();
-  const session = decodeMoodleSession(
+  let session = decodeMoodleSession(
     cookieStore.get(MOODLE_SESSION_COOKIE)?.value,
     userId,
   );
   if (!session) {
-    return Response.json(
-      {
-        code: "moodle_not_connected",
-        error: "Connect your Moodle account first.",
-      },
-      { status: 409 },
-    );
+    const restored = await restoreMoodleSession(userId);
+    if (!restored.ok) {
+      return moodleNotConnectedResponse(restored.error);
+    }
+    session = restored.session;
   }
 
   const params = await context.params;
@@ -38,12 +38,24 @@ export async function GET(request: Request, context: RouteContext) {
   const search = new URL(request.url).search;
   const upstreamUrl = `${MOODLE_SERVICES_URL}/api/${upstreamPath}${search}`;
 
-  const upstreamResponse = await fetch(upstreamUrl, {
+  let upstreamResponse = await fetch(upstreamUrl, {
     cache: "no-store",
     headers: {
       "X-Moodle-App-Key": session.apiKey,
     },
   });
+
+  if (upstreamResponse.status === 401) {
+    const restored = await restoreMoodleSession(userId);
+    if (restored.ok) {
+      upstreamResponse = await fetch(upstreamUrl, {
+        cache: "no-store",
+        headers: {
+          "X-Moodle-App-Key": restored.session.apiKey,
+        },
+      });
+    }
+  }
 
   return new Response(await upstreamResponse.arrayBuffer(), {
     status: upstreamResponse.status,
@@ -52,4 +64,104 @@ export async function GET(request: Request, context: RouteContext) {
         upstreamResponse.headers.get("content-type") ?? "application/json",
     },
   });
+}
+
+export async function POST(_request: Request, context: RouteContext) {
+  const params = await context.params;
+  const route = params.path?.join("/") ?? "";
+  if (route !== "session/restore") {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const restored = await restoreMoodleSession(userId);
+  if (!restored.ok) {
+    return moodleNotConnectedResponse(restored.error);
+  }
+
+  return Response.json({
+    connected: true,
+    user: restored.user,
+    apiKeyRecord: restored.apiKeyRecord,
+  });
+}
+
+type SessionRestorePayload = {
+  user?: unknown;
+  apiKey?: string;
+  apiKeyRecord?: unknown;
+  error?: string;
+};
+
+type SessionRestoreResult =
+  | {
+      ok: true;
+      session: { clerkUserId: string; apiKey: string; createdAt: number };
+      user: unknown;
+      apiKeyRecord: unknown;
+    }
+  | { ok: false; error?: string };
+
+async function restoreMoodleSession(userId: string): Promise<SessionRestoreResult> {
+  let internalSecret: string;
+  try {
+    internalSecret = getMoodleInternalSecret();
+  } catch (error) {
+    return { ok: false, error: getErrorMessage(error) };
+  }
+
+  const upstreamResponse = await fetch(`${MOODLE_SERVICES_URL}/api/auth/clerk/session`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Clerk-User-Id": userId,
+      "X-Moodle-Internal-Secret": internalSecret,
+    },
+    body: "{}",
+  });
+
+  const payload = await readServiceJSON<SessionRestorePayload>(upstreamResponse);
+  if (!upstreamResponse.ok || !payload.apiKey) {
+    return { ok: false, error: payload.error };
+  }
+
+  const session = {
+    clerkUserId: userId,
+    apiKey: payload.apiKey,
+    createdAt: Date.now(),
+  };
+  const cookieStore = await cookies();
+  cookieStore.set(MOODLE_SESSION_COOKIE, encodeMoodleSession(session), {
+    httpOnly: true,
+    maxAge: 60 * 60 * 24 * 180,
+    path: "/",
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+
+  return {
+    ok: true,
+    session,
+    user: payload.user ?? null,
+    apiKeyRecord: payload.apiKeyRecord ?? null,
+  };
+}
+
+function moodleNotConnectedResponse(error?: string) {
+  return Response.json(
+    {
+      code: "moodle_not_connected",
+      error: error ?? "Connect your Moodle account first.",
+    },
+    { status: 409 },
+  );
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Something went wrong.";
 }
