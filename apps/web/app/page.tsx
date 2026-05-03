@@ -16,12 +16,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { APIKeyMenu } from "@/components/api-key-menu";
 import { CourseThumbnail, EmptyState, LoadingRows, MaterialRow } from "@/components/dashboard-ui";
 import { MoodleConnectCard } from "@/components/moodle-connect-card";
 import type { Course, Material, User } from "@/lib/dashboard-data";
 import {
-  buildCategoryOptions,
+  buildCategoryOptionGroups,
   courseCategoryKey,
   courseSubtitle,
   courseTitle,
@@ -75,7 +85,7 @@ export default function Home() {
     [courses, selectedCourseId],
   );
 
-  const categoryOptions = useMemo(() => buildCategoryOptions(courses), [courses]);
+  const categoryOptionGroups = useMemo(() => buildCategoryOptionGroups(courses), [courses]);
 
   const filteredCourses = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -250,28 +260,72 @@ export default function Home() {
                         {filteredCourses.length} / {courses.length}
                       </span>
                     </div>
-                    <label className="sr-only" htmlFor="course-category">
-                      Course category
-                    </label>
-                    <select
-                      id="course-category"
-                      className="h-11 w-full rounded-full bg-secondary px-4 text-sm text-foreground outline-none transition-colors focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                    <Select
                       value={selectedCategory}
-                      onChange={(event) => {
+                      onValueChange={(value) => {
                         materialsRequestId.current += 1;
                         setMaterialsLoading(false);
-                        setSelectedCategory(event.target.value);
+                        setSelectedCategory(value);
                         setSelectedCourseId(null);
                         setMaterials([]);
                       }}
                     >
-                      <option value="all">All Moodle categories</option>
-                      {categoryOptions.map((category) => (
-                        <option key={category.key} value={category.key}>
-                          {category.label} ({category.count})
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger
+                        aria-label="Course category"
+                        className="h-11 w-full rounded-full border-0 bg-secondary px-4 text-sm shadow-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <SelectValue placeholder="All Moodle categories" />
+                      </SelectTrigger>
+                      <SelectContent
+                        className="max-h-[min(520px,var(--radix-select-content-available-height))] rounded-3xl border-0 bg-card p-2 text-card-foreground shadow-xl"
+                        position="popper"
+                        sideOffset={6}
+                      >
+                        <SelectGroup>
+                          <SelectItem className="rounded-2xl px-3 py-2.5" value="all">
+                            All Moodle categories
+                          </SelectItem>
+                        </SelectGroup>
+                        {categoryOptionGroups.semesters.length > 0 ? (
+                          <>
+                            <SelectSeparator className="my-2" />
+                            <SelectGroup>
+                              <SelectLabel className="px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.14em]">
+                                Semesters
+                              </SelectLabel>
+                              {categoryOptionGroups.semesters.map((category) => (
+                                <SelectItem
+                                  key={category.key}
+                                  className="rounded-2xl px-3 py-2.5"
+                                  value={category.key}
+                                >
+                                  {category.label} ({category.count})
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </>
+                        ) : null}
+                        {categoryOptionGroups.other.length > 0 ? (
+                          <>
+                            <SelectSeparator className="my-2" />
+                            <SelectGroup>
+                              <SelectLabel className="px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.14em]">
+                                Other Moodle categories
+                              </SelectLabel>
+                              {categoryOptionGroups.other.map((category) => (
+                                <SelectItem
+                                  key={category.key}
+                                  className="rounded-2xl px-3 py-2.5"
+                                  value={category.key}
+                                >
+                                  {category.label} ({category.count})
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </>
+                        ) : null}
+                      </SelectContent>
+                    </Select>
                     <div className="relative">
                       <Search
                         className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"

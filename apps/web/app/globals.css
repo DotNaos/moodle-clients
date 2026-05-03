@@ -5,6 +5,8 @@
   --foreground: #18181b;
   --card: #ffffff;
   --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
   --primary: #18181b;
   --primary-foreground: #fafafa;
   --secondary: #ededeb;
@@ -16,6 +18,7 @@
   --destructive: #b42318;
   --destructive-foreground: #ffffff;
   --border: #dededb;
+  --input: #ededeb;
   --ring: #18181b;
 }
 
@@ -24,6 +27,8 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
@@ -35,6 +40,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
+  --color-input: var(--input);
   --color-ring: var(--ring);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
