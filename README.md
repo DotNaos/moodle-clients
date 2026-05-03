@@ -2,6 +2,13 @@
 
 User-facing Moodle clients for Project School.
 
+## TODO Before TestFlight
+
+- Rename the iOS app before any TestFlight or App Store review. The current
+  `Moodle Client` name and `com.dotnaos.moodleclient` bundle id are temporary
+  development names. Use a neutral name before Apple review to avoid Moodle
+  trademark/branding issues.
+
 ## Apps
 
 - `apps/mobile`: Expo mobile app for Moodle login, course browsing, and pairing.
