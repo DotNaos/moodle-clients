@@ -66,9 +66,12 @@ export async function GET(request: Request, context: RouteContext) {
   });
 }
 
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
   const params = await context.params;
   const route = params.path?.join("/") ?? "";
+  if (route === "keys") {
+    return createAPIKey(request);
+  }
   if (route !== "session/restore") {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
@@ -90,10 +93,60 @@ export async function POST(_request: Request, context: RouteContext) {
   });
 }
 
+async function createAPIKey(request: Request) {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const cookieStore = await cookies();
+  let session = decodeMoodleSession(cookieStore.get(MOODLE_SESSION_COOKIE)?.value, userId);
+  if (!session) {
+    const restored = await restoreMoodleSession(userId);
+    if (!restored.ok) {
+      return moodleNotConnectedResponse(restored.error);
+    }
+    session = restored.session;
+  }
+
+  const body = await request.text();
+  const upstreamResponse = await fetch(`${MOODLE_SERVICES_URL}/api/keys`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": request.headers.get("content-type") ?? "application/json",
+      "X-Moodle-App-Key": session.apiKey,
+    },
+    body: body || "{}",
+  });
+  const payload = await readServiceJSON<CreateAPIKeyPayload>(upstreamResponse);
+
+  if (upstreamResponse.ok && payload.apiKey) {
+    cookieStore.set(
+      MOODLE_SESSION_COOKIE,
+      encodeMoodleSession({
+        clerkUserId: userId,
+        apiKey: payload.apiKey,
+        createdAt: Date.now(),
+      }),
+      sessionCookieOptions(),
+    );
+  }
+
+  return Response.json(payload, { status: upstreamResponse.status || 502 });
+}
+
 type SessionRestorePayload = {
   user?: unknown;
   apiKey?: string;
   apiKeyRecord?: unknown;
+  error?: string;
+};
+
+type CreateAPIKeyPayload = {
+  apiKey?: string;
+  apiKeyRecord?: unknown;
+  revokedExisting?: boolean;
   error?: string;
 };
 
@@ -136,13 +189,7 @@ async function restoreMoodleSession(userId: string): Promise<SessionRestoreResul
     createdAt: Date.now(),
   };
   const cookieStore = await cookies();
-  cookieStore.set(MOODLE_SESSION_COOKIE, encodeMoodleSession(session), {
-    httpOnly: true,
-    maxAge: 60 * 60 * 24 * 180,
-    path: "/",
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-  });
+  cookieStore.set(MOODLE_SESSION_COOKIE, encodeMoodleSession(session), sessionCookieOptions());
 
   return {
     ok: true,
@@ -150,6 +197,16 @@ async function restoreMoodleSession(userId: string): Promise<SessionRestoreResul
     user: payload.user ?? null,
     apiKeyRecord: payload.apiKeyRecord ?? null,
   };
+}
+
+function sessionCookieOptions() {
+  return {
+    httpOnly: true,
+    maxAge: 60 * 60 * 24 * 180,
+    path: "/",
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  } as const;
 }
 
 function moodleNotConnectedResponse(error?: string) {

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { APIKeyMenu } from "@/components/api-key-menu";
 import { MoodleConnectCard } from "@/components/moodle-connect-card";
 import { cn } from "@/lib/utils";
 
@@ -196,6 +197,7 @@ export default function Home() {
                   {loading ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />}
                   Refresh
                 </Button>
+                <APIKeyMenu />
                 <UserButton />
               </div>
             </header>
