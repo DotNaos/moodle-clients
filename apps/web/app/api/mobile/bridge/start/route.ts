@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+
 import {
   getMoodleInternalSecret,
   MOODLE_SERVICES_URL,
@@ -7,15 +8,12 @@ import {
 
 export const runtime = "nodejs";
 
-type CompleteRequest = {
-  response_type?: string;
-  client_id?: string;
-  redirect_uri?: string;
-  scope?: string;
+type BridgeStartResponse = {
+  bridgeUrl?: string;
+  challenge?: string;
   state?: string;
-  code_challenge?: string;
-  code_challenge_method?: string;
-  resource?: string;
+  expiresAt?: string;
+  error?: string;
 };
 
 export async function POST(request: Request) {
@@ -31,12 +29,9 @@ export async function POST(request: Request) {
     return Response.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 
-  const body = (await request.json().catch(() => null)) as CompleteRequest | null;
-  if (!body?.client_id || !body.redirect_uri || !body.code_challenge) {
-    return Response.json({ error: "Missing OAuth request data." }, { status: 400 });
-  }
-
-  const upstreamResponse = await fetch(`${MOODLE_SERVICES_URL}/oauth/authorize/complete`, {
+  const origin = new URL(request.url).origin;
+  const endpoint = `${origin}/api/mobile/bridge/complete`;
+  const upstreamResponse = await fetch(`${MOODLE_SERVICES_URL}/api/auth/clerk/mobile/bridge/start`, {
     method: "POST",
     cache: "no-store",
     headers: {
@@ -44,21 +39,27 @@ export async function POST(request: Request) {
       "X-Clerk-User-Id": userId,
       "X-Moodle-Internal-Secret": internalSecret,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      origin,
+      endpoint,
+      appName: "Moodle Web",
+    }),
   });
 
-  const payload = await readServiceJSON<{
-    redirectUrl?: string;
-    error?: string;
-  }>(upstreamResponse);
-  if (!upstreamResponse.ok || !payload.redirectUrl) {
+  const payload = await readServiceJSON<BridgeStartResponse>(upstreamResponse);
+  if (!upstreamResponse.ok || !payload.bridgeUrl || !payload.challenge) {
     return Response.json(
-      { error: payload.error ?? "Could not authorize ChatGPT." },
+      { error: payload.error ?? "Could not create a mobile bridge request." },
       { status: upstreamResponse.status || 502 },
     );
   }
 
-  return Response.json({ redirectUrl: payload.redirectUrl });
+  return Response.json({
+    bridgeUrl: payload.bridgeUrl,
+    challenge: payload.challenge,
+    state: payload.state ?? "",
+    expiresAt: payload.expiresAt ?? "",
+  });
 }
 
 function getErrorMessage(error: unknown): string {

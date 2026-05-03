@@ -8,14 +8,16 @@ import { useSearchParams } from "next/navigation";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { MoodleConnectCard } from "@/components/moodle-connect-card";
 
-type CompletionState = "idle" | "authorizing" | "redirecting";
+type CompletionState = "idle" | "authorizing" | "redirecting" | "failed";
 
 export function OAuthAuthorizeClient() {
   const searchParams = useSearchParams();
   const { isLoaded, isSignedIn } = useAuth();
   const [state, setState] = useState<CompletionState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [needsConnection, setNeedsConnection] = useState(false);
 
   const requestBody = useMemo(
     () => ({
@@ -49,13 +51,19 @@ export function OAuthAuthorizeClient() {
           redirectUrl?: string;
           error?: string;
         };
+        if (response.status === 409) {
+          setNeedsConnection(true);
+          setState("failed");
+          setError(null);
+          return;
+        }
         if (!response.ok || !payload.redirectUrl) {
           throw new Error(payload.error ?? "Could not authorize ChatGPT.");
         }
         setState("redirecting");
         window.location.assign(payload.redirectUrl);
       } catch (completeError) {
-        setState("idle");
+        setState("failed");
         setError(getErrorMessage(completeError));
       }
     }
@@ -93,6 +101,33 @@ export function OAuthAuthorizeClient() {
             </SignUpButton>
           </CardContent>
         </Card>
+      </main>
+    );
+  }
+
+  if (needsConnection) {
+    return (
+      <main className="grid min-h-screen place-items-center px-4 py-10">
+        <div className="w-full max-w-xl space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                <ShieldCheck aria-hidden />
+              </div>
+              <CardTitle>Connect Moodle first</CardTitle>
+              <CardDescription>
+                ChatGPT can be authorized after this account has a Moodle connection.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+          <MoodleConnectCard
+            onConnected={() => {
+              setNeedsConnection(false);
+              setError(null);
+              setState("idle");
+            }}
+          />
+        </div>
       </main>
     );
   }

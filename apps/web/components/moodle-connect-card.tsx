@@ -1,143 +1,128 @@
 "use client";
 
-import jsQR from "jsqr";
-import { Camera, CheckCircle2, ImageUp, Loader2, QrCode, TextCursorInput, X } from "lucide-react";
-import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { CheckCircle2, Copy, Loader2, QrCode, RefreshCw, Smartphone } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 
 type MoodleConnectCardProps = {
   onConnected: () => void;
 };
 
-type CameraState = "idle" | "starting" | "active";
+type BridgeStartResponse = {
+  bridgeUrl?: string;
+  challenge?: string;
+  expiresAt?: string;
+  error?: string;
+};
+
+type BridgeStatusResponse = {
+  status?: "pending" | "connected" | "expired";
+  error?: string;
+};
+
+type BridgeState = "starting" | "waiting" | "connected" | "failed";
 
 export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
-  const [qrValue, setQrValue] = useState("");
-  const [status, setStatus] = useState<string | null>(null);
+  const [state, setState] = useState<BridgeState>("starting");
+  const [bridgeUrl, setBridgeUrl] = useState("");
+  const [challenge, setChallenge] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [cameraState, setCameraState] = useState<CameraState>("idle");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const startBridge = useCallback(async () => {
+    setState("starting");
+    setBridgeUrl("");
+    setChallenge("");
+    setExpiresAt("");
+    setError(null);
+    setCopied(false);
+
+    try {
+      const response = await fetch("/api/mobile/bridge/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const payload = (await response.json().catch(() => ({}))) as BridgeStartResponse;
+      if (!response.ok || !payload.bridgeUrl || !payload.challenge) {
+        throw new Error(payload.error ?? "Could not create a mobile bridge QR.");
+      }
+      setBridgeUrl(payload.bridgeUrl);
+      setChallenge(payload.challenge);
+      setExpiresAt(payload.expiresAt ?? "");
+      setState("waiting");
+    } catch (startError) {
+      setState("failed");
+      setError(getErrorMessage(startError));
+    }
+  }, []);
 
   useEffect(() => {
-    if (cameraState !== "starting") {
+    void startBridge();
+  }, [startBridge]);
+
+  useEffect(() => {
+    if (state !== "waiting" || !challenge) {
       return;
     }
 
     let cancelled = false;
-    let animationFrame = 0;
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-
-    async function startCamera() {
+    const poll = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false,
+        const response = await fetch(`/api/mobile/bridge/status?challenge=${encodeURIComponent(challenge)}`, {
+          cache: "no-store",
         });
+        const payload = (await response.json().catch(() => ({}))) as BridgeStatusResponse;
         if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
           return;
         }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
+        if (response.status === 410 || payload.status === "expired") {
+          setState("failed");
+          setError("This bridge QR expired. Create a new one and scan it again.");
+          return;
         }
-
-        const scan = () => {
-          const video = videoRef.current;
-          if (!video || !context || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-            animationFrame = window.requestAnimationFrame(scan);
-            return;
-          }
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-          const result = jsQR(imageData.data, imageData.width, imageData.height);
-          if (result?.data) {
-            setQrValue(result.data);
-            stopCamera();
-            void submitQRCode(result.data);
-            return;
-          }
-          animationFrame = window.requestAnimationFrame(scan);
-        };
-        animationFrame = window.requestAnimationFrame(scan);
-      } catch (scanError) {
-        setCameraState("idle");
-        setError(getErrorMessage(scanError));
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Could not check the bridge status.");
+        }
+        if (payload.status === "connected") {
+          setState("connected");
+          setError(null);
+          onConnected();
+        }
+      } catch (pollError) {
+        if (!cancelled) {
+          setState("failed");
+          setError(getErrorMessage(pollError));
+        }
       }
-    }
+    };
 
-    void startCamera();
+    const interval = window.setInterval(() => {
+      void poll();
+    }, 2000);
+    void poll();
 
     return () => {
       cancelled = true;
-      window.cancelAnimationFrame(animationFrame);
-      stopCamera();
+      window.clearInterval(interval);
     };
-  }, [cameraState]);
+  }, [challenge, onConnected, state]);
 
-  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) {
+  async function copyBridgeURL() {
+    if (!bridgeUrl) {
       return;
     }
-    setError(null);
-    setStatus("Reading QR image");
     try {
-      const decoded = await decodeQRCodeFile(file);
-      setQrValue(decoded);
-      await submitQRCode(decoded);
-    } catch (decodeError) {
-      setStatus(null);
-      setError(getErrorMessage(decodeError));
+      await navigator.clipboard.writeText(bridgeUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch (copyError) {
+      setError(getErrorMessage(copyError));
     }
-  }
-
-  async function submitQRCode(value = qrValue) {
-    const qr = value.trim();
-    if (!qr) {
-      setError("Paste or scan the Moodle QR code first.");
-      return;
-    }
-
-    setBusy(true);
-    setError(null);
-    setStatus("Connecting Moodle");
-    try {
-      const response = await fetch("/api/moodle/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ qr }),
-      });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      if (!response.ok) {
-        throw new Error(payload.error ?? `Connection failed with ${response.status}`);
-      }
-      setStatus("Moodle connected");
-      onConnected();
-    } catch (connectError) {
-      setStatus(null);
-      setError(getErrorMessage(connectError));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function stopCamera() {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-    setCameraState("idle");
   }
 
   return (
@@ -148,81 +133,55 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
         </div>
         <CardTitle>Connect Moodle</CardTitle>
         <CardDescription>
-          Sign in to Moodle on your laptop, open the mobile app QR code there, then scan it here.
+          Open Moodle Client on your iPhone, scan this bridge QR, then approve sharing your Moodle login.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error ? <Alert>{error}</Alert> : null}
-        {status ? (
-          <div className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-3 text-sm text-muted-foreground">
-            {busy ? <Loader2 className="animate-spin" aria-hidden /> : <CheckCircle2 aria-hidden />}
-            {status}
-          </div>
-        ) : null}
 
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Button
-            className="h-12"
-            type="button"
-            onClick={() => setCameraState("starting")}
-            disabled={busy || cameraState !== "idle"}
-          >
-            {cameraState !== "idle" ? <Loader2 className="animate-spin" aria-hidden /> : <Camera aria-hidden />}
-            Scan with camera
-          </Button>
-          <Button
-            className="h-12"
-            type="button"
-            variant="secondary"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={busy}
-          >
-            <ImageUp aria-hidden />
-            Upload image
-          </Button>
-        </div>
-
-        <input
-          ref={fileInputRef}
-          className="hidden"
-          type="file"
-          accept="image/*"
-          onChange={handleFileChange}
-        />
-
-        {cameraState !== "idle" ? (
-          <div className="overflow-hidden rounded-[2rem] bg-primary p-2">
-            <div className="relative aspect-[4/3] overflow-hidden rounded-[1.5rem] bg-black">
-              <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
-              <Button
-                className="absolute right-3 top-3"
-                size="icon"
-                type="button"
-                variant="secondary"
-                onClick={stopCamera}
-              >
-                <X aria-hidden />
-                <span className="sr-only">Stop camera</span>
-              </Button>
+        <div className="rounded-3xl bg-muted p-4">
+          <div className="grid gap-4 sm:grid-cols-[220px_1fr] sm:items-center">
+            <div className="grid aspect-square place-items-center rounded-2xl bg-white p-4">
+              {state === "starting" ? (
+                <Loader2 className="size-10 animate-spin text-primary" aria-hidden />
+              ) : bridgeUrl ? (
+                <QRCodeSVG value={bridgeUrl} size={184} marginSize={1} />
+              ) : (
+                <QrCode className="size-10 text-muted-foreground" aria-hidden />
+              )}
             </div>
-          </div>
-        ) : null}
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium" htmlFor="qr-value">
-            QR code value
-          </label>
-          <div className="flex gap-2">
-            <Input
-              id="qr-value"
-              value={qrValue}
-              onChange={(event) => setQrValue(event.target.value)}
-              placeholder="moodlemobile://..."
-            />
-            <Button type="button" onClick={() => void submitQRCode()} disabled={busy}>
-              {busy ? <Loader2 className="animate-spin" aria-hidden /> : <TextCursorInput aria-hidden />}
-              Connect
-            </Button>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                {state === "connected" ? (
+                  <CheckCircle2 className="text-primary" aria-hidden />
+                ) : state === "waiting" ? (
+                  <Smartphone className="text-primary" aria-hidden />
+                ) : (
+                  <Loader2 className="animate-spin text-primary" aria-hidden />
+                )}
+                {getStatusLabel(state)}
+              </div>
+              <p className="text-sm leading-6 text-muted-foreground">
+                The QR only contains this website origin and a short-lived one-time challenge. Your Moodle token is sent
+                back only after you approve it on the phone.
+              </p>
+              {expiresAt ? (
+                <p className="text-xs text-muted-foreground">
+                  Expires at {new Date(expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" onClick={() => void copyBridgeURL()} disabled={!bridgeUrl}>
+                  <Copy aria-hidden />
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => void startBridge()}>
+                  <RefreshCw aria-hidden />
+                  New QR
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </CardContent>
@@ -230,23 +189,17 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
   );
 }
 
-async function decodeQRCodeFile(file: File): Promise<string> {
-  const image = await createImageBitmap(file);
-  const canvas = document.createElement("canvas");
-  canvas.width = image.width;
-  canvas.height = image.height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) {
-    throw new Error("Could not read the QR image.");
+function getStatusLabel(state: BridgeState): string {
+  switch (state) {
+    case "starting":
+      return "Creating bridge QR";
+    case "waiting":
+      return "Waiting for iPhone approval";
+    case "connected":
+      return "Moodle connected";
+    case "failed":
+      return "Bridge needs attention";
   }
-  context.drawImage(image, 0, 0);
-  image.close();
-  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-  const result = jsQR(imageData.data, imageData.width, imageData.height);
-  if (!result?.data) {
-    throw new Error("No QR code was found in that image.");
-  }
-  return result.data;
 }
 
 function getErrorMessage(error: unknown): string {
