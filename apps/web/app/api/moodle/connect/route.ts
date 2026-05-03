@@ -2,9 +2,11 @@ import { auth } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
 
 import { encodeMoodleSession, MOODLE_SESSION_COOKIE } from "@/lib/moodle-session";
-
-const MOODLE_SERVICES_URL =
-  process.env.MOODLE_SERVICES_URL ?? "https://moodle-services.os-home.net";
+import {
+  getMoodleInternalSecret,
+  MOODLE_SERVICES_URL,
+  readServiceJSON,
+} from "@/lib/moodle-services";
 
 export const runtime = "nodejs";
 
@@ -21,12 +23,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const internalSecret = process.env.MOODLE_WEB_INTERNAL_SECRET;
-  if (!internalSecret) {
-    return Response.json(
-      { error: "Moodle web connection secret is not configured." },
-      { status: 500 },
-    );
+  let internalSecret: string;
+  try {
+    internalSecret = getMoodleInternalSecret();
+  } catch (error) {
+    return Response.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 
   const body = (await request.json().catch(() => null)) as { qr?: unknown; name?: unknown } | null;
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
     body: JSON.stringify({ qr, name }),
   });
 
-  const payload = (await upstreamResponse.json().catch(() => ({}))) as QRExchangeResponse;
+  const payload = await readServiceJSON<QRExchangeResponse>(upstreamResponse);
   if (!upstreamResponse.ok || !payload.apiKey) {
     return Response.json(
       { error: payload.error ?? "Could not connect Moodle account." },
@@ -76,4 +77,8 @@ export async function POST(request: Request) {
     user: payload.user ?? null,
     apiKeyRecord: payload.apiKeyRecord ?? null,
   });
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Something went wrong.";
 }
