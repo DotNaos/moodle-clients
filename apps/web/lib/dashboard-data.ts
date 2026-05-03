@@ -26,6 +26,8 @@ export type Material = {
   type?: string;
   sectionName?: string;
   fileType?: string;
+  courseId?: string;
+  uploadedAt?: string;
 };
 
 export type CategoryOption = {
