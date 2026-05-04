@@ -30,6 +30,15 @@ export default async function handler(
   request: CodexRunRequest,
   response: CodexRunResponse,
 ): Promise<void> {
+  if (process.env.ENABLE_LEGACY_CODEX_RUN !== "1") {
+    response.setHeader("content-type", "application/json; charset=utf-8");
+    writeJson(response, 404, {
+      error:
+        "Legacy Codex endpoint is disabled. Use the signed-in Moodle web Codex route.",
+    });
+    return;
+  }
+
   if (request.method !== "POST") {
     response.setHeader("content-type", "application/json; charset=utf-8");
     writeJson(response, 405, { error: "Use POST to run Codex." });

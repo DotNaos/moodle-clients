@@ -2,6 +2,7 @@
 
 import {
   ArrowLeft,
+  Bot,
   CheckCircle2,
   ExternalLink,
   RefreshCw,
@@ -27,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { APIKeyMenu } from "@/components/api-key-menu";
+import { CodexPanel } from "@/components/codex-panel";
 import { CourseMainPanel } from "@/components/course-main-panel";
 import { CourseThumbnail, EmptyState, LoadingRows, MaterialRow } from "@/components/dashboard-ui";
 import { MoodleConnectCard } from "@/components/moodle-connect-card";
@@ -65,6 +67,7 @@ export default function Home() {
   const [materialsLoading, setMaterialsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsConnection, setNeedsConnection] = useState(false);
+  const [codexOpen, setCodexOpen] = useState(false);
   const materialsRequestId = useRef(0);
 
   useEffect(() => {
@@ -332,6 +335,14 @@ export default function Home() {
                   {loading || refreshing ? <Spinner aria-hidden /> : <RefreshCw aria-hidden />}
                   {refreshing ? "Updating" : "Refresh"}
                 </Button>
+                <Button
+                  variant={codexOpen ? "default" : "secondary"}
+                  onClick={() => setCodexOpen((current) => !current)}
+                  type="button"
+                >
+                  <Bot aria-hidden />
+                  Codex
+                </Button>
                 <APIKeyMenu />
                 <UserButton />
               </div>
@@ -349,7 +360,14 @@ export default function Home() {
                 />
               </section>
             ) : (
-              <section className="grid min-h-0 gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+              <section
+                className={cn(
+                  "grid min-h-0 gap-4",
+                  codexOpen
+                    ? "lg:grid-cols-[380px_minmax(0,1fr)_420px]"
+                    : "lg:grid-cols-[380px_minmax(0,1fr)]",
+                )}
+              >
                 <aside className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
                   <div className="flex flex-col gap-3 px-5 py-5">
                     <div className="flex items-center justify-between gap-3">
@@ -557,6 +575,15 @@ export default function Home() {
                 </aside>
 
                 <CourseMainPanel course={selectedCourse} courseId={selectedCourseId} material={selectedMaterial} />
+                {codexOpen ? (
+                  <CodexPanel
+                    courses={courses}
+                    materials={materials}
+                    selectedCourse={selectedCourse}
+                    selectedMaterial={selectedMaterial}
+                    user={user}
+                  />
+                ) : null}
               </section>
             )}
           </div>
