@@ -41,6 +41,12 @@ export type CategoryOptionGroups = {
   other: CategoryOption[];
 };
 
+export type CourseGroup = {
+  key: string;
+  label: string;
+  courses: Course[];
+};
+
 export function normalizeCourses(response: { courses?: Course[] } | Course[]): Course[] {
   if (Array.isArray(response)) {
     return response;
@@ -87,6 +93,25 @@ export function buildCategoryOptionGroups(courses: Course[]): CategoryOptionGrou
   return { semesters, other };
 }
 
+export function buildCourseGroups(courses: Course[]): CourseGroup[] {
+  const categoryGroups = buildCategoryOptionGroups(courses);
+  const orderedCategories = [...categoryGroups.semesters, ...categoryGroups.other];
+  const coursesByCategory = new Map<string, Course[]>();
+
+  for (const course of courses) {
+    const key = courseCategoryKey(course);
+    coursesByCategory.set(key, [...(coursesByCategory.get(key) ?? []), course]);
+  }
+
+  return orderedCategories
+    .map((category) => ({
+      key: category.key,
+      label: category.label,
+      courses: (coursesByCategory.get(category.key) ?? []).sort(compareCourses),
+    }))
+    .filter((group) => group.courses.length > 0);
+}
+
 export function courseCategoryKey(course: Course): string {
   return courseCategoryLabel(course).toLowerCase();
 }
@@ -106,6 +131,13 @@ export function courseSubtitle(course: Course): string {
 export function courseImageUrl(course: Course): string | null {
   const value = course.heroImage ?? course.courseImage ?? course.courseimage;
   return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function compareCourses(left: Course, right: Course): number {
+  return courseTitle(left).localeCompare(courseTitle(right), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
 }
 
 function compareCategoryLabels(left: CategoryOption, right: CategoryOption): number {

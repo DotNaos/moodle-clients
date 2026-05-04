@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { Material } from "@/lib/dashboard-data";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 
 type MaterialTextResponse = {
@@ -25,12 +26,18 @@ export function FileViewer({
 }) {
   const [text, setText] = useState("");
   const [loadingText, setLoadingText] = useState(false);
+  const [loadingPdf, setLoadingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const materialKind = useMemo(() => getMaterialKind(material), [material]);
+  const pdfUrl = useMemo(
+    () => (courseId && material && materialKind === "pdf" ? pdfPreviewUrl(courseId, material.id) : ""),
+    [courseId, material, materialKind],
+  );
 
   useEffect(() => {
     setText("");
     setError(null);
+    setLoadingPdf(Boolean(courseId && material && materialKind === "pdf"));
 
     if (!courseId || !material || materialKind === "pdf") {
       setLoadingText(false);
@@ -64,7 +71,7 @@ export function FileViewer({
 
   if (!material || !courseId) {
     return (
-      <section className="hidden min-h-0 border-l border-border/60 xl:grid xl:place-items-center">
+      <section className="grid min-h-0 flex-1 place-items-center border-t border-border/60">
         <div className="max-w-xs text-center">
           <FileText className="mx-auto mb-3 text-muted-foreground" aria-hidden />
           <p className="font-medium">No file selected</p>
@@ -75,7 +82,7 @@ export function FileViewer({
   }
 
   return (
-    <section className="flex min-h-0 flex-col border-t border-border/60 xl:border-l xl:border-t-0">
+    <section className="flex min-h-0 flex-1 flex-col border-t border-border/60">
       <div className="flex min-h-16 items-center justify-between gap-3 px-5 py-4">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Preview</p>
@@ -92,11 +99,15 @@ export function FileViewer({
 
       <div className="min-h-0 flex-1 bg-muted">
         {materialKind === "pdf" ? (
-          <iframe
-            className="h-full min-h-[520px] w-full bg-card"
-            src={pdfPreviewUrl(courseId, material.id)}
-            title={material.name}
-          />
+          <div className="relative h-full min-h-[520px] bg-card">
+            {loadingPdf ? <PDFLoading /> : null}
+            <iframe
+              className="h-full min-h-[520px] w-full bg-card"
+              onLoad={() => setLoadingPdf(false)}
+              src={pdfUrl}
+              title={material.name}
+            />
+          </div>
         ) : loadingText ? (
           <PreviewLoading />
         ) : error ? (
@@ -126,6 +137,18 @@ function PreviewLoading() {
         <Spinner aria-hidden />
         Loading preview
       </div>
+    </div>
+  );
+}
+
+function PDFLoading() {
+  return (
+    <div className="absolute inset-0 z-10 bg-card p-5">
+      <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+        <Spinner aria-hidden />
+        Loading PDF
+      </div>
+      <Skeleton className="h-full min-h-[460px] rounded-2xl" />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeft,
   CheckCircle2,
   ExternalLink,
   RefreshCw,
@@ -34,6 +35,7 @@ import { readDashboardCache, writeDashboardCache } from "@/lib/dashboard-cache";
 import type { Course, Material, User } from "@/lib/dashboard-data";
 import {
   buildCategoryOptionGroups,
+  buildCourseGroups,
   courseCategoryKey,
   courseSubtitle,
   courseTitle,
@@ -55,6 +57,7 @@ export default function Home() {
   const [materialsByCourseId, setMaterialsByCourseId] = useState<Record<string, Material[]>>({});
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
+  const [navigationMode, setNavigationMode] = useState<"courses" | "materials">("courses");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -76,6 +79,7 @@ export default function Home() {
       setMaterialsByCourseId({});
       setSelectedCourseId(null);
       setSelectedMaterialId(null);
+      setNavigationMode("courses");
       setSelectedCategory("all");
       setError(null);
       setNeedsConnection(false);
@@ -94,6 +98,7 @@ export default function Home() {
       setSelectedCourseId(cached.selectedCourseId);
       setSelectedCategory(cached.selectedCategory);
       setSelectedMaterialId(cached.selectedMaterialId);
+      setNavigationMode(cached.selectedCourseId ? "materials" : "courses");
       setMaterials(cached.selectedCourseId ? cached.materialsByCourseId[cached.selectedCourseId] ?? [] : []);
       setNeedsConnection(false);
       setError(null);
@@ -133,6 +138,18 @@ export default function Home() {
         .includes(normalizedQuery),
     );
   }, [courses, query, selectedCategory]);
+
+  const courseListGroups = useMemo(() => {
+    if (selectedCategory === "all" && query.trim().length === 0) {
+      return buildCourseGroups(filteredCourses).map((group) => ({
+        key: group.key,
+        label: group.label,
+        courses: group.courses,
+      }));
+    }
+
+    return [{ key: "filtered-courses", label: "", courses: filteredCourses }];
+  }, [filteredCourses, query, selectedCategory]);
 
   const materialsBySection = useMemo(() => {
     const groups = new Map<string, Material[]>();
@@ -182,6 +199,7 @@ export default function Home() {
       setNeedsConnection(false);
       setSelectedCourseId(nextSelectedCourseId);
       setSelectedMaterialId(nextSelectedMaterialId);
+      setNavigationMode((current) => (nextSelectedCourseId && current === "materials" ? "materials" : "courses"));
       setSelectedCategory(nextSelectedCategory);
       writeDashboardCache(userId, {
         user: userResponse,
@@ -199,6 +217,7 @@ export default function Home() {
         setMaterialsByCourseId({});
         setSelectedCourseId(null);
         setSelectedMaterialId(null);
+        setNavigationMode("courses");
         setSelectedCategory("all");
       }
       if (isMoodleNotConnected(loadError)) {
@@ -226,6 +245,7 @@ export default function Home() {
       setSelectedCourseId(courseId);
       setMaterials(cachedMaterials);
       setSelectedMaterialId(nextSelectedMaterialId);
+      setNavigationMode("materials");
       if (userId) {
         writeDashboardCache(userId, {
           user,
@@ -242,6 +262,7 @@ export default function Home() {
     setMaterialsLoading(true);
     setError(null);
     setSelectedCourseId(courseId);
+    setNavigationMode("materials");
     const requestId = materialsRequestId.current + 1;
     materialsRequestId.current = requestId;
 
@@ -337,137 +358,212 @@ export default function Home() {
                 <aside className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
                   <div className="flex flex-col gap-3 px-5 py-5">
                     <div className="flex items-center justify-between gap-3">
-                      <h2 className="text-base font-semibold tracking-tight">Courses</h2>
+                      <h2 className="text-base font-semibold tracking-tight">
+                        {navigationMode === "courses" ? "Courses" : "Materials"}
+                      </h2>
                       <span className="text-xs text-muted-foreground">
-                        {filteredCourses.length} / {courses.length}
+                        {navigationMode === "courses" ? `${filteredCourses.length} / ${courses.length}` : materials.length}
                       </span>
                     </div>
-                    <Select
-                      value={selectedCategory}
-                      onValueChange={(value) => {
-                        materialsRequestId.current += 1;
-                        setMaterialsLoading(false);
-                        setSelectedCategory(value);
-                        setSelectedCourseId(null);
-                        setSelectedMaterialId(null);
-                        setMaterials([]);
-                      }}
-                    >
-                      <SelectTrigger
-                        aria-label="Course category"
-                        className="h-11 w-full rounded-full border-0 bg-secondary px-4 text-sm shadow-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <SelectValue placeholder="All Moodle categories" />
-                      </SelectTrigger>
-                      <SelectContent
-                        className="max-h-[min(520px,var(--radix-select-content-available-height))] rounded-3xl border-0 bg-card p-2 text-card-foreground shadow-xl"
-                        position="popper"
-                        sideOffset={6}
-                      >
-                        <SelectGroup>
-                          <SelectItem className="rounded-2xl px-3 py-2.5" value="all">
-                            All Moodle categories
-                          </SelectItem>
-                        </SelectGroup>
-                        {categoryOptionGroups.semesters.length > 0 ? (
-                          <>
-                            <SelectSeparator className="my-2" />
+                    {navigationMode === "courses" ? (
+                      <>
+                        <Select
+                          value={selectedCategory}
+                          onValueChange={(value) => {
+                            materialsRequestId.current += 1;
+                            setMaterialsLoading(false);
+                            setSelectedCategory(value);
+                            setSelectedCourseId(null);
+                            setSelectedMaterialId(null);
+                            setNavigationMode("courses");
+                            setMaterials([]);
+                          }}
+                        >
+                          <SelectTrigger
+                            aria-label="Course category"
+                            className="h-11 w-full rounded-full border-0 bg-secondary px-4 text-sm shadow-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <SelectValue placeholder="All Moodle categories" />
+                          </SelectTrigger>
+                          <SelectContent
+                            className="max-h-[min(520px,var(--radix-select-content-available-height))] rounded-3xl border-0 bg-card p-2 text-card-foreground shadow-xl"
+                            position="popper"
+                            sideOffset={6}
+                          >
                             <SelectGroup>
-                              <SelectLabel className="px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.14em]">
-                                Semesters
-                              </SelectLabel>
-                              {categoryOptionGroups.semesters.map((category) => (
-                                <SelectItem
-                                  key={category.key}
-                                  className="rounded-2xl px-3 py-2.5"
-                                  value={category.key}
-                                >
-                                  {category.label} ({category.count})
-                                </SelectItem>
-                              ))}
+                              <SelectItem className="rounded-2xl px-3 py-2.5" value="all">
+                                All Moodle categories
+                              </SelectItem>
                             </SelectGroup>
-                          </>
-                        ) : null}
-                        {categoryOptionGroups.other.length > 0 ? (
-                          <>
-                            <SelectSeparator className="my-2" />
-                            <SelectGroup>
-                              <SelectLabel className="px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.14em]">
-                                Other Moodle categories
-                              </SelectLabel>
-                              {categoryOptionGroups.other.map((category) => (
-                                <SelectItem
-                                  key={category.key}
-                                  className="rounded-2xl px-3 py-2.5"
-                                  value={category.key}
-                                >
-                                  {category.label} ({category.count})
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </>
-                        ) : null}
-                      </SelectContent>
-                    </Select>
-                    <div className="relative">
-                      <Search
-                        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-                        aria-hidden
-                      />
-                      <Input
-                        className="pl-11"
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        placeholder="Search courses"
-                      />
-                    </div>
+                            {categoryOptionGroups.semesters.length > 0 ? (
+                              <>
+                                <SelectSeparator className="my-2" />
+                                <SelectGroup>
+                                  <SelectLabel className="px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.14em]">
+                                    Semesters
+                                  </SelectLabel>
+                                  {categoryOptionGroups.semesters.map((category) => (
+                                    <SelectItem
+                                      key={category.key}
+                                      className="rounded-2xl px-3 py-2.5"
+                                      value={category.key}
+                                    >
+                                      {category.label} ({category.count})
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              </>
+                            ) : null}
+                            {categoryOptionGroups.other.length > 0 ? (
+                              <>
+                                <SelectSeparator className="my-2" />
+                                <SelectGroup>
+                                  <SelectLabel className="px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.14em]">
+                                    Other Moodle categories
+                                  </SelectLabel>
+                                  {categoryOptionGroups.other.map((category) => (
+                                    <SelectItem
+                                      key={category.key}
+                                      className="rounded-2xl px-3 py-2.5"
+                                      value={category.key}
+                                    >
+                                      {category.label} ({category.count})
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              </>
+                            ) : null}
+                          </SelectContent>
+                        </Select>
+                        <div className="relative">
+                          <Search
+                            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+                            aria-hidden
+                          />
+                          <Input
+                            className="pl-11"
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder="Search courses"
+                          />
+                        </div>
+                      </>
+                    ) : selectedCourse ? (
+                      <button
+                        className="flex items-center gap-3 rounded-3xl bg-secondary px-3 py-3 text-left"
+                        type="button"
+                        onClick={() => setNavigationMode("courses")}
+                      >
+                        <CourseThumbnail course={selectedCourse} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">{courseTitle(selectedCourse)}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{courseSubtitle(selectedCourse)}</span>
+                        </span>
+                      </button>
+                    ) : null}
                   </div>
                   <div className="min-h-0 flex-1 overflow-auto px-3 pb-4">
-                    {loading ? (
-                      <LoadingRows label="Loading courses" />
-                    ) : filteredCourses.length === 0 ? (
-                      <EmptyState title="No courses found" description="Try a different search." />
+                    {navigationMode === "courses" ? (
+                      loading ? (
+                        <LoadingRows label="Loading courses" />
+                      ) : filteredCourses.length === 0 ? (
+                        <EmptyState title="No courses found" description="Try a different search." />
+                      ) : (
+                        <div className="flex flex-col gap-6">
+                          {courseListGroups.map((group) => (
+                            <section key={group.key} className="flex flex-col gap-1">
+                              {group.label ? (
+                                <h3 className="px-3 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                                  {group.label}
+                                </h3>
+                              ) : null}
+                              {group.courses.map((course) => {
+                                const active = String(course.id) === selectedCourseId;
+                                return (
+                                  <button
+                                    key={course.id}
+                                    className={cn(
+                                      "flex w-full items-center gap-3 rounded-3xl px-3 py-3 text-left transition-colors",
+                                      active
+                                        ? "bg-primary text-primary-foreground"
+                                        : "hover:bg-accent hover:text-accent-foreground",
+                                    )}
+                                    type="button"
+                                    onClick={() => void loadMaterials(String(course.id))}
+                                  >
+                                    <CourseThumbnail course={course} active={active} />
+                                    <span className="min-w-0 flex-1">
+                                      <span className="line-clamp-2 block text-sm font-medium leading-5">
+                                        {courseTitle(course)}
+                                      </span>
+                                      <span
+                                        className={cn(
+                                          "mt-1 block truncate text-xs",
+                                          active ? "text-primary-foreground/70" : "text-muted-foreground",
+                                        )}
+                                      >
+                                        {courseSubtitle(course)}
+                                      </span>
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </section>
+                          ))}
+                        </div>
+                      )
                     ) : (
-                      <div className="flex flex-col gap-1">
-                        {filteredCourses.map((course) => {
-                          const active = String(course.id) === selectedCourseId;
-                          return (
-                            <button
-                              key={course.id}
-                              className={cn(
-                                "flex w-full items-center gap-3 rounded-3xl px-3 py-3 text-left transition-colors",
-                                active
-                                  ? "bg-primary text-primary-foreground"
-                                  : "hover:bg-accent hover:text-accent-foreground",
-                              )}
-                              type="button"
-                              onClick={() => void loadMaterials(String(course.id))}
-                            >
-                              <CourseThumbnail course={course} active={active} />
-                              <span className="min-w-0 flex-1">
-                                <span className="line-clamp-2 block text-sm font-medium leading-5">
-                                  {courseTitle(course)}
-                                </span>
-                                <span
-                                  className={cn(
-                                    "mt-1 block truncate text-xs",
-                                    active ? "text-primary-foreground/70" : "text-muted-foreground",
-                                  )}
-                                >
-                                  {courseSubtitle(course)}
-                                </span>
-                              </span>
-                            </button>
-                          );
-                        })}
+                      <div className="flex flex-col gap-4">
+                        <Button className="w-fit" type="button" variant="secondary" onClick={() => setNavigationMode("courses")}>
+                          <ArrowLeft aria-hidden />
+                          Courses
+                        </Button>
+                        {materialsLoading ? (
+                          <LoadingRows label="Loading materials" />
+                        ) : materials.length === 0 ? (
+                          <EmptyState
+                            title="No materials loaded"
+                            description="Go back and choose another course, or refresh Moodle."
+                          />
+                        ) : (
+                          <div className="flex flex-col gap-7">
+                            {materialsBySection.map(([section, sectionMaterials]) => (
+                              <section key={section} className="flex flex-col gap-2">
+                                <h2 className="px-1 text-sm font-medium text-muted-foreground">{section}</h2>
+                                <div className="flex flex-col gap-1">
+                                  {sectionMaterials.map((material) => (
+                                    <MaterialRow
+                                      key={material.id}
+                                      active={material.id === selectedMaterialId}
+                                      material={material}
+                                      onSelect={() => {
+                                        setSelectedMaterialId(material.id);
+                                        if (userId) {
+                                          writeDashboardCache(userId, {
+                                            user,
+                                            courses,
+                                            materialsByCourseId,
+                                            selectedCourseId,
+                                            selectedCategory,
+                                            selectedMaterialId: material.id,
+                                          });
+                                        }
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+                              </section>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
                 </aside>
 
-                <section className="grid min-h-0 overflow-hidden rounded-[2rem] bg-card xl:grid-cols-[430px_minmax(0,1fr)]">
+                <section className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
                   <div className="flex min-h-0 flex-col overflow-hidden">
-                    <div className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-start sm:justify-between xl:flex-col">
+                    <div className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex min-w-0 items-start gap-4">
                         {selectedCourse ? <CourseThumbnail course={selectedCourse} size="large" /> : null}
                         <div className="min-w-0">
@@ -489,49 +585,8 @@ export default function Home() {
                         </Button>
                       ) : null}
                     </div>
-
-                    <div className="min-h-0 flex-1 overflow-auto px-6 pb-6">
-                      {materialsLoading ? (
-                        <LoadingRows label="Loading materials" />
-                      ) : materials.length === 0 ? (
-                        <EmptyState
-                          title="No materials loaded"
-                          description="Pick a course on the left. Materials load only when you open a course."
-                        />
-                      ) : (
-                        <div className="flex flex-col gap-7">
-                          {materialsBySection.map(([section, sectionMaterials]) => (
-                            <section key={section} className="flex flex-col gap-2">
-                              <h2 className="px-1 text-sm font-medium text-muted-foreground">{section}</h2>
-                              <div className="flex flex-col gap-1">
-                                {sectionMaterials.map((material) => (
-                                  <MaterialRow
-                                    key={material.id}
-                                    active={material.id === selectedMaterialId}
-                                    material={material}
-                                    onSelect={() => {
-                                      setSelectedMaterialId(material.id);
-                                      if (userId) {
-                                        writeDashboardCache(userId, {
-                                          user,
-                                          courses,
-                                          materialsByCourseId,
-                                          selectedCourseId,
-                                          selectedCategory,
-                                          selectedMaterialId: material.id,
-                                        });
-                                      }
-                                    }}
-                                  />
-                                ))}
-                              </div>
-                            </section>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <FileViewer courseId={selectedCourseId} material={selectedMaterial} />
                   </div>
-                  <FileViewer courseId={selectedCourseId} material={selectedMaterial} />
                 </section>
               </section>
             )}
