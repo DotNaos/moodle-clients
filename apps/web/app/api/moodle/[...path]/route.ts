@@ -41,6 +41,7 @@ export async function GET(request: Request, context: RouteContext) {
   let upstreamResponse = await fetch(upstreamUrl, {
     cache: "no-store",
     headers: {
+      ...proxyRequestHeaders(request),
       "X-Moodle-App-Key": session.apiKey,
     },
   });
@@ -51,19 +52,39 @@ export async function GET(request: Request, context: RouteContext) {
       upstreamResponse = await fetch(upstreamUrl, {
         cache: "no-store",
         headers: {
+          ...proxyRequestHeaders(request),
           "X-Moodle-App-Key": restored.session.apiKey,
         },
       });
     }
   }
 
-  return new Response(await upstreamResponse.arrayBuffer(), {
+  const headers = new Headers();
+  for (const header of ["content-type", "content-disposition", "cache-control", "accept-ranges", "content-range"]) {
+    const value = upstreamResponse.headers.get(header);
+    if (value) {
+      headers.set(header, value);
+    }
+  }
+  if (!headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+
+  return new Response(upstreamResponse.body, {
     status: upstreamResponse.status,
-    headers: {
-      "content-type":
-        upstreamResponse.headers.get("content-type") ?? "application/json",
-    },
+    headers,
   });
+}
+
+function proxyRequestHeaders(request: Request): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const header of ["range", "if-range"]) {
+    const value = request.headers.get(header);
+    if (value) {
+      headers[header] = value;
+    }
+  }
+  return headers;
 }
 
 export async function POST(request: Request, context: RouteContext) {

@@ -69,6 +69,15 @@ export function FileViewer({
     return () => controller.abort();
   }, [courseId, material, materialKind]);
 
+  useEffect(() => {
+    if (!loadingPdf || !pdfUrl) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setLoadingPdf(false), 8000);
+    return () => window.clearTimeout(timeout);
+  }, [loadingPdf, pdfUrl]);
+
   if (!material || !courseId) {
     return (
       <section className="grid min-h-0 flex-1 place-items-center border-t border-border/60">
