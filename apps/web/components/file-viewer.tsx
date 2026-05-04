@@ -30,7 +30,7 @@ export function FileViewer({
   const [error, setError] = useState<string | null>(null);
   const materialKind = useMemo(() => getMaterialKind(material), [material]);
   const pdfUrl = useMemo(
-    () => (courseId && material && materialKind === "pdf" ? pdfPreviewUrl(courseId, material.id) : ""),
+    () => (courseId && material && materialKind === "pdf" ? pdfPreviewUrl(courseId, material) : ""),
     [courseId, material, materialKind],
   );
 
@@ -113,6 +113,7 @@ export function FileViewer({
             <iframe
               className="h-full min-h-[520px] w-full bg-card"
               onLoad={() => setLoadingPdf(false)}
+              referrerPolicy="no-referrer"
               src={pdfUrl}
               title={material.name}
             />
@@ -187,8 +188,17 @@ function getMaterialKind(material: Material | null): "pdf" | "text" {
   return value.includes("pdf") ? "pdf" : "text";
 }
 
-function pdfPreviewUrl(courseId: string, materialId: string): string {
-  return `/api/moodle/courses/${encodeURIComponent(courseId)}/materials/${encodeURIComponent(materialId)}/pdf#toolbar=1&navpanes=0`;
+function pdfPreviewUrl(courseId: string, material: Material): string {
+  const url = material.url?.trim();
+  if (url) {
+    return withPDFViewerFragment(url);
+  }
+  return `/api/moodle/courses/${encodeURIComponent(courseId)}/materials/${encodeURIComponent(material.id)}/pdf#toolbar=1&navpanes=0`;
+}
+
+function withPDFViewerFragment(url: string): string {
+  const [base] = url.split("#");
+  return `${base}#toolbar=1&navpanes=0`;
 }
 
 function textPreviewUrl(courseId: string, materialId: string): string {
