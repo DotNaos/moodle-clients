@@ -27,8 +27,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { APIKeyMenu } from "@/components/api-key-menu";
+import { CourseMainPanel } from "@/components/course-main-panel";
 import { CourseThumbnail, EmptyState, LoadingRows, MaterialRow } from "@/components/dashboard-ui";
-import { FileViewer } from "@/components/file-viewer";
 import { MoodleConnectCard } from "@/components/moodle-connect-card";
 import { Spinner } from "@/components/ui/spinner";
 import { readDashboardCache, writeDashboardCache } from "@/lib/dashboard-cache";
@@ -236,15 +236,11 @@ export default function Home() {
   async function loadMaterials(courseId: string) {
     const cachedMaterials = materialsByCourseId[courseId];
     if (cachedMaterials) {
-      const nextSelectedMaterialId =
-        selectedMaterialId && cachedMaterials.some((material) => material.id === selectedMaterialId)
-          ? selectedMaterialId
-          : cachedMaterials[0]?.id ?? null;
       materialsRequestId.current += 1;
       setMaterialsLoading(false);
       setSelectedCourseId(courseId);
       setMaterials(cachedMaterials);
-      setSelectedMaterialId(nextSelectedMaterialId);
+      setSelectedMaterialId(null);
       setNavigationMode("materials");
       if (userId) {
         writeDashboardCache(userId, {
@@ -253,7 +249,7 @@ export default function Home() {
           materialsByCourseId,
           selectedCourseId: courseId,
           selectedCategory,
-          selectedMaterialId: nextSelectedMaterialId,
+          selectedMaterialId: null,
         });
       }
       return;
@@ -274,9 +270,8 @@ export default function Home() {
       if (materialsRequestId.current !== requestId) {
         return;
       }
-      const nextSelectedMaterialId = nextMaterials[0]?.id ?? null;
       setMaterials(nextMaterials);
-      setSelectedMaterialId(nextSelectedMaterialId);
+      setSelectedMaterialId(null);
       setMaterialsByCourseId((current) => ({
         ...current,
         [courseId]: nextMaterials,
@@ -291,7 +286,7 @@ export default function Home() {
           },
           selectedCourseId: courseId,
           selectedCategory,
-          selectedMaterialId: nextSelectedMaterialId,
+          selectedMaterialId: null,
         });
       }
     } catch (loadError) {
@@ -561,33 +556,7 @@ export default function Home() {
                   </div>
                 </aside>
 
-                <section className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
-                  <div className="flex min-h-0 flex-col overflow-hidden">
-                    <div className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="flex min-w-0 items-start gap-4">
-                        {selectedCourse ? <CourseThumbnail course={selectedCourse} size="large" /> : null}
-                        <div className="min-w-0">
-                          <p className="text-sm text-muted-foreground">Selected course</p>
-                          <h2 className="mt-1 line-clamp-2 text-xl font-semibold tracking-tight">
-                            {selectedCourse ? courseTitle(selectedCourse) : "No course selected"}
-                          </h2>
-                          <p className="mt-1 truncate text-sm text-muted-foreground">
-                            {selectedCourse ? courseSubtitle(selectedCourse) : "Choose a course to load materials."}
-                          </p>
-                        </div>
-                      </div>
-
-                      {selectedCourse?.viewUrl ? (
-                        <Button asChild variant="secondary">
-                          <a href={selectedCourse.viewUrl} target="_blank" rel="noreferrer">
-                            Open Moodle <ExternalLink aria-hidden />
-                          </a>
-                        </Button>
-                      ) : null}
-                    </div>
-                    <FileViewer courseId={selectedCourseId} material={selectedMaterial} />
-                  </div>
-                </section>
+                <CourseMainPanel course={selectedCourse} courseId={selectedCourseId} material={selectedMaterial} />
               </section>
             )}
           </div>
