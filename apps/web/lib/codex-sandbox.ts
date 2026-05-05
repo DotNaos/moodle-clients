@@ -3,6 +3,7 @@ import { Sandbox } from "@vercel/sandbox";
 type CodexSandboxInput = {
   prompt: string;
   threadId: string | null;
+  authZipBase64?: string | null;
 };
 
 type CodexSandboxOutput = {
@@ -21,10 +22,28 @@ const CODEX_SDK_VERSION = "0.125.0";
 
 const runnerScript = `
 import { Codex } from "@openai/codex-sdk";
+import { unzipSync } from "fflate";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
 
 const payload = JSON.parse(await readFile("${RUNNER_DIR}/payload.json", "utf8"));
 await mkdir("${WORKSPACE}", { recursive: true });
+await mkdir("${CODEX_HOME}", { recursive: true });
+
+if (payload.authZipBase64) {
+  const entries = unzipSync(Buffer.from(payload.authZipBase64, "base64"));
+  await Promise.all(
+    Object.entries(entries).map(async ([name, data]) => {
+      const target = join("${CODEX_HOME}", name);
+      const relativeTarget = relative("${CODEX_HOME}", target);
+      if (relativeTarget.startsWith("..") || relativeTarget.startsWith("/")) {
+        throw new Error("Unsafe Codex auth archive path.");
+      }
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, data);
+    }),
+  );
+}
 
 const codex = new Codex({
   env: Object.fromEntries(
@@ -64,6 +83,7 @@ export async function runCodexInVercelSandbox(
     resources: { vcpus: 1 },
     env: {
       HOME: CODEX_HOME,
+      CODEX_HOME,
       npm_config_fund: "false",
       npm_config_audit: "false",
     },
@@ -91,12 +111,19 @@ export async function runCodexInVercelSandbox(
     await runSandboxCommand(
       sandbox,
       "npm",
-      ["install", "--no-audit", "--no-fund", "--silent", `@openai/codex-sdk@${CODEX_SDK_VERSION}`],
+      [
+        "install",
+        "--no-audit",
+        "--no-fund",
+        "--silent",
+        `@openai/codex-sdk@${CODEX_SDK_VERSION}`,
+        "fflate@0.8.2",
+      ],
       { cwd: RUNNER_DIR },
     );
     await runSandboxCommand(sandbox, "node", ["run-codex.mjs"], {
       cwd: RUNNER_DIR,
-      env: { HOME: CODEX_HOME },
+      env: { HOME: CODEX_HOME, CODEX_HOME },
     });
 
     const resultBuffer = await sandbox.readFileToBuffer({ path: `${RUNNER_DIR}/result.json` });
