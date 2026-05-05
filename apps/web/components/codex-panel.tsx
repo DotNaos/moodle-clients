@@ -1,7 +1,7 @@
 "use client";
 
-import { Bot, SendHorizontal, ShieldCheck } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { Bot, ExternalLink, SendHorizontal, ShieldCheck } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -29,6 +29,24 @@ type CodexResponse = {
   error?: string;
 };
 
+type CodexAuthStatus = "checking" | "missing" | "connecting" | "connected";
+
+type CodexAuthEvent =
+  | {
+      type: "device_code";
+      verificationUri: string;
+      userCode: string;
+      expiresInSeconds?: number;
+    }
+  | { type: "completed" }
+  | { type: "error"; error: string };
+
+type CodexDeviceCode = {
+  verificationUri: string;
+  userCode: string;
+  expiresInSeconds?: number;
+};
+
 export function CodexPanel({
   user,
   courses,
@@ -40,6 +58,8 @@ export function CodexPanel({
   const [threadId, setThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<CodexMessage[]>([]);
   const [running, setRunning] = useState(false);
+  const [authStatus, setAuthStatus] = useState<CodexAuthStatus>("checking");
+  const [deviceCode, setDeviceCode] = useState<CodexDeviceCode | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const contextSummary = useMemo(() => {
@@ -54,11 +74,119 @@ export function CodexPanel({
     return `${courses.length} courses`;
   }, [courses.length, selectedCourse, selectedMaterial]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkAuth() {
+      try {
+        const response = await fetch("/api/codex/auth", {
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => ({}))) as {
+          authenticated?: boolean;
+          error?: string;
+        };
+
+        if (cancelled) {
+          return;
+        }
+
+        setAuthStatus(payload.authenticated ? "connected" : "missing");
+        if (!response.ok) {
+          setError(payload.error ?? "Could not check Codex authentication.");
+        }
+      } catch (authError) {
+        if (cancelled) {
+          return;
+        }
+        setAuthStatus("missing");
+        setError(authError instanceof Error ? authError.message : "Could not check Codex authentication.");
+      }
+    }
+
+    void checkAuth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function connectCodex() {
+    if (authStatus === "checking" || authStatus === "connecting" || authStatus === "connected") {
+      return;
+    }
+
+    setAuthStatus("connecting");
+    setDeviceCode(null);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/codex/auth", {
+        method: "POST",
+        headers: { accept: "application/x-ndjson" },
+      });
+
+      if (!response.ok || !response.body) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error ?? "Could not start ChatGPT sign-in.");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let connected = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const event = parseAuthEvent(line);
+          if (!event) {
+            continue;
+          }
+
+          if (event.type === "device_code") {
+            setDeviceCode({
+              verificationUri: event.verificationUri,
+              userCode: event.userCode,
+              expiresInSeconds: event.expiresInSeconds,
+            });
+          } else if (event.type === "completed") {
+            connected = true;
+            setDeviceCode(null);
+            setAuthStatus("connected");
+          } else if (event.type === "error") {
+            throw new Error(event.error);
+          }
+        }
+      }
+
+      if (!connected) {
+        throw new Error("ChatGPT sign-in did not finish.");
+      }
+    } catch (authError) {
+      setAuthStatus("missing");
+      setError(authError instanceof Error ? authError.message : "Could not connect ChatGPT.");
+    }
+  }
+
   async function submitPrompt(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const text = prompt.trim();
     if (!text || running) {
+      return;
+    }
+
+    if (authStatus !== "connected") {
+      setError("Connect ChatGPT before asking Codex questions.");
       return;
     }
 
@@ -110,6 +238,17 @@ export function CodexPanel({
     }
   }
 
+  const isCodexConnected = authStatus === "connected";
+  const connectLabel =
+    authStatus === "checking"
+      ? "Checking..."
+      : authStatus === "connecting"
+        ? "Waiting..."
+        : isCodexConnected
+          ? "Connected"
+          : "Connect ChatGPT";
+  const composerDisabled = running || !isCodexConnected;
+
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
       <div className="flex items-start justify-between gap-3 px-5 py-5">
@@ -120,13 +259,37 @@ export function CodexPanel({
           </div>
           <p className="mt-1 truncate text-xs text-muted-foreground">{contextSummary}</p>
         </div>
-        <div className="flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-[0.7rem] font-medium text-muted-foreground">
-          <ShieldCheck aria-hidden className="size-3" />
-          ChatGPT auth
-        </div>
+        <Button
+          className="h-9 shrink-0 px-3 text-xs"
+          disabled={authStatus === "checking" || authStatus === "connecting" || isCodexConnected}
+          onClick={() => void connectCodex()}
+          type="button"
+          variant={isCodexConnected ? "secondary" : "default"}
+        >
+          <ShieldCheck aria-hidden className="size-3.5" />
+          {connectLabel}
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+        {deviceCode ? (
+          <div className="mb-3 rounded-[1.5rem] bg-secondary px-4 py-4 text-sm">
+            <p className="font-medium text-foreground">Finish ChatGPT sign-in</p>
+            <p className="mt-2 text-muted-foreground">
+              Open the Codex login page and enter this code:
+            </p>
+            <p className="mt-3 inline-flex rounded-full bg-background px-3 py-1.5 font-mono text-lg font-semibold tracking-wide text-foreground">
+              {deviceCode.userCode}
+            </p>
+            <Button asChild className="mt-3 h-9 px-3 text-xs" size="sm" variant="secondary">
+              <a href={deviceCode.verificationUri} target="_blank" rel="noreferrer">
+                <ExternalLink aria-hidden />
+                Open ChatGPT login
+              </a>
+            </Button>
+          </div>
+        ) : null}
+
         {messages.length === 0 ? (
           <div className="flex h-full min-h-60 flex-col justify-center rounded-[1.5rem] bg-secondary px-4 py-5 text-sm text-muted-foreground">
             <p className="font-medium text-foreground">Ask about your Moodle workspace.</p>
@@ -169,15 +332,28 @@ export function CodexPanel({
           className="min-h-28 w-full resize-none rounded-[1.5rem] bg-secondary px-4 py-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
-          placeholder="Ask about this course..."
+          disabled={composerDisabled}
+          placeholder={isCodexConnected ? "Ask about this course..." : "Connect ChatGPT before asking..."}
         />
-        <Button disabled={running || prompt.trim().length === 0} type="submit">
+        <Button disabled={composerDisabled || prompt.trim().length === 0} type="submit">
           {running ? <Spinner aria-hidden /> : <SendHorizontal aria-hidden />}
           Ask Codex
         </Button>
       </form>
     </aside>
   );
+}
+
+function parseAuthEvent(line: string): CodexAuthEvent | null {
+  if (!line.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(line) as CodexAuthEvent;
+  } catch {
+    return null;
+  }
 }
 
 function buildMoodleContext({

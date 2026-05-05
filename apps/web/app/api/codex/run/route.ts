@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 
 import { withMoodlePrompt } from "@/lib/codex-prompt";
 import { runCodexInVercelSandbox } from "@/lib/codex-sandbox";
+import { getCodexStateSnapshot } from "@/lib/codex-state";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -37,9 +38,18 @@ export async function POST(request: Request) {
   }
 
   try {
+    const authSnapshot = await getCodexStateSnapshot(userId, "codex-auth");
+    if (!authSnapshot?.zipBase64) {
+      return Response.json(
+        { error: "Connect ChatGPT before asking Codex questions." },
+        { status: 409 },
+      );
+    }
+
     const result = await runCodexInVercelSandbox({
       prompt: withMoodlePrompt(prompt, body.moodleContext),
       threadId,
+      authZipBase64: authSnapshot.zipBase64,
     });
 
     return Response.json(result);
