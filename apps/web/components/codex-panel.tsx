@@ -1,6 +1,13 @@
 "use client";
 
-import { Bot, ExternalLink, SendHorizontal, ShieldCheck } from "lucide-react";
+import {
+  Bot,
+  Check,
+  Copy,
+  ExternalLink,
+  SendHorizontal,
+  ShieldCheck,
+} from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -60,6 +67,7 @@ export function CodexPanel({
   const [running, setRunning] = useState(false);
   const [authStatus, setAuthStatus] = useState<CodexAuthStatus>("checking");
   const [deviceCode, setDeviceCode] = useState<CodexDeviceCode | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const contextSummary = useMemo(() => {
@@ -118,6 +126,7 @@ export function CodexPanel({
 
     setAuthStatus("connecting");
     setDeviceCode(null);
+    setCopiedCode(false);
     setError(null);
 
     try {
@@ -158,9 +167,11 @@ export function CodexPanel({
               userCode: event.userCode,
               expiresInSeconds: event.expiresInSeconds,
             });
+            setCopiedCode(false);
           } else if (event.type === "completed") {
             connected = true;
             setDeviceCode(null);
+            setCopiedCode(false);
             setAuthStatus("connected");
           } else if (event.type === "error") {
             throw new Error(event.error);
@@ -174,6 +185,20 @@ export function CodexPanel({
     } catch (authError) {
       setAuthStatus("missing");
       setError(authError instanceof Error ? authError.message : "Could not connect ChatGPT.");
+    }
+  }
+
+  async function copyDeviceCode() {
+    if (!deviceCode) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(deviceCode.userCode);
+      setCopiedCode(true);
+      window.setTimeout(() => setCopiedCode(false), 1800);
+    } catch {
+      setError("Could not copy the ChatGPT sign-in code.");
     }
   }
 
@@ -278,11 +303,23 @@ export function CodexPanel({
             <p className="mt-2 text-muted-foreground">
               Open the Codex login page and enter this code:
             </p>
-            <p className="mt-3 inline-flex rounded-full bg-background px-3 py-1.5 font-mono text-lg font-semibold tracking-wide text-foreground">
-              {deviceCode.userCode}
-            </p>
-            <Button asChild className="mt-3 h-9 px-3 text-xs" size="sm" variant="secondary">
-              <a href={deviceCode.verificationUri} target="_blank" rel="noreferrer">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <p className="inline-flex rounded-full bg-background px-3 py-1.5 font-mono text-lg font-semibold tracking-wide text-foreground">
+                {deviceCode.userCode}
+              </p>
+              <Button
+                className="h-9 px-3 text-xs"
+                onClick={() => void copyDeviceCode()}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                {copiedCode ? <Check aria-hidden /> : <Copy aria-hidden />}
+                {copiedCode ? "Copied" : "Copy code"}
+              </Button>
+            </div>
+            <Button asChild className="mt-3 h-9 px-3 text-xs" size="sm">
+              <a href={deviceCode.verificationUri} rel="noreferrer" target="_blank">
                 <ExternalLink aria-hidden />
                 Open ChatGPT login
               </a>
