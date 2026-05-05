@@ -22,6 +22,27 @@ import { join, relative } from "node:path";
 const root = "${CODEX_HOME}";
 const files = {};
 let totalBytes = 0;
+const maxFileBytes = 512 * 1024;
+const maxTotalBytes = 2 * 1024 * 1024;
+const ignoredSegments = new Set([
+  ".cache",
+  ".tmp",
+  "archived_sessions",
+  "cache",
+  "logs",
+  "node_modules",
+  "sessions",
+  "tmp",
+]);
+const persistedFilePattern = /^(?:\\.[^/]+-)?(?:auth|config|credentials|global-state|token|tokens|account|accounts)(\\.[^/]*)?$/i;
+
+function shouldSkipPath(relativePath) {
+  return relativePath.split("/").some((segment) => ignoredSegments.has(segment));
+}
+
+function shouldPersistFile(relativePath) {
+  return !relativePath.includes("/") && persistedFilePattern.test(relativePath);
+}
 
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -31,6 +52,9 @@ async function walk(dir) {
     if (!relativePath || relativePath.startsWith("..") || relativePath.startsWith("/")) {
       continue;
     }
+    if (shouldSkipPath(relativePath)) {
+      continue;
+    }
     if (entry.isDirectory()) {
       await walk(absolutePath);
       continue;
@@ -38,16 +62,25 @@ async function walk(dir) {
     if (!entry.isFile()) {
       continue;
     }
+    if (!shouldPersistFile(relativePath)) {
+      continue;
+    }
     const fileStat = await stat(absolutePath);
+    if (fileStat.size > maxFileBytes) {
+      continue;
+    }
     totalBytes += fileStat.size;
-    if (totalBytes > 7 * 1024 * 1024) {
-      throw new Error("Codex auth state is too large to persist.");
+    if (totalBytes > maxTotalBytes) {
+      throw new Error("Codex auth state is too large to persist after filtering.");
     }
     files[relativePath] = new Uint8Array(await readFile(absolutePath));
   }
 }
 
 await walk(root);
+if (Object.keys(files).length === 0) {
+  throw new Error("Codex sign-in finished without small auth files to persist.");
+}
 const zipped = zipSync(files, { level: 6 });
 await writeFile("${RUNNER_DIR}/codex-auth.zip.b64", Buffer.from(zipped).toString("base64"));
 `;
