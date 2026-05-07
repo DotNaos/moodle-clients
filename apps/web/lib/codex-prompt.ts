@@ -20,9 +20,11 @@ Moodle rules:
 
 UI control:
 - You may ask the Moodle dashboard to open a course, open a material in the main preview, or open the Moodle course page.
+- You may ask the Moodle dashboard to scroll the currently open PDF to a page with scroll_pdf_to_page.
 - Prefer opening items inside the dashboard when the user asks to show, open, switch to, or navigate to Moodle content.
 - Use exact IDs from the Moodle context when requesting UI actions.
 - Keep actions minimal. Do not request an action unless it directly helps the user.
+- If PDF context is present, use the extracted page text and attached page screenshots as the source for explaining the PDF.
 
 Response shape:
 - Return a concise answer plus optional UI actions.
@@ -52,5 +54,5 @@ function formatMoodleContext(context: unknown): string {
     return "No Moodle context is currently loaded.";
   }
 
-  return JSON.stringify(context, null, 2).slice(0, 60000);
+  return JSON.stringify(context, null, 2).slice(0, 120000);
 }

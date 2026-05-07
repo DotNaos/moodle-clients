@@ -7,20 +7,30 @@ import { FileViewer } from "@/components/file-viewer";
 import { Button } from "@/components/ui/button";
 import type { Course, Material } from "@/lib/dashboard-data";
 import { courseSubtitle, courseTitle } from "@/lib/dashboard-data";
+import type { PDFScrollCommand, PDFViewState } from "@/lib/pdf-context";
 
 export function CourseMainPanel({
   course,
   courseId,
   material,
+  pdfScrollCommand,
+  onPDFStateChange,
 }: {
   course: Course | null;
   courseId: string | null;
   material: Material | null;
+  pdfScrollCommand: PDFScrollCommand | null;
+  onPDFStateChange: (state: PDFViewState | null) => void;
 }) {
   if (material) {
     return (
       <section className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
-        <FileViewer courseId={courseId} material={material} />
+        <FileViewer
+          courseId={courseId}
+          material={material}
+          onPDFStateChange={onPDFStateChange}
+          pdfScrollCommand={pdfScrollCommand}
+        />
       </section>
     );
   }

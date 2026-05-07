@@ -8,6 +8,7 @@ import type {
 type CodexSandboxInput = {
   prompt: string;
   authZipBase64?: string | null;
+  images?: Array<{ name: string; dataURL: string }>;
   outputSchema?: unknown;
 };
 
@@ -45,6 +46,25 @@ if (payload.authZipBase64) {
   );
 }
 
+const input = [{ type: "text", text: payload.prompt }];
+if (Array.isArray(payload.images)) {
+  await mkdir("${WORKSPACE}/images", { recursive: true });
+  for (const [index, image] of payload.images.entries()) {
+    if (!image || typeof image.dataURL !== "string") {
+      continue;
+    }
+    const match = image.dataURL.match(/^data:image\\/(png|jpeg|jpg|webp);base64,(.+)$/);
+    if (!match) {
+      continue;
+    }
+    const extension = match[1] === "jpeg" ? "jpg" : match[1];
+    const safeName = typeof image.name === "string" ? image.name.replace(/[^a-zA-Z0-9_.-]/g, "_") : "pdf-page";
+    const imagePath = join("${WORKSPACE}/images", \`\${index + 1}-\${safeName}.\${extension}\`);
+    await writeFile(imagePath, Buffer.from(match[2], "base64"));
+    input.push({ type: "local_image", path: imagePath });
+  }
+}
+
 const codex = new Codex({
   env: Object.fromEntries(
     Object.entries(process.env).filter(([key, value]) => {
@@ -63,7 +83,7 @@ const threadOptions = {
 };
 
 const thread = codex.startThread(threadOptions);
-const streamed = await thread.runStreamed(payload.prompt, {
+const streamed = await thread.runStreamed(input, {
   outputSchema: payload.outputSchema,
 });
 
@@ -136,6 +156,9 @@ function sanitizeActions(actions) {
     }
     if (action.type === "open_moodle_course_page" && typeof action.courseId === "string") {
       return [{ type: "open_moodle_course_page", courseId: action.courseId, reason: stringOrUndefined(action.reason) }];
+    }
+    if (action.type === "scroll_pdf_to_page" && typeof action.page === "number") {
+      return [{ type: "scroll_pdf_to_page", page: Math.max(1, Math.floor(action.page)), reason: stringOrUndefined(action.reason) }];
     }
     return [];
   }).slice(0, 3);
