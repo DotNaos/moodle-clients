@@ -1,5 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
 
+import {
+  codexOutputSchema,
+  type CodexChatMessage,
+  type CodexStreamEvent,
+} from "@/lib/codex-actions";
 import { withMoodlePrompt } from "@/lib/codex-prompt";
 import { runCodexInVercelSandbox } from "@/lib/codex-sandbox";
 import { getCodexStateSnapshot } from "@/lib/codex-state";
@@ -9,8 +14,9 @@ export const maxDuration = 180;
 
 type CodexRunBody = {
   prompt?: unknown;
-  threadId?: unknown;
+  messages?: unknown;
   moodleContext?: unknown;
+  stream?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -28,10 +34,8 @@ export async function POST(request: Request) {
   }
 
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-  const threadId =
-    typeof body.threadId === "string" && body.threadId.trim().length > 0
-      ? body.threadId.trim()
-      : null;
+  const messages = parseMessages(body.messages);
+  const composedPrompt = withMoodlePrompt(prompt, body.moodleContext, messages);
 
   if (!prompt) {
     return Response.json({ error: "Prompt is required." }, { status: 400 });
@@ -46,16 +50,71 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await runCodexInVercelSandbox({
-      prompt: withMoodlePrompt(prompt, body.moodleContext),
-      threadId,
+    const input = {
+      prompt: composedPrompt,
       authZipBase64: authSnapshot.zipBase64,
-    });
+      outputSchema: codexOutputSchema,
+    };
+
+    if (request.headers.get("accept")?.includes("application/x-ndjson") || body.stream === true) {
+      return streamCodexRun(input);
+    }
+
+    const result = await runCodexInVercelSandbox(input);
 
     return Response.json(result);
   } catch (error) {
     return Response.json({ error: codexErrorMessage(error) }, { status: 500 });
   }
+}
+
+function streamCodexRun(input: Parameters<typeof runCodexInVercelSandbox>[0]) {
+  const stream = new TransformStream<Uint8Array>();
+  const writer = stream.writable.getWriter();
+
+  void runCodexInVercelSandbox(input, (event) => writeEvent(writer, event))
+    .catch((error) =>
+      writeEvent(writer, {
+        type: "error",
+        error: codexErrorMessage(error),
+      }),
+    )
+    .finally(() => {
+      void writer.close().catch(() => undefined);
+    });
+
+  return new Response(stream.readable, {
+    headers: {
+      "Cache-Control": "no-cache, no-transform",
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+    },
+  });
+}
+
+async function writeEvent(
+  writer: WritableStreamDefaultWriter<Uint8Array>,
+  event: CodexStreamEvent,
+) {
+  await writer.write(new TextEncoder().encode(`${JSON.stringify(event)}\n`));
+}
+
+function parseMessages(value: unknown): CodexChatMessage[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((message): CodexChatMessage[] => {
+    if (!message || typeof message !== "object") {
+      return [];
+    }
+    const role = "role" in message ? message.role : null;
+    const text = "text" in message ? message.text : null;
+    if ((role !== "user" && role !== "assistant") || typeof text !== "string") {
+      return [];
+    }
+    const trimmed = text.trim();
+    return trimmed ? [{ role, text: trimmed.slice(0, 8000) }] : [];
+  }).slice(-12);
 }
 
 function codexErrorMessage(error: unknown): string {

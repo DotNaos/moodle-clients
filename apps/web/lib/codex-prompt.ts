@@ -1,4 +1,10 @@
-export function withMoodlePrompt(prompt: string, moodleContext: unknown): string {
+import type { CodexChatMessage } from "@/lib/codex-actions";
+
+export function withMoodlePrompt(
+  prompt: string,
+  moodleContext: unknown,
+  messages: CodexChatMessage[] = [],
+): string {
   return `You are Codex inside the signed-in Moodle web dashboard.
 
 Authentication invariant:
@@ -12,11 +18,33 @@ Moodle rules:
 - Never reveal raw Moodle URLs, tokens, sessions, cookies, or secret identifiers.
 - Cite course and material names when they support the answer.
 
+UI control:
+- You may ask the Moodle dashboard to open a course, open a material in the main preview, or open the Moodle course page.
+- Prefer opening items inside the dashboard when the user asks to show, open, switch to, or navigate to Moodle content.
+- Use exact IDs from the Moodle context when requesting UI actions.
+- Keep actions minimal. Do not request an action unless it directly helps the user.
+
+Response shape:
+- Return a concise answer plus optional UI actions.
+- The host will convert your structured response into chat text and dashboard actions.
+
+Recent chat:
+${formatMessages(messages)}
+
 Moodle context:
 ${formatMoodleContext(moodleContext)}
 
 User question:
 ${prompt}`;
+}
+
+function formatMessages(messages: CodexChatMessage[]): string {
+  const recent = messages
+    .filter((message) => message.text.trim())
+    .slice(-10)
+    .map((message) => `${message.role}: ${message.text.trim()}`);
+
+  return recent.length > 0 ? recent.join("\n") : "No previous messages.";
 }
 
 function formatMoodleContext(context: unknown): string {

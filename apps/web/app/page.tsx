@@ -1,21 +1,13 @@
 "use client";
 
-import {
-  ArrowLeft,
-  Bot,
-  CheckCircle2,
-  ExternalLink,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-} from "lucide-react";
-import { Show, SignInButton, SignUpButton, UserButton, useAuth } from "@clerk/nextjs";
+import { ArrowLeft, Bot, RefreshCw, Search } from "lucide-react";
+import { Show, UserButton, useAuth } from "@clerk/nextjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { FullPageLoading, SignedOutHome } from "@/components/home-states";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -33,6 +25,7 @@ import { CourseMainPanel } from "@/components/course-main-panel";
 import { CourseThumbnail, EmptyState, LoadingRows, MaterialRow } from "@/components/dashboard-ui";
 import { MoodleConnectCard } from "@/components/moodle-connect-card";
 import { Spinner } from "@/components/ui/spinner";
+import type { MoodleUIAction } from "@/lib/codex-actions";
 import { readDashboardCache, writeDashboardCache } from "@/lib/dashboard-cache";
 import type { Course, Material, User } from "@/lib/dashboard-data";
 import {
@@ -47,9 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const MOODLE_API_BASE_URL = "/api/moodle";
-const MOODLE_SERVICES_URL =
-  process.env.NEXT_PUBLIC_MOODLE_SERVICES_URL ??
-  "https://moodle-services.os-home.net";
+const MOODLE_SERVICES_URL = process.env.NEXT_PUBLIC_MOODLE_SERVICES_URL ?? "https://moodle-services.os-home.net";
 
 export default function Home() {
   const { isLoaded, isSignedIn, userId } = useAuth();
@@ -236,7 +227,7 @@ export default function Home() {
     }
   }
 
-  async function loadMaterials(courseId: string) {
+  async function loadMaterials(courseId: string): Promise<Material[]> {
     const cachedMaterials = materialsByCourseId[courseId];
     if (cachedMaterials) {
       materialsRequestId.current += 1;
@@ -255,7 +246,7 @@ export default function Home() {
           selectedMaterialId: null,
         });
       }
-      return;
+      return cachedMaterials;
     }
 
     setMaterialsLoading(true);
@@ -271,7 +262,7 @@ export default function Home() {
       );
       const nextMaterials = normalizeMaterials(response);
       if (materialsRequestId.current !== requestId) {
-        return;
+        return [];
       }
       setMaterials(nextMaterials);
       setSelectedMaterialId(null);
@@ -292,18 +283,91 @@ export default function Home() {
           selectedMaterialId: null,
         });
       }
+      return nextMaterials;
     } catch (loadError) {
       if (materialsRequestId.current !== requestId) {
-        return;
+        return [];
       }
       setMaterials([]);
       setSelectedMaterialId(null);
       setError(getErrorMessage(loadError));
+      return [];
     } finally {
       if (materialsRequestId.current === requestId) {
         setMaterialsLoading(false);
       }
     }
+  }
+
+  async function applyCodexActions(actions: MoodleUIAction[]) {
+    for (const action of actions) {
+      if (action.type === "open_course") {
+        await openCourseFromCodex(action.courseId);
+      } else if (action.type === "open_material") {
+        await openMaterialFromCodex(action.materialId, action.courseId ?? null);
+      } else if (action.type === "open_moodle_course_page") {
+        openMoodleCoursePageFromCodex(action.courseId);
+      }
+    }
+  }
+
+  async function openCourseFromCodex(courseId: string) {
+    const course = courses.find((candidate) => String(candidate.id) === courseId);
+    if (!course) {
+      setError(`Codex tried to open an unknown course: ${courseId}`);
+      return;
+    }
+
+    await loadMaterials(courseId);
+  }
+
+  async function openMaterialFromCodex(materialId: string, courseId: string | null) {
+    const targetCourseId =
+      courseId ??
+      selectedCourseId ??
+      Object.entries(materialsByCourseId).find(([, cachedMaterials]) =>
+        cachedMaterials.some((material) => material.id === materialId),
+      )?.[0] ??
+      null;
+
+    const targetMaterials = targetCourseId && targetCourseId !== selectedCourseId ? await loadMaterials(targetCourseId) : materials;
+    const material = targetMaterials.find((candidate) => candidate.id === materialId);
+
+    if (!material) {
+      setError(`Codex tried to open an unknown material: ${materialId}`);
+      return;
+    }
+
+    const finalCourseId = targetCourseId ?? String(material.courseId ?? selectedCourseId ?? "");
+    if (finalCourseId) {
+      setSelectedCourseId(finalCourseId);
+      setNavigationMode("materials");
+    }
+    setSelectedMaterialId(material.id);
+
+    if (userId) {
+      const nextMaterialsByCourseId = finalCourseId
+        ? { ...materialsByCourseId, [finalCourseId]: targetMaterials }
+        : materialsByCourseId;
+      writeDashboardCache(userId, {
+        user,
+        courses,
+        materialsByCourseId: nextMaterialsByCourseId,
+        selectedCourseId: finalCourseId || selectedCourseId,
+        selectedCategory,
+        selectedMaterialId: material.id,
+      });
+    }
+  }
+
+  function openMoodleCoursePageFromCodex(courseId: string) {
+    const course = courses.find((candidate) => String(candidate.id) === courseId);
+    if (!course?.viewUrl) {
+      setError(`Codex tried to open a Moodle page without a known URL: ${courseId}`);
+      return;
+    }
+
+    window.open(course.viewUrl, "_blank", "noopener,noreferrer");
   }
 
   if (!isLoaded) {
@@ -313,7 +377,7 @@ export default function Home() {
   return (
     <>
       <Show when="signed-out">
-        <SignedOutHome />
+        <SignedOutHome moodleServicesUrl={MOODLE_SERVICES_URL} />
       </Show>
 
       <Show when="signed-in">
@@ -579,6 +643,7 @@ export default function Home() {
                   <CodexPanel
                     courses={courses}
                     materials={materials}
+                    onApplyActions={(actions) => void applyCodexActions(actions)}
                     selectedCourse={selectedCourse}
                     selectedMaterial={selectedMaterial}
                     user={user}
@@ -590,52 +655,6 @@ export default function Home() {
         </main>
       </Show>
     </>
-  );
-}
-
-function SignedOutHome() {
-  return (
-    <main className="grid min-h-screen place-items-center px-4 py-10">
-      <Card className="w-full max-w-md">
-        <CardHeader className="pb-4">
-          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <ShieldCheck aria-hidden />
-          </div>
-          <CardTitle>Moodle</CardTitle>
-          <CardDescription>
-            Sign in to open your private Moodle workspace.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <SignInButton mode="modal">
-            <Button className="w-full" size="lg">
-              Sign in <CheckCircle2 aria-hidden />
-            </Button>
-          </SignInButton>
-          <SignUpButton mode="modal">
-            <Button className="w-full" variant="secondary">
-              Create account
-            </Button>
-          </SignUpButton>
-          <Button asChild className="w-full" variant="ghost">
-            <a href={`${MOODLE_SERVICES_URL}/api/docs`} target="_blank" rel="noreferrer">
-              API docs <ExternalLink aria-hidden />
-            </a>
-          </Button>
-        </CardContent>
-      </Card>
-    </main>
-  );
-}
-
-function FullPageLoading() {
-  return (
-    <main className="grid min-h-screen place-items-center px-4 py-10">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner aria-hidden />
-        Loading
-      </div>
-    </main>
   );
 }
 

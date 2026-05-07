@@ -1,18 +1,14 @@
 import { Sandbox } from "@vercel/sandbox";
 
+import type {
+  CodexRunResult,
+  CodexStreamEvent,
+} from "@/lib/codex-actions";
+
 type CodexSandboxInput = {
   prompt: string;
-  threadId: string | null;
   authZipBase64?: string | null;
-};
-
-type CodexSandboxOutput = {
-  threadId: string | null;
-  finalResponse: string;
-};
-
-type CodexSandboxError = {
-  error?: string;
+  outputSchema?: unknown;
 };
 
 const CODEX_HOME = "/tmp/codex-home";
@@ -29,6 +25,10 @@ import { dirname, join, relative } from "node:path";
 const payload = JSON.parse(await readFile("${RUNNER_DIR}/payload.json", "utf8"));
 await mkdir("${WORKSPACE}", { recursive: true });
 await mkdir("${CODEX_HOME}", { recursive: true });
+
+function emit(event) {
+  process.stdout.write(JSON.stringify(event) + "\\n");
+}
 
 if (payload.authZipBase64) {
   const entries = unzipSync(Buffer.from(payload.authZipBase64, "base64"));
@@ -62,21 +62,94 @@ const threadOptions = {
   webSearchMode: "disabled",
 };
 
-const thread = payload.threadId
-  ? codex.resumeThread(payload.threadId, threadOptions)
-  : codex.startThread(threadOptions);
+const thread = codex.startThread(threadOptions);
+const streamed = await thread.runStreamed(payload.prompt, {
+  outputSchema: payload.outputSchema,
+});
 
-const result = await thread.run(payload.prompt);
+let finalAgentMessage = "";
+
+for await (const event of streamed.events) {
+  if (event.type === "thread.started") {
+    emit({ type: "thread", threadId: event.thread_id });
+  } else if (event.type === "item.started" || event.type === "item.updated" || event.type === "item.completed") {
+    const item = event.item;
+    if (item.type === "agent_message") {
+      finalAgentMessage = item.text || finalAgentMessage;
+      emit({ type: "message", text: finalAgentMessage });
+    } else if (item.type === "command_execution") {
+      emit({
+        type: "tool",
+        title: item.command || "Codex command",
+        status: item.status === "failed" ? "failed" : item.status === "completed" ? "completed" : "running",
+      });
+    } else if (item.type === "mcp_tool_call") {
+      emit({
+        type: "tool",
+        title: item.tool || "Moodle action",
+        status: item.status === "failed" ? "failed" : item.status === "completed" ? "completed" : "running",
+      });
+    }
+  } else if (event.type === "turn.failed") {
+    throw new Error(event.error.message || "Codex failed before returning a result.");
+  } else if (event.type === "error") {
+    throw new Error(event.message || "Codex failed before returning a result.");
+  }
+}
+
+const parsed = normalizeCodexResponse(finalAgentMessage);
+const result = { threadId: null, ...parsed };
+emit({ type: "done", ...result });
 
 await writeFile(
   "${RUNNER_DIR}/result.json",
-  JSON.stringify({ threadId: thread.id, finalResponse: result.finalResponse }),
+  JSON.stringify(result),
 );
+
+function normalizeCodexResponse(value) {
+  try {
+    const parsed = JSON.parse(value);
+    return {
+      finalResponse: typeof parsed.answer === "string" ? parsed.answer : value,
+      actions: Array.isArray(parsed.actions) ? sanitizeActions(parsed.actions) : [],
+    };
+  } catch {
+    return { finalResponse: value, actions: [] };
+  }
+}
+
+function sanitizeActions(actions) {
+  return actions.flatMap((action) => {
+    if (!action || typeof action !== "object") {
+      return [];
+    }
+    if (action.type === "open_course" && typeof action.courseId === "string") {
+      return [{ type: "open_course", courseId: action.courseId, reason: stringOrUndefined(action.reason) }];
+    }
+    if (action.type === "open_material" && typeof action.materialId === "string") {
+      return [{
+        type: "open_material",
+        materialId: action.materialId,
+        courseId: typeof action.courseId === "string" ? action.courseId : null,
+        reason: stringOrUndefined(action.reason),
+      }];
+    }
+    if (action.type === "open_moodle_course_page" && typeof action.courseId === "string") {
+      return [{ type: "open_moodle_course_page", courseId: action.courseId, reason: stringOrUndefined(action.reason) }];
+    }
+    return [];
+  }).slice(0, 3);
+}
+
+function stringOrUndefined(value) {
+  return typeof value === "string" ? value : undefined;
+}
 `;
 
 export async function runCodexInVercelSandbox(
   input: CodexSandboxInput,
-): Promise<CodexSandboxOutput> {
+  onEvent?: (event: CodexStreamEvent) => Promise<void> | void,
+): Promise<CodexRunResult> {
   const sandbox = await Sandbox.create({
     runtime: "node24",
     timeout: 120_000,
@@ -121,17 +194,27 @@ export async function runCodexInVercelSandbox(
       ],
       { cwd: RUNNER_DIR },
     );
-    await runSandboxCommand(sandbox, "node", ["run-codex.mjs"], {
+    const command = await sandbox.runCommand({
+      cmd: "node",
+      args: ["run-codex.mjs"],
       cwd: RUNNER_DIR,
       env: { HOME: CODEX_HOME, CODEX_HOME },
+      detached: Boolean(onEvent),
     });
+
+    await streamCommandEvents(command, onEvent);
+    const commandResult = "wait" in command ? await command.wait() : command;
+    if (commandResult.exitCode !== 0) {
+      const [stdout, stderr] = await Promise.all([commandResult.stdout(), commandResult.stderr()]);
+      throw new Error(compactCommandError("node", stdout, stderr));
+    }
 
     const resultBuffer = await sandbox.readFileToBuffer({ path: `${RUNNER_DIR}/result.json` });
     if (!resultBuffer) {
       throw new Error("Codex sandbox finished without writing a result.");
     }
 
-    const output = JSON.parse(resultBuffer.toString("utf8")) as CodexSandboxOutput;
+    const output = JSON.parse(resultBuffer.toString("utf8")) as CodexRunResult;
     if (!output.finalResponse) {
       throw new Error("Codex sandbox returned an empty response.");
     }
@@ -139,6 +222,44 @@ export async function runCodexInVercelSandbox(
     return output;
   } finally {
     await sandbox.stop({ blocking: false }).catch(() => undefined);
+  }
+}
+
+async function streamCommandEvents(
+  command: Awaited<ReturnType<Awaited<ReturnType<typeof Sandbox.create>>["runCommand"]>>,
+  onEvent?: (event: CodexStreamEvent) => Promise<void> | void,
+) {
+  if (!onEvent || !("logs" in command)) {
+    return;
+  }
+
+  let buffer = "";
+  for await (const log of command.logs()) {
+    buffer += log.data;
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      await emitParsedEvent(line, onEvent);
+    }
+  }
+  if (buffer.trim()) {
+    await emitParsedEvent(buffer, onEvent);
+  }
+}
+
+async function emitParsedEvent(
+  line: string,
+  onEvent: (event: CodexStreamEvent) => Promise<void> | void,
+) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("{")) {
+    return;
+  }
+
+  try {
+    await onEvent(JSON.parse(trimmed) as CodexStreamEvent);
+  } catch {
+    return;
   }
 }
 
