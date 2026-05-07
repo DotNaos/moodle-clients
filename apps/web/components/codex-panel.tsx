@@ -12,6 +12,11 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import type {
+  CodexChatMessage,
+  MoodleUIAction,
+} from "@/lib/codex-actions";
+import { readCodexStream } from "@/lib/codex-stream-client";
 import type { Course, Material, User } from "@/lib/dashboard-data";
 import { courseSubtitle, courseTitle } from "@/lib/dashboard-data";
 import { cn } from "@/lib/utils";
@@ -22,6 +27,7 @@ type CodexPanelProps = {
   selectedCourse: Course | null;
   materials: Material[];
   selectedMaterial: Material | null;
+  onApplyActions: (actions: MoodleUIAction[]) => void;
 };
 
 type CodexMessage = {
@@ -33,6 +39,7 @@ type CodexMessage = {
 type CodexResponse = {
   threadId?: string | null;
   finalResponse?: string;
+  actions?: MoodleUIAction[];
   error?: string;
 };
 
@@ -60,9 +67,9 @@ export function CodexPanel({
   selectedCourse,
   materials,
   selectedMaterial,
+  onApplyActions,
 }: CodexPanelProps) {
   const [prompt, setPrompt] = useState("");
-  const [threadId, setThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<CodexMessage[]>([]);
   const [running, setRunning] = useState(false);
   const [authStatus, setAuthStatus] = useState<CodexAuthStatus>("checking");
@@ -220,7 +227,17 @@ export function CodexPanel({
       role: "user",
       text,
     };
-    setMessages((current) => [...current, userMessage]);
+    const assistantMessageId = crypto.randomUUID();
+    const chatHistory = toChatHistory([...messages, userMessage]);
+    setMessages((current) => [
+      ...current,
+      userMessage,
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        text: "Thinking...",
+      },
+    ]);
     setPrompt("");
     setRunning(true);
     setError(null);
@@ -228,10 +245,14 @@ export function CodexPanel({
     try {
       const response = await fetch("/api/codex/run", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          accept: "application/x-ndjson",
+          "content-type": "application/json",
+        },
         body: JSON.stringify({
           prompt: text,
-          threadId,
+          messages: chatHistory,
+          stream: true,
           moodleContext: buildMoodleContext({
             user,
             courses,
@@ -241,22 +262,29 @@ export function CodexPanel({
           }),
         }),
       });
-      const payload = (await response.json().catch(() => ({}))) as CodexResponse;
 
-      if (!response.ok || !payload.finalResponse) {
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as CodexResponse;
         throw new Error(payload.error ?? `Codex failed with ${response.status}.`);
       }
 
-      setThreadId(payload.threadId ?? null);
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          text: payload.finalResponse ?? "",
-        },
-      ]);
+      const result = await readCodexStream(response, (event) => {
+        if (event.type === "message") {
+          updateAssistantMessage(assistantMessageId, displayCodexText(event.text));
+        } else if (event.type === "tool") {
+          updateAssistantMessage(
+            assistantMessageId,
+            event.status === "running" ? `Working: ${event.title}` : "Finishing...",
+          );
+        }
+      });
+
+      updateAssistantMessage(assistantMessageId, result.finalResponse);
+      if (result.actions.length > 0) {
+        onApplyActions(result.actions);
+      }
     } catch (submitError) {
+      setMessages((current) => current.filter((message) => message.id !== assistantMessageId));
       setError(submitError instanceof Error ? submitError.message : "Codex failed.");
     } finally {
       setRunning(false);
@@ -273,6 +301,19 @@ export function CodexPanel({
           ? "Connected"
           : "Connect ChatGPT";
   const composerDisabled = running || !isCodexConnected;
+
+  function updateAssistantMessage(messageId: string, text: string) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              text,
+            }
+          : message,
+      ),
+    );
+  }
 
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
@@ -399,7 +440,7 @@ function buildMoodleContext({
   selectedCourse,
   materials,
   selectedMaterial,
-}: CodexPanelProps) {
+}: Omit<CodexPanelProps, "onApplyActions">) {
   return {
     source: "moodle-web",
     user: user
@@ -435,4 +476,23 @@ function materialContext(material: Material) {
     courseId: material.courseId ?? null,
     uploadedAt: material.uploadedAt ?? null,
   };
+}
+
+function toChatHistory(messages: CodexMessage[]): CodexChatMessage[] {
+  return messages
+    .filter((message) => message.text.trim() && message.text !== "Thinking...")
+    .map((message) => ({
+      role: message.role,
+      text: message.text,
+    }))
+    .slice(-12);
+}
+
+function displayCodexText(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as { answer?: unknown };
+    return typeof parsed.answer === "string" ? parsed.answer : text;
+  } catch {
+    return text;
+  }
 }
