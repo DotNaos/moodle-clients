@@ -65,39 +65,26 @@ export const codexOutputSchema = {
       type: "array",
       description: "Optional Moodle dashboard UI actions to perform after the answer.",
       items: {
-        oneOf: [
-          {
-            type: "object",
-            additionalProperties: false,
-            required: ["type", "courseId"],
-            properties: {
-              type: { const: "open_course" },
-              courseId: { type: "string" },
-              reason: { type: "string" },
-            },
+        type: "object",
+        additionalProperties: false,
+        required: ["type", "courseId", "materialId", "reason"],
+        properties: {
+          type: {
+            type: "string",
+            enum: ["open_course", "open_material", "open_moodle_course_page"],
           },
-          {
-            type: "object",
-            additionalProperties: false,
-            required: ["type", "materialId"],
-            properties: {
-              type: { const: "open_material" },
-              materialId: { type: "string" },
-              courseId: { type: ["string", "null"] },
-              reason: { type: "string" },
-            },
+          courseId: {
+            type: ["string", "null"],
+            description: "Required for course actions; optional context for material actions.",
           },
-          {
-            type: "object",
-            additionalProperties: false,
-            required: ["type", "courseId"],
-            properties: {
-              type: { const: "open_moodle_course_page" },
-              courseId: { type: "string" },
-              reason: { type: "string" },
-            },
+          materialId: {
+            type: ["string", "null"],
+            description: "Required only when type is open_material.",
           },
-        ],
+          reason: {
+            type: ["string", "null"],
+          },
+        },
       },
     },
   },
