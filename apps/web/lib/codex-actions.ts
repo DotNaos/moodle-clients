@@ -19,6 +19,11 @@ export type MoodleUIAction =
       type: "open_moodle_course_page";
       courseId: string;
       reason?: string;
+    }
+  | {
+      type: "scroll_pdf_to_page";
+      page: number;
+      reason?: string;
     };
 
 export type CodexRunResult = {
@@ -67,11 +72,11 @@ export const codexOutputSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["type", "courseId", "materialId", "reason"],
+        required: ["type", "courseId", "materialId", "page", "reason"],
         properties: {
           type: {
             type: "string",
-            enum: ["open_course", "open_material", "open_moodle_course_page"],
+            enum: ["open_course", "open_material", "open_moodle_course_page", "scroll_pdf_to_page"],
           },
           courseId: {
             type: ["string", "null"],
@@ -80,6 +85,10 @@ export const codexOutputSchema = {
           materialId: {
             type: ["string", "null"],
             description: "Required only when type is open_material.",
+          },
+          page: {
+            type: ["number", "null"],
+            description: "Required only when type is scroll_pdf_to_page.",
           },
           reason: {
             type: ["string", "null"],

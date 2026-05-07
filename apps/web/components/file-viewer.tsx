@@ -6,8 +6,9 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { Material } from "@/lib/dashboard-data";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PDFDocumentViewer } from "@/components/pdf-document-viewer";
 import { Spinner } from "@/components/ui/spinner";
+import type { PDFScrollCommand, PDFViewState } from "@/lib/pdf-context";
 
 type MaterialTextResponse = {
   document?: {
@@ -20,13 +21,16 @@ type MaterialTextResponse = {
 export function FileViewer({
   courseId,
   material,
+  pdfScrollCommand,
+  onPDFStateChange,
 }: {
   courseId: string | null;
   material: Material | null;
+  pdfScrollCommand: PDFScrollCommand | null;
+  onPDFStateChange: (state: PDFViewState | null) => void;
 }) {
   const [text, setText] = useState("");
   const [loadingText, setLoadingText] = useState(false);
-  const [loadingPdf, setLoadingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const materialKind = useMemo(() => getMaterialKind(material), [material]);
   const pdfUrl = useMemo(
@@ -37,7 +41,6 @@ export function FileViewer({
   useEffect(() => {
     setText("");
     setError(null);
-    setLoadingPdf(Boolean(courseId && material && materialKind === "pdf"));
 
     if (!courseId || !material || materialKind === "pdf") {
       setLoadingText(false);
@@ -70,13 +73,10 @@ export function FileViewer({
   }, [courseId, material, materialKind]);
 
   useEffect(() => {
-    if (!loadingPdf || !pdfUrl) {
-      return;
+    if (materialKind !== "pdf") {
+      onPDFStateChange(null);
     }
-
-    const timeout = window.setTimeout(() => setLoadingPdf(false), 8000);
-    return () => window.clearTimeout(timeout);
-  }, [loadingPdf, pdfUrl]);
+  }, [materialKind, onPDFStateChange]);
 
   if (!material || !courseId) {
     return (
@@ -108,16 +108,14 @@ export function FileViewer({
 
       <div className="min-h-0 flex-1 bg-muted">
         {materialKind === "pdf" ? (
-          <div className="relative h-full min-h-[520px] bg-card">
-            {loadingPdf ? <PDFLoading /> : null}
-            <iframe
-              className="h-full min-h-[520px] w-full bg-card"
-              onLoad={() => setLoadingPdf(false)}
-              referrerPolicy="no-referrer"
-              src={pdfUrl}
-              title={material.name}
-            />
-          </div>
+          <PDFDocumentViewer
+            courseId={courseId}
+            materialId={material.id}
+            onStateChange={onPDFStateChange}
+            scrollCommand={pdfScrollCommand}
+            title={material.name}
+            url={pdfUrl}
+          />
         ) : loadingText ? (
           <PreviewLoading />
         ) : error ? (
@@ -151,18 +149,6 @@ function PreviewLoading() {
   );
 }
 
-function PDFLoading() {
-  return (
-    <div className="absolute inset-0 z-10 bg-card p-5">
-      <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner aria-hidden />
-        Loading PDF
-      </div>
-      <Skeleton className="h-full min-h-[460px] rounded-2xl" />
-    </div>
-  );
-}
-
 function PreviewMessage({
   description,
   icon,
@@ -189,16 +175,7 @@ function getMaterialKind(material: Material | null): "pdf" | "text" {
 }
 
 function pdfPreviewUrl(courseId: string, material: Material): string {
-  const url = material.url?.trim();
-  if (url) {
-    return withPDFViewerFragment(url);
-  }
-  return `/api/moodle/courses/${encodeURIComponent(courseId)}/materials/${encodeURIComponent(material.id)}/pdf#toolbar=1&navpanes=0`;
-}
-
-function withPDFViewerFragment(url: string): string {
-  const [base] = url.split("#");
-  return `${base}#toolbar=1&navpanes=0`;
+  return `/api/moodle/courses/${encodeURIComponent(courseId)}/materials/${encodeURIComponent(material.id)}/pdf`;
 }
 
 function textPreviewUrl(courseId: string, materialId: string): string {

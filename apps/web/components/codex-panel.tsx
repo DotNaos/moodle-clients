@@ -19,6 +19,7 @@ import type {
 import { readCodexStream } from "@/lib/codex-stream-client";
 import type { Course, Material, User } from "@/lib/dashboard-data";
 import { courseSubtitle, courseTitle } from "@/lib/dashboard-data";
+import { buildPDFImageInputs, buildPDFPromptContext, type PDFViewState } from "@/lib/pdf-context";
 import { cn } from "@/lib/utils";
 
 type CodexPanelProps = {
@@ -28,6 +29,7 @@ type CodexPanelProps = {
   materials: Material[];
   selectedMaterial: Material | null;
   onApplyActions: (actions: MoodleUIAction[]) => void;
+  pdfState: PDFViewState | null;
 };
 
 type CodexMessage = {
@@ -68,6 +70,7 @@ export function CodexPanel({
   materials,
   selectedMaterial,
   onApplyActions,
+  pdfState,
 }: CodexPanelProps) {
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<CodexMessage[]>([]);
@@ -251,6 +254,7 @@ export function CodexPanel({
         },
         body: JSON.stringify({
           prompt: text,
+          images: buildPDFImageInputs(pdfState),
           messages: chatHistory,
           stream: true,
           moodleContext: buildMoodleContext({
@@ -259,6 +263,7 @@ export function CodexPanel({
             selectedCourse,
             materials,
             selectedMaterial,
+            pdfState,
           }),
         }),
       });
@@ -410,6 +415,12 @@ export function CodexPanel({
           className="min-h-28 w-full resize-none rounded-[1.5rem] bg-secondary px-4 py-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
           disabled={composerDisabled}
           placeholder={isCodexConnected ? "Ask about this course..." : "Connect ChatGPT before asking..."}
         />
@@ -440,6 +451,7 @@ function buildMoodleContext({
   selectedCourse,
   materials,
   selectedMaterial,
+  pdfState,
 }: Omit<CodexPanelProps, "onApplyActions">) {
   return {
     source: "moodle-web",
@@ -452,6 +464,7 @@ function buildMoodleContext({
       : null,
     selectedCourse: selectedCourse ? courseContext(selectedCourse) : null,
     selectedMaterial: selectedMaterial ? materialContext(selectedMaterial) : null,
+    pdf: buildPDFPromptContext(pdfState),
     courses: courses.slice(0, 80).map(courseContext),
     materials: materials.map(materialContext),
   };

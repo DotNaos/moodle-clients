@@ -14,6 +14,7 @@ export const maxDuration = 180;
 
 type CodexRunBody = {
   prompt?: unknown;
+  images?: unknown;
   messages?: unknown;
   moodleContext?: unknown;
   stream?: unknown;
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
   }
 
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+  const images = parseImages(body.images);
   const messages = parseMessages(body.messages);
   const composedPrompt = withMoodlePrompt(prompt, body.moodleContext, messages);
 
@@ -53,6 +55,7 @@ export async function POST(request: Request) {
     const input = {
       prompt: composedPrompt,
       authZipBase64: authSnapshot.zipBase64,
+      images,
       outputSchema: codexOutputSchema,
     };
 
@@ -96,6 +99,27 @@ async function writeEvent(
   event: CodexStreamEvent,
 ) {
   await writer.write(new TextEncoder().encode(`${JSON.stringify(event)}\n`));
+}
+
+function parseImages(value: unknown): Array<{ name: string; dataURL: string }> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((image): Array<{ name: string; dataURL: string }> => {
+    if (!image || typeof image !== "object") {
+      return [];
+    }
+    const name = "name" in image ? image.name : null;
+    const dataURL = "dataURL" in image ? image.dataURL : null;
+    if (typeof name !== "string" || typeof dataURL !== "string") {
+      return [];
+    }
+    if (!dataURL.startsWith("data:image/") || dataURL.length > 1_200_000) {
+      return [];
+    }
+    return [{ name: name.replace(/[^a-zA-Z0-9_.-]/g, "_").slice(0, 80) || "pdf-page.jpg", dataURL }];
+  }).slice(0, 40);
 }
 
 function parseMessages(value: unknown): CodexChatMessage[] {

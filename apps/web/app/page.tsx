@@ -25,7 +25,7 @@ import { CourseMainPanel } from "@/components/course-main-panel";
 import { CourseThumbnail, EmptyState, LoadingRows, MaterialRow } from "@/components/dashboard-ui";
 import { MoodleConnectCard } from "@/components/moodle-connect-card";
 import { Spinner } from "@/components/ui/spinner";
-import type { MoodleUIAction } from "@/lib/codex-actions";
+import { useCodexMoodleActions } from "@/hooks/use-codex-moodle-actions";
 import { readDashboardCache, writeDashboardCache } from "@/lib/dashboard-cache";
 import type { Course, Material, User } from "@/lib/dashboard-data";
 import {
@@ -37,6 +37,7 @@ import {
   normalizeCourses,
   normalizeMaterials,
 } from "@/lib/dashboard-data";
+import type { PDFScrollCommand, PDFViewState } from "@/lib/pdf-context";
 import { cn } from "@/lib/utils";
 
 const MOODLE_API_BASE_URL = "/api/moodle";
@@ -59,7 +60,25 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [needsConnection, setNeedsConnection] = useState(false);
   const [codexOpen, setCodexOpen] = useState(false);
+  const [pdfState, setPDFState] = useState<PDFViewState | null>(null);
+  const [pdfScrollCommand, setPDFScrollCommand] = useState<PDFScrollCommand | null>(null);
   const materialsRequestId = useRef(0);
+  const { applyCodexActions } = useCodexMoodleActions({
+    courses,
+    materials,
+    materialsByCourseId,
+    selectedCategory,
+    selectedCourseId,
+    user,
+    userId,
+    pdfState,
+    loadMaterials,
+    setError,
+    setNavigationMode,
+    setPDFScrollCommand,
+    setSelectedCourseId,
+    setSelectedMaterialId,
+  });
 
   useEffect(() => {
     if (!isLoaded) {
@@ -297,77 +316,6 @@ export default function Home() {
         setMaterialsLoading(false);
       }
     }
-  }
-
-  async function applyCodexActions(actions: MoodleUIAction[]) {
-    for (const action of actions) {
-      if (action.type === "open_course") {
-        await openCourseFromCodex(action.courseId);
-      } else if (action.type === "open_material") {
-        await openMaterialFromCodex(action.materialId, action.courseId ?? null);
-      } else if (action.type === "open_moodle_course_page") {
-        openMoodleCoursePageFromCodex(action.courseId);
-      }
-    }
-  }
-
-  async function openCourseFromCodex(courseId: string) {
-    const course = courses.find((candidate) => String(candidate.id) === courseId);
-    if (!course) {
-      setError(`Codex tried to open an unknown course: ${courseId}`);
-      return;
-    }
-
-    await loadMaterials(courseId);
-  }
-
-  async function openMaterialFromCodex(materialId: string, courseId: string | null) {
-    const targetCourseId =
-      courseId ??
-      selectedCourseId ??
-      Object.entries(materialsByCourseId).find(([, cachedMaterials]) =>
-        cachedMaterials.some((material) => material.id === materialId),
-      )?.[0] ??
-      null;
-
-    const targetMaterials = targetCourseId && targetCourseId !== selectedCourseId ? await loadMaterials(targetCourseId) : materials;
-    const material = targetMaterials.find((candidate) => candidate.id === materialId);
-
-    if (!material) {
-      setError(`Codex tried to open an unknown material: ${materialId}`);
-      return;
-    }
-
-    const finalCourseId = targetCourseId ?? String(material.courseId ?? selectedCourseId ?? "");
-    if (finalCourseId) {
-      setSelectedCourseId(finalCourseId);
-      setNavigationMode("materials");
-    }
-    setSelectedMaterialId(material.id);
-
-    if (userId) {
-      const nextMaterialsByCourseId = finalCourseId
-        ? { ...materialsByCourseId, [finalCourseId]: targetMaterials }
-        : materialsByCourseId;
-      writeDashboardCache(userId, {
-        user,
-        courses,
-        materialsByCourseId: nextMaterialsByCourseId,
-        selectedCourseId: finalCourseId || selectedCourseId,
-        selectedCategory,
-        selectedMaterialId: material.id,
-      });
-    }
-  }
-
-  function openMoodleCoursePageFromCodex(courseId: string) {
-    const course = courses.find((candidate) => String(candidate.id) === courseId);
-    if (!course?.viewUrl) {
-      setError(`Codex tried to open a Moodle page without a known URL: ${courseId}`);
-      return;
-    }
-
-    window.open(course.viewUrl, "_blank", "noopener,noreferrer");
   }
 
   if (!isLoaded) {
@@ -638,12 +586,19 @@ export default function Home() {
                   </div>
                 </aside>
 
-                <CourseMainPanel course={selectedCourse} courseId={selectedCourseId} material={selectedMaterial} />
+                <CourseMainPanel
+                  course={selectedCourse}
+                  courseId={selectedCourseId}
+                  material={selectedMaterial}
+                  onPDFStateChange={setPDFState}
+                  pdfScrollCommand={pdfScrollCommand}
+                />
                 {codexOpen ? (
                   <CodexPanel
                     courses={courses}
                     materials={materials}
                     onApplyActions={(actions) => void applyCodexActions(actions)}
+                    pdfState={pdfState}
                     selectedCourse={selectedCourse}
                     selectedMaterial={selectedMaterial}
                     user={user}
