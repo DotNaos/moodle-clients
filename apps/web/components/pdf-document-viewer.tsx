@@ -45,6 +45,8 @@ export function PDFDocumentViewer({
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const zoomRef = useRef(zoom);
+  const gestureBaseZoomRef = useRef(zoom);
   const dragRef = useRef<{
     pointerId: number;
     scrollLeft: number;
@@ -53,6 +55,10 @@ export function PDFDocumentViewer({
     y: number;
   } | null>(null);
   const captureTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
 
   useEffect(() => {
     let cancelled = false;
@@ -219,15 +225,49 @@ export function PDFDocumentViewer({
     });
   }, [scheduleCurrentViewCapture, zoom]);
 
-  function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
-    if (!event.ctrlKey && !event.metaKey) {
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
       return;
     }
+    const viewer = container;
 
-    event.preventDefault();
-    const direction = event.deltaY > 0 ? -1 : 1;
-    updateZoom(zoom + direction * ZOOM_STEP, { x: event.clientX, y: event.clientY });
-  }
+    function handleNativeWheel(event: WheelEvent) {
+      if (!event.ctrlKey && !event.metaKey) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      const zoomFactor = Math.exp(-event.deltaY * 0.01);
+      updateZoom(zoomRef.current * zoomFactor, { x: event.clientX, y: event.clientY });
+    }
+
+    function handleGestureStart(event: Event) {
+      event.preventDefault();
+      gestureBaseZoomRef.current = zoomRef.current;
+    }
+
+    function handleGestureChange(event: Event) {
+      const gesture = event as Event & { scale?: number; clientX?: number; clientY?: number };
+      event.preventDefault();
+      const rect = viewer.getBoundingClientRect();
+      updateZoom(gestureBaseZoomRef.current * (gesture.scale ?? 1), {
+        x: gesture.clientX ?? rect.left + rect.width / 2,
+        y: gesture.clientY ?? rect.top + rect.height / 2,
+      });
+    }
+
+    viewer.addEventListener("wheel", handleNativeWheel, { passive: false });
+    viewer.addEventListener("gesturestart", handleGestureStart, { passive: false });
+    viewer.addEventListener("gesturechange", handleGestureChange, { passive: false });
+
+    return () => {
+      viewer.removeEventListener("wheel", handleNativeWheel);
+      viewer.removeEventListener("gesturestart", handleGestureStart);
+      viewer.removeEventListener("gesturechange", handleGestureChange);
+    };
+  }, [updateZoom]);
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (event.button !== 0 || zoom <= 1.01) {
@@ -344,7 +384,7 @@ export function PDFDocumentViewer({
       </div>
       <div
         ref={containerRef}
-        className="min-h-0 flex-1 overflow-auto px-4 py-5 data-[pannable=true]:cursor-grab data-[panning=true]:cursor-grabbing"
+        className="min-h-0 flex-1 overflow-auto overscroll-contain px-4 py-5 [touch-action:none] data-[pannable=true]:cursor-grab data-[panning=true]:cursor-grabbing"
         data-pannable={zoom > 1.01}
         data-panning={panning}
         onPointerCancel={stopDragging}
@@ -352,7 +392,6 @@ export function PDFDocumentViewer({
         onPointerMove={handlePointerMove}
         onPointerUp={stopDragging}
         onScroll={scheduleCurrentViewCapture}
-        onWheel={handleWheel}
       >
         <div className="mx-auto flex w-fit min-w-full flex-col items-center gap-5">
           {pageNumbers.map((page) => (
@@ -484,7 +523,7 @@ function PDFPageCanvas({
 
   return (
     <div ref={pageRef} className="mx-auto w-fit rounded-sm bg-card shadow-sm">
-      <canvas ref={canvasRef} className="block max-w-full" />
+      <canvas ref={canvasRef} className="block max-w-none" />
     </div>
   );
 }

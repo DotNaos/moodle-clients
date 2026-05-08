@@ -1,0 +1,98 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 960 540] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 299 >>
+stream
+q
+1 1 1 rg
+0 0 960 540 re f
+0 0 0 rg
+BT
+/F1 34 Tf
+72 454 Td (Wide Slide Fixture) Tj
+/F1 17 Tf
+72 402 Td (Landscape pages should fit without being cropped.) Tj
+/F1 15 Tf
+72 367 Td (Zooming should reveal horizontal scrolling instead of squashing the slide.) Tj
+/F1 11 Tf
+72 42 Td (Page 1 of 3) Tj
+ET
+Q
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 960 540] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 296 >>
+stream
+q
+1 1 1 rg
+0 0 960 540 re f
+0 0 0 rg
+BT
+/F1 28 Tf
+72 454 Td (Two Column Slide) Tj
+/F1 16 Tf
+72 408 Td (Left column: course material) Tj
+/F1 16 Tf
+72 374 Td (Right column: PDF preview) Tj
+/F1 14 Tf
+72 340 Td (This tests large width at high zoom levels.) Tj
+/F1 11 Tf
+72 42 Td (Page 2 of 3) Tj
+ET
+Q
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 960 540] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 248 >>
+stream
+q
+1 1 1 rg
+0 0 960 540 re f
+0 0 0 rg
+BT
+/F1 28 Tf
+72 454 Td (Chart Placeholder) Tj
+/F1 20 Tf
+72 408 Td ([ axis ]  [ bars ]  [ legend ]) Tj
+/F1 14 Tf
+72 370 Td (The text should stay proportionally scaled.) Tj
+/F1 11 Tf
+72 42 Td (Page 3 of 3) Tj
+ET
+Q
+endstream
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000127 00000 n 
+0000000197 00000 n 
+0000000323 00000 n 
+0000000673 00000 n 
+0000000799 00000 n 
+0000001146 00000 n 
+0000001272 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+1571
+%%EOF

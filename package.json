@@ -13,6 +13,7 @@
     "typecheck": "turbo run typecheck",
     "proxy:dev": "node ./scripts/moodle-proxy-dev.cjs",
     "web:dev": "bun run --filter @moodle-clients/web dev",
+    "web:dev:portless": "portless moodle-clients-mock sh -lc 'cd apps/web && bun next dev --hostname 127.0.0.1 --port \"$PORT\"'",
     "web:dev:expo": "bun run --filter @moodle-clients/web dev:expo",
     "web:build": "bun run --filter @moodle-clients/web build",
     "mobile:dev": "bun run --filter @moodle-clients/mobile start",

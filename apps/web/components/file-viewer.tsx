@@ -175,6 +175,10 @@ function getMaterialKind(material: Material | null): "pdf" | "text" {
 }
 
 function pdfPreviewUrl(courseId: string, material: Material): string {
+  if (material.url?.startsWith("/mock-pdfs/")) {
+    return material.url;
+  }
+
   return `/api/moodle/courses/${encodeURIComponent(courseId)}/materials/${encodeURIComponent(material.id)}/pdf`;
 }
 
