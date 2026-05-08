@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --port 3008",
+    "dev:portless": "portless moodle-clients-mock sh -lc 'bun next dev --hostname 127.0.0.1 --port \"$PORT\"'",
     "build": "next build",
     "start": "next start --port 3008",
     "typecheck": "tsc --noEmit"
