@@ -48,6 +48,8 @@ export function useCodexMoodleActions({
         await openMaterial(action.materialId, action.courseId ?? null);
       } else if (action.type === "open_moodle_course_page") {
         openMoodleCoursePage(action.courseId);
+      } else if (action.type === "open_latest_pdf") {
+        await openLatestPDF(action.courseId);
       } else if (action.type === "scroll_pdf_to_page") {
         scrollPDFToPage(action.page);
       }
@@ -61,6 +63,23 @@ export function useCodexMoodleActions({
     }
 
     await loadMaterials(courseId);
+  }
+
+  async function openLatestPDF(courseId: string) {
+    const course = courses.find((candidate) => String(candidate.id) === courseId);
+    if (!course) {
+      setError(`Codex tried to open an unknown course: ${courseId}`);
+      return;
+    }
+
+    const targetMaterials = courseId !== selectedCourseId ? await loadMaterials(courseId) : materials;
+    const pdf = selectLatestPDF(targetMaterials);
+    if (!pdf) {
+      setError(`Codex tried to open a PDF, but no PDF material was found in this course.`);
+      return;
+    }
+
+    await openMaterial(pdf.id, courseId);
   }
 
   async function openMaterial(materialId: string, courseId: string | null) {
@@ -122,4 +141,38 @@ export function useCodexMoodleActions({
   }
 
   return { applyCodexActions };
+}
+
+function selectLatestPDF(materials: Material[]): Material | null {
+  const pdfs = materials.filter(isPDFMaterial);
+  if (pdfs.length === 0) {
+    return null;
+  }
+
+  return pdfs
+    .map((material, index) => ({ material, score: materialRecencyScore(material, index) }))
+    .sort((left, right) => right.score - left.score)[0]?.material ?? null;
+}
+
+function isPDFMaterial(material: Material): boolean {
+  return [material.fileType, material.type, material.name, material.url]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .includes("pdf");
+}
+
+function materialRecencyScore(material: Material, index: number): number {
+  const uploadedAt = material.uploadedAt ? Date.parse(material.uploadedAt) : Number.NaN;
+  if (Number.isFinite(uploadedAt)) {
+    return uploadedAt;
+  }
+
+  const numericParts = material.name.match(/\d+/g)?.map(Number).filter(Number.isFinite) ?? [];
+  const lastNumber = numericParts.at(-1);
+  if (typeof lastNumber === "number") {
+    return lastNumber * 1_000 + index;
+  }
+
+  return index;
 }
