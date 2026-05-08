@@ -7,6 +7,13 @@ import { writeDashboardCache } from "@/lib/dashboard-cache";
 import type { Course, Material, User } from "@/lib/dashboard-data";
 import type { PDFScrollCommand, PDFViewState } from "@/lib/pdf-context";
 
+export type CodexActionResult = {
+  loadedResources: Array<{
+    course: Course;
+    resources: Material[];
+  }>;
+};
+
 type UseCodexMoodleActionsInput = {
   courses: Course[];
   materials: Material[];
@@ -40,12 +47,20 @@ export function useCodexMoodleActions({
   setSelectedCourseId,
   setSelectedMaterialId,
 }: UseCodexMoodleActionsInput) {
-  async function applyCodexActions(actions: MoodleUIAction[]) {
+  async function applyCodexActions(actions: MoodleUIAction[]): Promise<CodexActionResult> {
+    const loadedResources = new Map<string, { course: Course; resources: Material[] }>();
+
     for (const action of actions) {
       if (action.type === "open_course") {
-        await openCourse(action.courseId);
+        const resources = await openCourse(action.courseId);
+        recordResources(loadedResources, action.courseId, resources);
       } else if (action.type === "open_material") {
-        await openMaterial(action.materialId, action.courseId ?? null);
+        await openResource(action.courseId ?? selectedCourseId, action.materialId);
+      } else if (action.type === "open_resource") {
+        await openResource(action.courseId, action.resourceId);
+      } else if (action.type === "load_course_resources") {
+        const resources = await loadCourseResources(action.courseId);
+        recordResources(loadedResources, action.courseId, resources);
       } else if (action.type === "open_moodle_course_page") {
         openMoodleCoursePage(action.courseId);
       } else if (action.type === "open_latest_pdf") {
@@ -54,15 +69,21 @@ export function useCodexMoodleActions({
         scrollPDFToPage(action.page);
       }
     }
+
+    return { loadedResources: [...loadedResources.values()] };
   }
 
-  async function openCourse(courseId: string) {
+  async function openCourse(courseId: string): Promise<Material[]> {
+    return loadCourseResources(courseId);
+  }
+
+  async function loadCourseResources(courseId: string): Promise<Material[]> {
     if (!courses.some((candidate) => String(candidate.id) === courseId)) {
       setError(`Codex tried to open an unknown course: ${courseId}`);
-      return;
+      return [];
     }
 
-    await loadMaterials(courseId);
+    return loadMaterials(courseId);
   }
 
   async function openLatestPDF(courseId: string) {
@@ -79,23 +100,26 @@ export function useCodexMoodleActions({
       return;
     }
 
-    await openMaterial(pdf.id, courseId);
+    await openResource(courseId, pdf.id);
   }
 
-  async function openMaterial(materialId: string, courseId: string | null) {
+  async function openResource(courseId: string | null | undefined, resourceId: string) {
     const targetCourseId =
       courseId ??
       selectedCourseId ??
       Object.entries(materialsByCourseId).find(([, cachedMaterials]) =>
-        cachedMaterials.some((material) => material.id === materialId),
+        cachedMaterials.some((material) => material.id === resourceId),
       )?.[0] ??
       null;
 
-    const targetMaterials = targetCourseId && targetCourseId !== selectedCourseId ? await loadMaterials(targetCourseId) : materials;
-    const material = targetMaterials.find((candidate) => candidate.id === materialId);
+    const shouldLoadTargetCourse =
+      Boolean(targetCourseId) &&
+      (targetCourseId !== selectedCourseId || !materials.some((material) => material.id === resourceId));
+    const targetMaterials = shouldLoadTargetCourse && targetCourseId ? await loadMaterials(targetCourseId) : materials;
+    const material = targetMaterials.find((candidate) => candidate.id === resourceId);
 
     if (!material) {
-      setError(`Codex tried to open an unknown material: ${materialId}`);
+      setError(`Codex tried to open an unknown resource: ${resourceId}`);
       return;
     }
 
@@ -141,6 +165,18 @@ export function useCodexMoodleActions({
   }
 
   return { applyCodexActions };
+
+  function recordResources(
+    loadedResources: Map<string, { course: Course; resources: Material[] }>,
+    courseId: string,
+    resources: Material[],
+  ) {
+    const course = courses.find((candidate) => String(candidate.id) === courseId);
+    if (!course) {
+      return;
+    }
+    loadedResources.set(courseId, { course, resources });
+  }
 }
 
 function selectLatestPDF(materials: Material[]): Material | null {

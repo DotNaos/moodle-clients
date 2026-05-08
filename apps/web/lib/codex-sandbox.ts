@@ -154,6 +154,17 @@ function sanitizeActions(actions) {
         reason: stringOrUndefined(action.reason),
       }];
     }
+    if (action.type === "open_resource" && typeof action.courseId === "string" && typeof action.resourceId === "string") {
+      return [{
+        type: "open_resource",
+        courseId: action.courseId,
+        resourceId: action.resourceId,
+        reason: stringOrUndefined(action.reason),
+      }];
+    }
+    if (action.type === "load_course_resources" && typeof action.courseId === "string") {
+      return [{ type: "load_course_resources", courseId: action.courseId, reason: stringOrUndefined(action.reason) }];
+    }
     if (action.type === "open_moodle_course_page" && typeof action.courseId === "string") {
       return [{ type: "open_moodle_course_page", courseId: action.courseId, reason: stringOrUndefined(action.reason) }];
     }
@@ -164,7 +175,7 @@ function sanitizeActions(actions) {
       return [{ type: "scroll_pdf_to_page", page: Math.max(1, Math.floor(action.page)), reason: stringOrUndefined(action.reason) }];
     }
     return [];
-  }).slice(0, 3);
+  }).slice(0, 8);
 }
 
 function stringOrUndefined(value) {

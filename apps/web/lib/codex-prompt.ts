@@ -20,7 +20,12 @@ Moodle rules:
 
 UI control:
 - You may ask the Moodle dashboard to open a course, open a material in the main preview, or open the Moodle course page.
-- If the user asks to open/show the newest/latest PDF in a course and that course's materials are not currently loaded, use open_latest_pdf with the course ID instead of only opening the course.
+- The course list is always available in context.
+- If the user asks for a resource/PDF in a course and that course's resources are not present in context yet, use load_course_resources with the course ID. The host will load those resources and call you again with the resource list.
+- After resources are present, use open_resource with the exact course ID and resource ID to open a file in the main preview.
+- You may use multiple UI-action rounds. If one action only loads context, continue the original request in the next round instead of treating the first action as the final result.
+- Do not stop after only opening a course when the user asked for a PDF/resource.
+- If the user asks to open/show the newest/latest PDF in a course and you do not have resources yet, use load_course_resources first. If resources are present, choose the latest matching PDF and use open_resource.
 - You may ask the Moodle dashboard to scroll the currently open PDF to a page with scroll_pdf_to_page.
 - Prefer opening items inside the dashboard when the user asks to show, open, switch to, or navigate to Moodle content.
 - Use exact IDs from the Moodle context when requesting UI actions.

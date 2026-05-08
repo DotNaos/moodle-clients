@@ -12,6 +12,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import type { CodexActionResult } from "@/hooks/use-codex-moodle-actions";
 import type {
   CodexChatMessage,
   MoodleUIAction,
@@ -28,7 +29,7 @@ type CodexPanelProps = {
   selectedCourse: Course | null;
   materials: Material[];
   selectedMaterial: Material | null;
-  onApplyActions: (actions: MoodleUIAction[]) => void;
+  onApplyActions: (actions: MoodleUIAction[]) => Promise<CodexActionResult>;
   pdfState: PDFViewState | null;
 };
 
@@ -46,6 +47,10 @@ type CodexResponse = {
 };
 
 type CodexAuthStatus = "checking" | "missing" | "connecting" | "connected";
+
+type LoadedResourceContext = CodexActionResult["loadedResources"];
+
+const MAX_CODEX_ACTION_TURNS = 8;
 
 type CodexAuthEvent =
   | {
@@ -231,7 +236,7 @@ export function CodexPanel({
       text,
     };
     const assistantMessageId = crypto.randomUUID();
-    const chatHistory = toChatHistory([...messages, userMessage]);
+    let chatHistory = toChatHistory([...messages, userMessage]);
     setMessages((current) => [
       ...current,
       userMessage,
@@ -246,48 +251,80 @@ export function CodexPanel({
     setError(null);
 
     try {
-      const response = await fetch("/api/codex/run", {
-        method: "POST",
-        headers: {
-          accept: "application/x-ndjson",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          prompt: text,
-          images: buildPDFImageInputs(pdfState),
-          messages: chatHistory,
-          stream: true,
-          moodleContext: buildMoodleContext({
-            user,
-            courses,
-            selectedCourse,
-            materials,
-            selectedMaterial,
-            pdfState,
-          }),
-        }),
-      });
+      let loadedResources: LoadedResourceContext = [];
+      let reachedActionLimit = false;
 
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as CodexResponse;
-        throw new Error(payload.error ?? `Codex failed with ${response.status}.`);
+      for (let turn = 0; turn < MAX_CODEX_ACTION_TURNS; turn += 1) {
+        const response = await fetch("/api/codex/run", {
+          method: "POST",
+          headers: {
+            accept: "application/x-ndjson",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            prompt: text,
+            images: buildPDFImageInputs(pdfState),
+            messages: chatHistory,
+            stream: true,
+            moodleContext: buildMoodleContext({
+              user,
+              courses,
+              selectedCourse,
+              materials,
+              selectedMaterial,
+              pdfState,
+              loadedResources,
+            }),
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as CodexResponse;
+          throw new Error(payload.error ?? `Codex failed with ${response.status}.`);
+        }
+
+        const result = await readCodexStream(response, (event) => {
+          if (event.type === "message") {
+            updateAssistantMessage(assistantMessageId, displayCodexText(event.text));
+          } else if (event.type === "tool") {
+            updateAssistantMessage(
+              assistantMessageId,
+              event.status === "running" ? `Working: ${event.title}` : "Finishing...",
+            );
+          }
+        });
+
+        const actions = completeCodexActions(result.actions, text);
+        updateAssistantMessage(assistantMessageId, result.finalResponse);
+
+        if (actions.length === 0) {
+          break;
+        }
+
+        const actionResult = await onApplyActions(actions);
+        loadedResources = mergeLoadedResources(loadedResources, actionResult.loadedResources);
+
+        if (!shouldContinueAfterActions(actions, actionResult)) {
+          break;
+        }
+
+        if (turn === MAX_CODEX_ACTION_TURNS - 1) {
+          reachedActionLimit = true;
+          break;
+        }
+
+        updateAssistantMessage(assistantMessageId, "Loaded Moodle resources. Continuing...");
+        chatHistory = [
+          ...chatHistory,
+          {
+            role: "assistant",
+            text: buildActionFollowUpMessage(actions, actionResult.loadedResources),
+          },
+        ];
       }
 
-      const result = await readCodexStream(response, (event) => {
-        if (event.type === "message") {
-          updateAssistantMessage(assistantMessageId, displayCodexText(event.text));
-        } else if (event.type === "tool") {
-          updateAssistantMessage(
-            assistantMessageId,
-            event.status === "running" ? `Working: ${event.title}` : "Finishing...",
-          );
-        }
-      });
-
-      const actions = completeCodexActions(result.actions, text);
-      updateAssistantMessage(assistantMessageId, result.finalResponse);
-      if (actions.length > 0) {
-        onApplyActions(actions);
+      if (reachedActionLimit) {
+        setError("Codex needed too many Moodle UI steps. Try asking for a more specific course or file.");
       }
     } catch (submitError) {
       setMessages((current) => current.filter((message) => message.id !== assistantMessageId));
@@ -453,7 +490,16 @@ function buildMoodleContext({
   materials,
   selectedMaterial,
   pdfState,
-}: Omit<CodexPanelProps, "onApplyActions">) {
+  loadedResources = [],
+}: {
+  user: User | null;
+  courses: Course[];
+  selectedCourse: Course | null;
+  materials: Material[];
+  selectedMaterial: Material | null;
+  pdfState: PDFViewState | null;
+  loadedResources?: LoadedResourceContext;
+}) {
   return {
     source: "moodle-web",
     user: user
@@ -468,6 +514,10 @@ function buildMoodleContext({
     pdf: buildPDFPromptContext(pdfState),
     courses: courses.slice(0, 80).map(courseContext),
     materials: materials.map(materialContext),
+    loadedCourseResources: loadedResources.map(({ course, resources }) => ({
+      course: courseContext(course),
+      resources: resources.map(materialContext),
+    })),
   };
 }
 
@@ -476,8 +526,14 @@ function completeCodexActions(actions: MoodleUIAction[], prompt: string): Moodle
     return actions;
   }
 
-  const alreadyOpensPDF = actions.some((action) => action.type === "open_material" || action.type === "open_latest_pdf");
-  if (alreadyOpensPDF) {
+  const alreadyHandlesPDF = actions.some(
+    (action) =>
+      action.type === "open_material" ||
+      action.type === "open_resource" ||
+      action.type === "open_latest_pdf" ||
+      action.type === "load_course_resources",
+  );
+  if (alreadyHandlesPDF) {
     return actions;
   }
 
@@ -491,11 +547,45 @@ function completeCodexActions(actions: MoodleUIAction[], prompt: string): Moodle
   return [
     ...actions,
     {
-      type: "open_latest_pdf",
+      type: "load_course_resources",
       courseId: courseAction.courseId,
-      reason: "User asked to open a PDF in this course.",
+      reason: "User asked to open a PDF in this course, so resources must be loaded first.",
     },
   ];
+}
+
+function shouldContinueAfterActions(actions: MoodleUIAction[], result: CodexActionResult): boolean {
+  if (result.loadedResources.length === 0) {
+    return false;
+  }
+
+  const opensConcreteResource = actions.some(
+    (action) => action.type === "open_material" || action.type === "open_resource" || action.type === "open_latest_pdf",
+  );
+  if (opensConcreteResource) {
+    return false;
+  }
+
+  return actions.some((action) => action.type === "load_course_resources" || action.type === "open_course");
+}
+
+function mergeLoadedResources(
+  current: LoadedResourceContext,
+  incoming: LoadedResourceContext,
+): LoadedResourceContext {
+  const merged = new Map<string, LoadedResourceContext[number]>();
+  for (const entry of [...current, ...incoming]) {
+    merged.set(String(entry.course.id), entry);
+  }
+  return [...merged.values()];
+}
+
+function buildActionFollowUpMessage(actions: MoodleUIAction[], loadedResources: LoadedResourceContext): string {
+  const loaded = loadedResources
+    .map(({ course, resources }) => `${courseTitle(course)}: ${resources.length} resources loaded`)
+    .join("; ");
+  const actionTypes = actions.map((action) => action.type).join(", ");
+  return `Host applied Moodle UI actions: ${actionTypes}. ${loaded || "No resources were loaded."} Continue the original user request using the updated Moodle context.`;
 }
 
 function asksToOpenPDF(prompt: string): boolean {
