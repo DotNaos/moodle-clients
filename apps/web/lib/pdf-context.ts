@@ -10,6 +10,7 @@ export type PDFViewState = {
   title: string;
   currentPage: number;
   pageCount: number;
+  currentViewImageDataURL: string | null;
   pages: PDFPageContext[];
 };
 
@@ -34,6 +35,7 @@ export function buildPDFPromptContext(pdf: PDFViewState | null) {
     courseId: pdf.courseId,
     currentPage: pdf.currentPage,
     pageCount: pdf.pageCount,
+    currentViewHasImage: Boolean(pdf.currentViewImageDataURL),
     currentPageText: pdf.pages.find((page) => page.page === pdf.currentPage)?.text ?? "",
     pages: pdf.pages.map((page) => ({
       page: page.page,
@@ -49,16 +51,20 @@ export function buildPDFImageInputs(pdf: PDFViewState | null): CodexImageInput[]
   }
 
   const current = pdf.pages.find((page) => page.page === pdf.currentPage);
-  const orderedPages = [
-    ...(current ? [current] : []),
-    ...pdf.pages.filter((page) => page.page !== pdf.currentPage),
+  const pageImages = [
+    ...(pdf.currentViewImageDataURL
+      ? [{ name: "pdf-current-view.jpg", dataURL: pdf.currentViewImageDataURL }]
+      : []),
+    ...(current?.imageDataURL
+      ? [{ name: `pdf-page-${current.page}.jpg`, dataURL: current.imageDataURL }]
+      : []),
+    ...pdf.pages
+      .filter((page) => page.page !== pdf.currentPage && page.imageDataURL)
+      .map((page) => ({
+        name: `pdf-page-${page.page}.jpg`,
+        dataURL: page.imageDataURL as string,
+      })),
   ];
 
-  return orderedPages
-    .filter((page) => page.imageDataURL)
-    .slice(0, 40)
-    .map((page) => ({
-      name: `pdf-page-${page.page}.jpg`,
-      dataURL: page.imageDataURL as string,
-    }));
+  return pageImages.slice(0, 40);
 }
