@@ -284,9 +284,10 @@ export function CodexPanel({
         }
       });
 
+      const actions = completeCodexActions(result.actions, text);
       updateAssistantMessage(assistantMessageId, result.finalResponse);
-      if (result.actions.length > 0) {
-        onApplyActions(result.actions);
+      if (actions.length > 0) {
+        onApplyActions(actions);
       }
     } catch (submitError) {
       setMessages((current) => current.filter((message) => message.id !== assistantMessageId));
@@ -468,6 +469,38 @@ function buildMoodleContext({
     courses: courses.slice(0, 80).map(courseContext),
     materials: materials.map(materialContext),
   };
+}
+
+function completeCodexActions(actions: MoodleUIAction[], prompt: string): MoodleUIAction[] {
+  if (!asksToOpenPDF(prompt)) {
+    return actions;
+  }
+
+  const alreadyOpensPDF = actions.some((action) => action.type === "open_material" || action.type === "open_latest_pdf");
+  if (alreadyOpensPDF) {
+    return actions;
+  }
+
+  const courseAction = actions.find((action): action is Extract<MoodleUIAction, { type: "open_course" }> =>
+    action.type === "open_course"
+  );
+  if (!courseAction) {
+    return actions;
+  }
+
+  return [
+    ...actions,
+    {
+      type: "open_latest_pdf",
+      courseId: courseAction.courseId,
+      reason: "User asked to open a PDF in this course.",
+    },
+  ];
+}
+
+function asksToOpenPDF(prompt: string): boolean {
+  const normalized = prompt.toLowerCase();
+  return /\bpdf\b/.test(normalized) && /(open|show|display|öffne|oeffne|zeige|lad|lade)/i.test(normalized);
 }
 
 function courseContext(course: Course) {

@@ -157,6 +157,9 @@ function sanitizeActions(actions) {
     if (action.type === "open_moodle_course_page" && typeof action.courseId === "string") {
       return [{ type: "open_moodle_course_page", courseId: action.courseId, reason: stringOrUndefined(action.reason) }];
     }
+    if (action.type === "open_latest_pdf" && typeof action.courseId === "string") {
+      return [{ type: "open_latest_pdf", courseId: action.courseId, reason: stringOrUndefined(action.reason) }];
+    }
     if (action.type === "scroll_pdf_to_page" && typeof action.page === "number") {
       return [{ type: "scroll_pdf_to_page", page: Math.max(1, Math.floor(action.page)), reason: stringOrUndefined(action.reason) }];
     }

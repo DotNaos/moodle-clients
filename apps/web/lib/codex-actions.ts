@@ -21,6 +21,11 @@ export type MoodleUIAction =
       reason?: string;
     }
   | {
+      type: "open_latest_pdf";
+      courseId: string;
+      reason?: string;
+    }
+  | {
       type: "scroll_pdf_to_page";
       page: number;
       reason?: string;
@@ -76,7 +81,7 @@ export const codexOutputSchema = {
         properties: {
           type: {
             type: "string",
-            enum: ["open_course", "open_material", "open_moodle_course_page", "scroll_pdf_to_page"],
+            enum: ["open_course", "open_material", "open_moodle_course_page", "open_latest_pdf", "scroll_pdf_to_page"],
           },
           courseId: {
             type: ["string", "null"],

@@ -20,6 +20,7 @@ Moodle rules:
 
 UI control:
 - You may ask the Moodle dashboard to open a course, open a material in the main preview, or open the Moodle course page.
+- If the user asks to open/show the newest/latest PDF in a course and that course's materials are not currently loaded, use open_latest_pdf with the course ID instead of only opening the course.
 - You may ask the Moodle dashboard to scroll the currently open PDF to a page with scroll_pdf_to_page.
 - Prefer opening items inside the dashboard when the user asks to show, open, switch to, or navigate to Moodle content.
 - Use exact IDs from the Moodle context when requesting UI actions.
