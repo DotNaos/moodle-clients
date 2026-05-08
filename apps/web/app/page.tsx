@@ -597,7 +597,7 @@ export default function Home() {
                   <CodexPanel
                     courses={courses}
                     materials={materials}
-                    onApplyActions={(actions) => void applyCodexActions(actions)}
+                    onApplyActions={applyCodexActions}
                     pdfState={pdfState}
                     selectedCourse={selectedCourse}
                     selectedMaterial={selectedMaterial}

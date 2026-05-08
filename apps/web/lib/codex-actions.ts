@@ -16,6 +16,17 @@ export type MoodleUIAction =
       reason?: string;
     }
   | {
+      type: "open_resource";
+      courseId: string;
+      resourceId: string;
+      reason?: string;
+    }
+  | {
+      type: "load_course_resources";
+      courseId: string;
+      reason?: string;
+    }
+  | {
       type: "open_moodle_course_page";
       courseId: string;
       reason?: string;
@@ -77,11 +88,19 @@ export const codexOutputSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["type", "courseId", "materialId", "page", "reason"],
+        required: ["type", "courseId", "materialId", "resourceId", "page", "reason"],
         properties: {
           type: {
             type: "string",
-            enum: ["open_course", "open_material", "open_moodle_course_page", "open_latest_pdf", "scroll_pdf_to_page"],
+            enum: [
+              "open_course",
+              "open_material",
+              "open_resource",
+              "load_course_resources",
+              "open_moodle_course_page",
+              "open_latest_pdf",
+              "scroll_pdf_to_page",
+            ],
           },
           courseId: {
             type: ["string", "null"],
@@ -90,6 +109,10 @@ export const codexOutputSchema = {
           materialId: {
             type: ["string", "null"],
             description: "Required only when type is open_material.",
+          },
+          resourceId: {
+            type: ["string", "null"],
+            description: "Required only when type is open_resource.",
           },
           page: {
             type: ["number", "null"],
