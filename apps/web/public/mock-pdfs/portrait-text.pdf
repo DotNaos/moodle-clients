@@ -1,0 +1,133 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R 10 0 R] /Count 4 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 379 >>
+stream
+q
+1 1 1 rg
+0 0 595 842 re f
+0 0 0 rg
+BT
+/F1 28 Tf
+72 756 Td (Mock PDF Fixture) Tj
+/F1 16 Tf
+72 710 Td (Portrait page, fit-to-width baseline.) Tj
+/F1 13 Tf
+72 676 Td (This page checks that zoom preserves the document aspect ratio.) Tj
+/F1 13 Tf
+72 645 Td (Pinch or Ctrl-wheel over the viewer should zoom the PDF, not the whole website.) Tj
+/F1 11 Tf
+72 42 Td (Page 1 of 4) Tj
+ET
+Q
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 589 >>
+stream
+q
+1 1 1 rg
+0 0 595 842 re f
+0 0 0 rg
+BT
+/F1 24 Tf
+72 756 Td (Dense Text Page) Tj
+/F1 13 Tf
+72 714 Td (A longer page makes scroll and current-page detection easier to test.) Tj
+/F1 12 Tf
+72 683 Td (Line 1: Moodle preview should stay crisp.) Tj
+/F1 12 Tf
+72 653 Td (Line 2: The canvas should never be squeezed horizontally.) Tj
+/F1 12 Tf
+72 623 Td (Line 3: The height and width must scale together.) Tj
+/F1 12 Tf
+72 593 Td (Line 4: Trackpad pan should still scroll normally.) Tj
+/F1 12 Tf
+72 563 Td (Line 5: Drag-to-pan is enabled when zoomed in.) Tj
+/F1 11 Tf
+72 42 Td (Page 2 of 4) Tj
+ET
+Q
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 330 >>
+stream
+q
+1 1 1 rg
+0 0 595 842 re f
+0 0 0 rg
+BT
+/F1 24 Tf
+72 756 Td (Formula-Like Layout) Tj
+/F1 18 Tf
+72 714 Td (f\(x\) = sin\(x\) + cos\(2x\)) Tj
+/F1 14 Tf
+72 678 Td (Integral from 0 to pi of f\(x\) dx) Tj
+/F1 13 Tf
+72 646 Td (This page is intentionally simple and selectable by page number.) Tj
+/F1 11 Tf
+72 42 Td (Page 3 of 4) Tj
+ET
+Q
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 11 0 R >>
+endobj
+11 0 obj
+<< /Length 302 >>
+stream
+q
+1 1 1 rg
+0 0 595 842 re f
+0 0 0 rg
+BT
+/F1 24 Tf
+72 756 Td (Final Page) Tj
+/F1 14 Tf
+72 714 Td (If this page looks stretched, the CSS sizing is wrong.) Tj
+/F1 14 Tf
+72 682 Td (If browser zoom changes, the wheel or gesture handler is not preventing default.) Tj
+/F1 11 Tf
+72 42 Td (Page 4 of 4) Tj
+ET
+Q
+endstream
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000134 00000 n 
+0000000204 00000 n 
+0000000330 00000 n 
+0000000760 00000 n 
+0000000886 00000 n 
+0000001526 00000 n 
+0000001652 00000 n 
+0000002033 00000 n 
+0000002161 00000 n 
+trailer
+<< /Size 12 /Root 1 0 R >>
+startxref
+2515
+%%EOF

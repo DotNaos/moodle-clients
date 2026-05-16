@@ -1,4 +1,7 @@
 import { Codex } from "@openai/codex-sdk";
+import { mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 type HeaderValue = string | string[] | undefined;
 
@@ -25,6 +28,8 @@ type RequestBody = {
   stream?: unknown;
   moodleContext?: unknown;
 };
+
+const CODEX_HOME = join(tmpdir(), "moodle-clients-codex-home");
 
 export default async function handler(
   request: CodexRunRequest,
@@ -85,6 +90,9 @@ export default async function handler(
 }
 
 function createCodexThread(threadId: string | null) {
+  // Codex invariant: this route is web-only and must never become the iOS
+  // Codex path. iOS must run an embedded Codex runtime with ChatGPT OAuth,
+  // not API keys, cloud runtimes, or a macOS Node.js bridge.
   const codex = new Codex({
     env: getChatGptOnlyEnvironment(),
   });
@@ -204,6 +212,7 @@ function compactCommand(command: string): string {
 
 function getChatGptOnlyEnvironment(): Record<string, string> {
   const nextEnvironment: Record<string, string> = {};
+  mkdirSync(CODEX_HOME, { recursive: true });
 
   Object.entries(process.env).forEach(([key, value]) => {
     if (!value || key === "OPENAI_API_KEY" || key === "CODEX_API_KEY") {
@@ -212,6 +221,7 @@ function getChatGptOnlyEnvironment(): Record<string, string> {
 
     nextEnvironment[key] = value;
   });
+  nextEnvironment.CODEX_HOME = CODEX_HOME;
 
   return nextEnvironment;
 }

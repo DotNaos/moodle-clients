@@ -1,3 +1,11 @@
+const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const CODEX_DEVICE_URL = 'https://auth.openai.com/codex/device';
+const CODEX_HOME = path.join(os.tmpdir(), 'moodle-clients-codex-home');
+
 async function createCodexRunResponse(input) {
     const method = String(input.method || 'GET').toUpperCase();
     const origin = getHeader(input.headers, 'origin');
@@ -169,8 +177,102 @@ async function streamCodexRun(input, response) {
     }
 }
 
+async function streamCodexAuth(input, response) {
+    const method = String(input.method || 'GET').toUpperCase();
+    const origin = getHeader(input.headers, 'origin');
+    const headers = {
+        ...createResponseHeaders(origin),
+        'cache-control': 'no-cache, no-transform',
+        connection: 'keep-alive',
+    };
+
+    if (method === 'OPTIONS') {
+        response.writeHead(204, headers);
+        response.end();
+        return;
+    }
+
+    if (method === 'GET') {
+        const status = await runCodexLoginStatus();
+        response.writeHead(200, headers);
+        response.end(
+            JSON.stringify({
+                authenticated: status.exitCode === 0,
+                detail: cleanStatus(status.output),
+            }),
+        );
+        return;
+    }
+
+    if (method !== 'POST') {
+        response.writeHead(405, headers);
+        response.end(JSON.stringify({ error: 'Use GET or POST for Codex auth.' }));
+        return;
+    }
+
+    response.writeHead(200, {
+        ...headers,
+        'content-type': 'application/x-ndjson; charset=utf-8',
+    });
+
+    fs.mkdirSync(CODEX_HOME, { recursive: true });
+    const child = spawn(getCodexBinary(), ['login', '--device-auth'], {
+        cwd: process.cwd(),
+        env: getChatGptOnlyEnvironment(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let buffer = '';
+    let emittedDeviceCode = false;
+    const handleChunk = (chunk) => {
+        buffer += stripAnsi(String(chunk));
+        if (emittedDeviceCode) {
+            return;
+        }
+        const userCode = findDeviceCode(buffer);
+        if (buffer.includes(CODEX_DEVICE_URL) && userCode) {
+            emittedDeviceCode = true;
+            writeStreamEvent(response, null, {
+                type: 'device_code',
+                verificationUri: CODEX_DEVICE_URL,
+                userCode,
+                expiresInSeconds: 900,
+            });
+        }
+    };
+
+    child.stdout.on('data', handleChunk);
+    child.stderr.on('data', handleChunk);
+    child.on('error', (error) => {
+        writeStreamEvent(response, null, {
+            type: 'error',
+            error:
+                error instanceof Error
+                    ? error.message
+                    : 'Unable to start Codex device authorization.',
+        });
+        response.end();
+    });
+    child.on('close', (code) => {
+        if (code === 0) {
+            writeStreamEvent(response, null, { type: 'completed' });
+        } else {
+            writeStreamEvent(response, null, {
+                type: 'error',
+                error:
+                    cleanStatus(buffer) ||
+                    'Codex device authorization did not complete.',
+            });
+        }
+        response.end();
+    });
+}
+
 async function createCodexThread(threadId) {
     const { Codex } = await import('@openai/codex-sdk');
+    // Codex invariant: this proxy is web/dev-only and must never be used as the
+    // iOS Codex path. iOS must run an embedded Codex runtime with ChatGPT OAuth,
+    // not API keys, cloud runtimes, or a macOS Node.js bridge.
     const codex = new Codex({
         env: getChatGptOnlyEnvironment(),
     });
@@ -219,6 +321,7 @@ function formatMoodleContext(context) {
 
 function getChatGptOnlyEnvironment() {
     const nextEnvironment = {};
+    fs.mkdirSync(CODEX_HOME, { recursive: true });
 
     Object.entries(process.env).forEach(([key, value]) => {
         if (!value || key === 'OPENAI_API_KEY' || key === 'CODEX_API_KEY') {
@@ -227,14 +330,56 @@ function getChatGptOnlyEnvironment() {
 
         nextEnvironment[key] = value;
     });
+    nextEnvironment.CODEX_HOME = CODEX_HOME;
 
     return nextEnvironment;
+}
+
+function runCodexLoginStatus() {
+    fs.mkdirSync(CODEX_HOME, { recursive: true });
+    return new Promise((resolve, reject) => {
+        const child = spawn(getCodexBinary(), ['login', 'status'], {
+            cwd: process.cwd(),
+            env: getChatGptOnlyEnvironment(),
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let output = '';
+        child.stdout.on('data', (chunk) => {
+            output += stripAnsi(String(chunk));
+        });
+        child.stderr.on('data', (chunk) => {
+            output += stripAnsi(String(chunk));
+        });
+        child.on('error', reject);
+        child.on('close', (code) => {
+            resolve({ exitCode: code ?? 1, output });
+        });
+    });
+}
+
+function getCodexBinary() {
+    return path.join(process.cwd(), 'node_modules', '.bin', 'codex');
+}
+
+function findDeviceCode(value) {
+    return value.match(/\b[A-Z0-9]{4}-[A-Z0-9]{5}\b/)?.[0] ?? null;
+}
+
+function stripAnsi(value) {
+    return value.replace(/\u001b\[[0-9;]*m/g, '');
+}
+
+function cleanStatus(value) {
+    return String(value || '')
+        .replace(/Device codes are a common phishing target\..*/gis, '')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 
 function createResponseHeaders(origin) {
     const headers = {
         'content-type': 'application/json; charset=utf-8',
-        'access-control-allow-methods': 'POST, OPTIONS',
+        'access-control-allow-methods': 'GET, POST, OPTIONS',
         'access-control-allow-headers': 'content-type',
     };
 
@@ -287,5 +432,6 @@ function getHeader(headers, name) {
 
 module.exports = {
     createCodexRunResponse,
+    streamCodexAuth,
     streamCodexRun,
 };

@@ -1,15 +1,16 @@
-import { useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Card, ScreenSection, TextField } from '../components/ui';
 import {
-    getDefaultLocalCodexBaseUrl,
+    getCodexAuthStatus,
+    startCodexAuth,
     streamCodexTask,
+    type CodexAuthEvent,
     type MoodleCodexContext,
-    type CodexRunResponse,
     type CodexStreamEvent,
 } from '../codex';
-import { Bot, SendHorizontal } from '../icons';
+import { Bot, Link2, SendHorizontal } from '../icons';
 import type {
     MoodleConnection,
     MoodleCourse,
@@ -24,39 +25,155 @@ type CodexScreenProps = Readonly<{
     courseContentsById: Record<number, MoodleCourseSection[]>;
 }>;
 
+type ChatMessage = {
+    id: string;
+    role: 'user' | 'codex';
+    text: string;
+    tools?: Array<{ title: string; status: string }>;
+    isError?: boolean;
+};
+
+type BuildMoodleContextOptions = Readonly<{
+    prompt?: string;
+    loadMissingCourseContents?: boolean;
+}>;
+
+type CodexAuthState = 'checking' | 'missing' | 'connecting' | 'connected';
+
+type CodexDeviceCode = {
+    verificationUri: string;
+    userCode: string;
+    expiresInSeconds?: number;
+};
+
 export function CodexScreen(props: CodexScreenProps) {
-    const [prompt, setPrompt] = useState(
-        'Summarize what I should check before the next Moodle client release.',
-    );
-    const [localBaseUrl, setLocalBaseUrl] = useState(
-        getDefaultLocalCodexBaseUrl(),
-    );
+    const [prompt, setPrompt] = useState('');
     const [threadId, setThreadId] = useState<string | null>(null);
-    const [result, setResult] = useState<CodexRunResponse | null>(null);
-    const [streamedText, setStreamedText] = useState('');
-    const [submittedPrompt, setSubmittedPrompt] = useState('');
-    const [toolEvents, setToolEvents] = useState<
-        Array<{ title: string; status: string }>
-    >([]);
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [syncedCourseContents, setSyncedCourseContents] = useState<
         Record<number, MoodleCourseSection[]>
     >({});
+    const [authState, setAuthState] = useState<CodexAuthState>(
+        Platform.OS === 'web' ? 'checking' : 'missing',
+    );
+    const [deviceCode, setDeviceCode] = useState<CodexDeviceCode | null>(null);
     const [busy, setBusy] = useState(false);
-    const [errorMessage, setErrorMessage] = useState('');
+    const [globalError, setGlobalError] = useState('');
+
+    const scrollViewRef = useRef<ScrollView>(null);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            scrollViewRef.current?.scrollToEnd({ animated: true });
+        }, 150);
+        return () => clearTimeout(timer);
+    }, [messages]);
+
+    useEffect(() => {
+        if (Platform.OS !== 'web') {
+            return;
+        }
+
+        let cancelled = false;
+        void getCodexAuthStatus()
+            .then((status) => {
+                if (cancelled) {
+                    return;
+                }
+                setAuthState(status.authenticated ? 'connected' : 'missing');
+            })
+            .catch((error) => {
+                if (cancelled) {
+                    return;
+                }
+                setAuthState('missing');
+                setGlobalError(
+                    error instanceof Error
+                        ? error.message
+                        : 'Unable to check Codex authentication.',
+                );
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    async function connectCodex() {
+        if (Platform.OS !== 'web' || authState === 'connecting') {
+            return;
+        }
+
+        setAuthState('connecting');
+        setDeviceCode(null);
+        setGlobalError('');
+
+        try {
+            const result = await startCodexAuth(handleAuthEvent);
+            setAuthState(result.authenticated ? 'connected' : 'missing');
+            if (!result.authenticated) {
+                setGlobalError(
+                    result.detail ||
+                        'Codex is not authenticated yet. Start the ChatGPT sign-in again.',
+                );
+            }
+        } catch (error) {
+            setAuthState('missing');
+            setGlobalError(
+                error instanceof Error
+                    ? error.message
+                    : 'Codex authentication failed.',
+            );
+        }
+    }
+
+    function handleAuthEvent(event: CodexAuthEvent) {
+        if (event.type === 'device_code') {
+            setDeviceCode({
+                verificationUri: event.verificationUri,
+                userCode: event.userCode,
+                expiresInSeconds: event.expiresInSeconds,
+            });
+            return;
+        }
+
+        if (event.type === 'completed') {
+            setAuthState('connected');
+            setDeviceCode(null);
+            setGlobalError('');
+            return;
+        }
+
+        setAuthState('missing');
+        setGlobalError(event.error);
+    }
 
     async function runPrompt() {
         const trimmedPrompt = prompt.trim();
         if (!trimmedPrompt) {
-            setErrorMessage('Enter a prompt for Codex first.');
+            return;
+        }
+
+        if (authState !== 'connected') {
+            setGlobalError(
+                'Connect ChatGPT first. Codex will not run until the sandbox is signed in with your ChatGPT subscription.',
+            );
             return;
         }
 
         setBusy(true);
-        setErrorMessage('');
-        setResult(null);
-        setStreamedText('');
-        setSubmittedPrompt(trimmedPrompt);
-        setToolEvents([]);
+        setGlobalError('');
+
+        const userMsgId = `u-${Date.now()}`;
+        const codexMsgId = `c-${Date.now()}`;
+
+        setMessages((current) => [
+            ...current,
+            { id: userMsgId, role: 'user', text: trimmedPrompt },
+            { id: codexMsgId, role: 'codex', text: '', tools: [] },
+        ]);
+
+        setPrompt('');
 
         try {
             const moodleContext = await buildMoodleContext({
@@ -65,148 +182,243 @@ export function CodexScreen(props: CodexScreenProps) {
                     ...props.courseContentsById,
                     ...syncedCourseContents,
                 },
+            }, {
+                prompt: trimmedPrompt,
+                loadMissingCourseContents: true,
             });
+
             const nextResult = await streamCodexTask(
                 {
                     prompt: trimmedPrompt,
                     threadId,
                     moodleContext,
                 },
-                localBaseUrl,
-                handleStreamEvent,
+                (event: CodexStreamEvent) => {
+                    if (event.type === 'thread') {
+                        setThreadId(event.threadId);
+                        return;
+                    }
+
+                    if (event.type === 'message') {
+                        setMessages((current) => current.map(m =>
+                            m.id === codexMsgId ? { ...m, text: event.text } : m
+                        ));
+                        return;
+                    }
+
+                    if (event.type === 'tool') {
+                        setMessages((current) => current.map(m => {
+                            if (m.id === codexMsgId) {
+                                const existing = m.tools || [];
+                                const filtered = existing.filter(t => t.title !== event.title);
+                                return {
+                                    ...m,
+                                    tools: [...filtered, { title: event.title, status: event.status }].slice(-4)
+                                };
+                            }
+                            return m;
+                        }));
+                    }
+                }
             );
-            setResult(nextResult);
             setThreadId(nextResult.threadId);
         } catch (error) {
-            setErrorMessage(
-                error instanceof Error
-                    ? error.message
-                    : 'Codex could not complete the request.',
-            );
+            setMessages((current) => current.map(m =>
+                m.id === codexMsgId ? {
+                    ...m,
+                    isError: true,
+                    text: error instanceof Error ? error.message : 'Codex could not complete the request.'
+                } : m
+            ));
         } finally {
             setBusy(false);
         }
     }
 
-    function handleStreamEvent(event: CodexStreamEvent) {
-        if (event.type === 'thread') {
-            setThreadId(event.threadId);
-            return;
-        }
-
-        if (event.type === 'message') {
-            setStreamedText(event.text);
-            return;
-        }
-
-        if (event.type === 'tool') {
-            setToolEvents((current) => {
-                const next = current.filter(
-                    (item) => item.title !== event.title,
-                );
-                return [
-                    ...next,
-                    { title: event.title, status: event.status },
-                ].slice(-4);
-            });
-        }
-    }
-
-    const visibleResponse = streamedText || result?.finalResponse || '';
+    const codexReady = authState === 'connected';
+    const composerDisabled = busy || !codexReady;
+    const connectButtonLabel =
+        authState === 'checking'
+            ? 'Checking...'
+            : authState === 'connecting'
+              ? 'Waiting...'
+              : codexReady
+                ? 'Connected'
+                : 'Connect ChatGPT';
 
     return (
         <ScreenSection>
             <View style={styles.codexRoot}>
                 <ScrollView
+                    ref={scrollViewRef}
                     style={styles.codexChatScroll}
                     contentContainerStyle={styles.codexChatContent}
                     keyboardShouldPersistTaps="handled">
+
                     <View style={styles.codexStatusBar}>
                         <View style={styles.codexIcon}>
                             <Bot color={palette.blue} size={21} />
                         </View>
                         <View style={styles.brandCopy}>
                             <Text style={styles.codexStatusTitle}>
-                                Moodle tools ready
+                                Native Codex required
                             </Text>
                             <Text style={styles.codexStatusBody}>
-                                Courses and loaded course files come directly
-                                from the Moodle mobile API on this device.
+                                The iPad app must run Codex through ChatGPT
+                                OAuth inside the app sandbox. API keys and
+                                remote Codex runtimes are blocked.
                             </Text>
                         </View>
+                        <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Connect ChatGPT for Codex"
+                            disabled={codexReady || authState === 'checking' || authState === 'connecting'}
+                            onPress={() => void connectCodex()}
+                            style={({ pressed }) => [
+                                styles.codexAuthButton,
+                                codexReady && styles.codexAuthButtonReady,
+                                pressed && styles.pressed,
+                                (authState === 'checking' ||
+                                    authState === 'connecting') &&
+                                    styles.buttonDisabled,
+                            ]}>
+                            <Link2
+                                color={codexReady ? palette.green : palette.ink}
+                                size={17}
+                            />
+                            <Text
+                                numberOfLines={1}
+                                style={[
+                                    styles.codexAuthButtonText,
+                                    codexReady && styles.codexAuthButtonTextReady,
+                                ]}>
+                                {connectButtonLabel}
+                            </Text>
+                        </Pressable>
                     </View>
 
-                    {Platform.OS !== 'web' ? (
+                    {deviceCode ? (
+                        <View style={styles.codexAuthCard}>
+                            <Text style={styles.codexAuthCardTitle}>
+                                Finish ChatGPT sign-in
+                            </Text>
+                            <Text style={styles.codexAuthCardBody}>
+                                Open the Codex login page and enter this code:
+                            </Text>
+                            <Text selectable style={styles.codexDeviceCode}>
+                                {deviceCode.userCode}
+                            </Text>
+                            <Pressable
+                                accessibilityRole="link"
+                                accessibilityLabel="Open ChatGPT login"
+                                onPress={() =>
+                                    void Linking.openURL(
+                                        deviceCode.verificationUri,
+                                    )
+                                }
+                                style={({ pressed }) => [
+                                    styles.codexAuthLinkButton,
+                                    pressed && styles.pressed,
+                                ]}>
+                                <Text style={styles.codexAuthLinkButtonText}>
+                                    Open ChatGPT login
+                                </Text>
+                            </Pressable>
+                        </View>
+                    ) : null}
+
+                    {Platform.OS !== 'web' && messages.length === 0 ? (
                         <Card>
                             <Text style={styles.heroLabel}>
-                                Local Codex URL
+                                Real Codex only
                             </Text>
-                            <TextField
-                                value={localBaseUrl}
-                                onChangeText={setLocalBaseUrl}
-                                placeholder="http://127.0.0.1:17333"
-                            />
+                            <Text style={styles.cardBody}>
+                                This screen will not answer from a local mock or
+                                a Mac dev server. It needs the embedded native
+                                Codex runtime.
+                            </Text>
                         </Card>
                     ) : null}
 
-                    {submittedPrompt ? (
-                        <View style={styles.codexUserBubble}>
-                            <Text style={styles.codexUserBubbleText}>
-                                {submittedPrompt}
-                            </Text>
-                        </View>
-                    ) : null}
-
-                    {toolEvents.length > 0 ? (
-                        <View style={styles.codexToolStrip}>
-                            {toolEvents.map((event) => (
-                                <View
-                                    key={event.title}
-                                    style={styles.codexToolChip}>
-                                    <Text style={styles.codexToolChipText}>
-                                        {event.status === 'running'
-                                            ? 'Streaming...'
-                                            : event.status}
-                                        {' · '}
-                                        {event.title}
-                                    </Text>
-                                </View>
-                            ))}
-                        </View>
-                    ) : null}
-
-                    {visibleResponse ? (
-                        <View style={styles.codexTranscriptPlain}>
-                            <Text style={styles.codexResponseText}>
-                                {visibleResponse}
-                            </Text>
-                            {result?.threadId ? (
-                                <Text style={styles.metricHint}>
-                                    Thread: {result.threadId}
-                                </Text>
-                            ) : null}
-                        </View>
-                    ) : (
+                    {messages.length === 0 ? (
                         <View style={styles.codexEmptyTranscriptPlain}>
                             <Text style={styles.codexEmptyTitle}>
                                 Ask Codex about Moodle.
                             </Text>
                             <Text style={styles.codexEmptyBody}>
                                 It can list your courses, inspect course files,
-                                and use loaded Moodle file metadata without a
-                                server-side Moodle CLI.
+                                and use loaded Moodle file metadata once native
+                                Codex is wired into the app.
                             </Text>
                         </View>
-                    )}
+                    ) : null}
 
-                    {errorMessage ? (
+                    {globalError ? (
                         <Card>
                             <Text style={styles.heroLabel}>Codex error</Text>
                             <Text style={styles.errorText}>
-                                {errorMessage}
+                                {globalError}
                             </Text>
                         </Card>
                     ) : null}
+
+                    {messages.map((m) => (
+                        <View key={m.id} style={styles.chatMessageRow}>
+                            {m.role === 'user' ? (
+                                <View style={styles.codexUserBubble}>
+                                    <Text style={styles.codexUserBubbleText}>
+                                        {m.text}
+                                    </Text>
+                                </View>
+                            ) : (
+                                <View style={styles.codexAssistantRow}>
+                                    <View style={styles.codexAssistantAvatar}>
+                                        <Bot color={palette.blue} size={16} />
+                                    </View>
+                                    <View style={styles.codexAssistantContent}>
+                                        {m.tools && m.tools.length > 0 ? (
+                                            <View style={styles.codexToolStrip}>
+                                                {m.tools.map((event) => (
+                                                    <View
+                                                        key={event.title}
+                                                        style={styles.codexToolChip}>
+                                                        <Text style={styles.codexToolChipText}>
+                                                            {event.status === 'running'
+                                                                ? 'Streaming...'
+                                                                : event.status}
+                                                            {' · '}
+                                                            {event.title}
+                                                        </Text>
+                                                    </View>
+                                                ))}
+                                            </View>
+                                        ) : null}
+
+                                        {m.isError ? (
+                                            <View style={styles.codexErrorBubble}>
+                                                <Text style={styles.codexErrorText}>
+                                                    {m.text}
+                                                </Text>
+                                            </View>
+                                        ) : m.text ? (
+                                            <View style={styles.codexAssistantBubble}>
+                                                <Text style={styles.codexResponseText}>
+                                                    {m.text}
+                                                </Text>
+                                            </View>
+                                        ) : (
+                                            <View style={styles.codexAssistantBubbleEmpty}>
+                                                <Text style={styles.codexResponseTextMuted}>
+                                                    Thinking...
+                                                </Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                </View>
+                            )}
+                        </View>
+                    ))}
+                    <View style={styles.codexScrollPadding} />
                 </ScrollView>
 
                 <View
@@ -217,22 +429,28 @@ export function CodexScreen(props: CodexScreenProps) {
                     <TextField
                         value={prompt}
                         onChangeText={setPrompt}
-                        placeholder="Ask anything"
+                        placeholder={
+                            codexReady
+                                ? 'Message Codex'
+                                : 'Connect ChatGPT before asking'
+                        }
                         multiline
                         style={styles.codexPromptInput}
+                        editable={!composerDisabled}
                     />
                     <View style={styles.codexComposerActions}>
                         <Pressable
                             accessibilityRole="button"
                             accessibilityLabel="Run Codex"
                             onPress={() => void runPrompt()}
-                            disabled={busy}
+                            disabled={composerDisabled || !prompt.trim()}
                             style={({ pressed }) => [
                                 styles.codexSendButton,
                                 Platform.OS === 'web' &&
                                     styles.codexSendButtonWeb,
                                 pressed && styles.pressed,
-                                busy && styles.buttonDisabled,
+                                (composerDisabled || !prompt.trim()) &&
+                                    styles.buttonDisabled,
                             ]}>
                             <SendHorizontal color={palette.ink} size={22} />
                         </Pressable>
@@ -245,12 +463,15 @@ export function CodexScreen(props: CodexScreenProps) {
 
 async function buildMoodleContext(
     props: CodexScreenProps,
+    options: BuildMoodleContextOptions = {},
 ): Promise<MoodleCodexContext | null> {
     if (!props.connection) {
         return null;
     }
 
-    const courseContentsById = await ensureRelevantCourseContents(props);
+    const courseContentsById = options.loadMissingCourseContents
+        ? await ensureRelevantCourseContents(props, options.prompt ?? '')
+        : props.courseContentsById;
 
     return {
         source: 'moodle-mobile-api',
@@ -291,14 +512,27 @@ async function buildMoodleContext(
 
 async function ensureRelevantCourseContents(
     props: CodexScreenProps,
+    prompt: string,
 ): Promise<Record<number, MoodleCourseSection[]>> {
     if (!props.connection || props.courses.length === 0) {
         return props.courseContentsById;
     }
 
-    const coursesToLoad = props.courses
+    const promptTokens = getSearchTokens(prompt);
+    const matchingCourses = promptTokens.length > 0
+        ? props.courses.filter((course) =>
+              promptTokens.some((token) =>
+                  `${course.fullName} ${course.shortName}`
+                      .toLowerCase()
+                      .includes(token),
+              ),
+          )
+        : [];
+    const candidateCourses =
+        matchingCourses.length > 0 ? matchingCourses : props.courses.slice(0, 4);
+    const coursesToLoad = candidateCourses
         .filter((course) => !props.courseContentsById[course.id])
-        .slice(0, 8);
+        .slice(0, 4);
 
     if (coursesToLoad.length === 0) {
         return props.courseContentsById;
@@ -321,4 +555,27 @@ async function ensureRelevantCourseContents(
         ...props.courseContentsById,
         ...Object.fromEntries(loadedPairs),
     };
+}
+
+function getSearchTokens(value: string): string[] {
+    return value
+        .toLowerCase()
+        .split(/[^a-z0-9äöüß]+/i)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 4)
+        .filter(
+            (token) =>
+                ![
+                    'course',
+                    'courses',
+                    'kurs',
+                    'kurse',
+                    'zeige',
+                    'list',
+                    'what',
+                    'which',
+                    'about',
+                    'moodle',
+                ].includes(token),
+        );
 }

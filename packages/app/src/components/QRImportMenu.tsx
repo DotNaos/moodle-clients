@@ -1,4 +1,4 @@
-import { Dialog, Tabs } from 'heroui-native';
+import { Tabs } from 'heroui-native';
 import { useState } from 'react';
 import {
     Modal,
@@ -278,18 +278,15 @@ export function QRImportMenu(props: QRImportMenuProps) {
                 onPress={props.onToggle}
                 disabled={props.busy}
             />
-            <Dialog
-                isOpen={props.open}
-                onOpenChange={(nextOpen) => {
-                    if (!nextOpen) props.onToggle();
-                }}>
-                <Dialog.Portal>
-                    <Dialog.Overlay style={importPopupStyles.overlay} />
-                    <Dialog.Content style={importPopupStyles.dialogContent}>
-                        {popupContent}
-                    </Dialog.Content>
-                </Dialog.Portal>
-            </Dialog>
+            <Modal
+                visible={props.open}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={props.onToggle}>
+                <View style={importPopupStyles.nativeOverlay}>
+                    {popupContent}
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -307,16 +304,12 @@ const importPopupStyles = StyleSheet.create({
         top: 0,
         zIndex: 9999,
     },
-    overlay: {
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    },
-    dialogContent: {
-        width: '92%',
-        maxWidth: 420,
-        padding: 0,
-        backgroundColor: 'transparent',
-        borderWidth: 0,
-        ...({ boxShadow: 'none' } as object),
+    nativeOverlay: {
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.58)',
+        flex: 1,
+        justifyContent: 'center',
+        paddingHorizontal: 24,
     },
     shell: {
         backgroundColor: '#18181A',

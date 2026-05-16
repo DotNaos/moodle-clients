@@ -1,7 +1,17 @@
 import { Platform } from "react-native";
 
-const DEFAULT_LOCAL_CODEX_BASE_URL = "http://127.0.0.1:17333";
 const CODEX_WEB_RUN_PATH = "/api/codex-run";
+const CODEX_WEB_AUTH_PATH = "/api/codex-auth";
+
+/*
+ * Project invariants for Codex in this app:
+ * 1. Codex auth must use ChatGPT OAuth. Do not add an OpenAI API key or Codex
+ *    API key path for iOS; the user must not have to pay API usage for this.
+ * 2. iOS Codex must run inside the iOS app sandbox. Do not connect the iOS app
+ *    to a cloud runtime, a macOS Node.js runtime, or a local development proxy
+ *    for Codex. The viable implementation path is an embedded native Codex
+ *    runtime, not a remote HTTP endpoint and not a mock.
+ */
 
 declare const process:
   | { env?: { EXPO_PUBLIC_CODEX_RUN_URL?: string } }
@@ -46,6 +56,26 @@ export type CodexRunResponse = {
   readonly finalResponse: string;
 };
 
+export type CodexAuthStatus = {
+  readonly authenticated: boolean;
+  readonly detail?: string;
+};
+
+export type CodexAuthEvent =
+  | {
+      readonly type: "device_code";
+      readonly verificationUri: string;
+      readonly userCode: string;
+      readonly expiresInSeconds?: number;
+    }
+  | {
+      readonly type: "completed";
+    }
+  | {
+      readonly type: "error";
+      readonly error: string;
+    };
+
 export type CodexStreamEvent =
   | {
       readonly type: "thread";
@@ -72,12 +102,8 @@ export type CodexStreamEvent =
 
 export async function runCodexTask(
   request: CodexRunRequest,
-  localBaseUrl?: string,
 ): Promise<CodexRunResponse> {
-  const endpoint =
-    Platform.OS === "web"
-      ? getWebCodexRunUrl()
-      : `${normalizeBaseUrl(localBaseUrl)}/api/codex-run`;
+  const endpoint = getCodexRunUrl();
 
   const response = await fetch(endpoint, {
     method: "POST",
@@ -113,19 +139,11 @@ export async function runCodexTask(
   };
 }
 
-export function getDefaultLocalCodexBaseUrl(): string {
-  return DEFAULT_LOCAL_CODEX_BASE_URL;
-}
-
 export async function streamCodexTask(
   request: CodexRunRequest,
-  localBaseUrl: string | undefined,
   onEvent: (event: CodexStreamEvent) => void,
 ): Promise<CodexRunResponse> {
-  const endpoint =
-    Platform.OS === "web"
-      ? getWebCodexRunUrl()
-      : `${normalizeBaseUrl(localBaseUrl)}/api/codex-run`;
+  const endpoint = getCodexRunUrl();
 
   const response = await fetch(endpoint, {
     method: "POST",
@@ -211,14 +229,138 @@ export async function streamCodexTask(
   return { threadId, finalResponse };
 }
 
-function normalizeBaseUrl(value: string | undefined): string {
-  const candidate = value?.trim() || DEFAULT_LOCAL_CODEX_BASE_URL;
-  return candidate.endsWith("/") ? candidate.slice(0, -1) : candidate;
+export async function getCodexAuthStatus(): Promise<CodexAuthStatus> {
+  const response = await fetch(getCodexAuthUrl(), {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+    },
+  });
+  const payload = await readJsonResponse(response);
+
+  if (!response.ok) {
+    return {
+      authenticated: false,
+      detail:
+        getErrorMessage(payload) ??
+        `Codex auth check failed with status ${response.status}.`,
+    };
+  }
+
+  return {
+    authenticated: payload?.authenticated === true,
+    detail:
+      typeof payload?.detail === "string" && payload.detail.length > 0
+        ? payload.detail
+        : undefined,
+  };
 }
 
-function getWebCodexRunUrl(): string {
+export async function startCodexAuth(
+  onEvent: (event: CodexAuthEvent) => void,
+): Promise<CodexAuthStatus> {
+  const response = await fetch(getCodexAuthUrl(), {
+    method: "POST",
+    headers: {
+      accept: "application/x-ndjson",
+    },
+  });
+
+  if (!response.ok) {
+    const payload = await readJsonResponse(response);
+    const detail =
+      getErrorMessage(payload) ??
+      `Codex auth start failed with status ${response.status}.`;
+    onEvent({ type: "error", error: detail });
+    return { authenticated: false, detail };
+  }
+
+  if (!response.body) {
+    const detail = "Codex auth streaming is not available in this runtime.";
+    onEvent({ type: "error", error: detail });
+    return { authenticated: false, detail };
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let authenticated = false;
+  let detail: string | undefined;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const event = parseAuthEvent(line);
+      if (!event) {
+        continue;
+      }
+      onEvent(event);
+      if (event.type === "completed") {
+        authenticated = true;
+      } else if (event.type === "error") {
+        detail = event.error;
+      }
+    }
+  }
+
+  if (buffer.trim()) {
+    const event = parseAuthEvent(buffer);
+    if (event) {
+      onEvent(event);
+      if (event.type === "completed") {
+        authenticated = true;
+      } else if (event.type === "error") {
+        detail = event.error;
+      }
+    }
+  }
+
+  return { authenticated, detail };
+}
+
+function getCodexRunUrl(): string {
+  if (Platform.OS === "web") {
+    const configured = process?.env?.EXPO_PUBLIC_CODEX_RUN_URL?.trim();
+    if (configured) {
+      return configured;
+    }
+    return CODEX_WEB_RUN_PATH;
+  }
+
+  throw new Error(
+    "Native iOS Codex runtime is not wired yet. This app will not use a mock, an OpenAI API key, a cloud runtime, or the macOS Node.js dev host for Codex.",
+  );
+}
+
+function getCodexAuthUrl(): string {
+  if (Platform.OS !== "web") {
+    throw new Error(
+      "Native iOS Codex auth is not wired yet. The web device-code flow is only for the browser runtime.",
+    );
+  }
+
   const configured = process?.env?.EXPO_PUBLIC_CODEX_RUN_URL?.trim();
-  return configured || CODEX_WEB_RUN_PATH;
+  if (!configured) {
+    return CODEX_WEB_AUTH_PATH;
+  }
+
+  try {
+    const url = new URL(configured);
+    url.pathname = CODEX_WEB_AUTH_PATH;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return CODEX_WEB_AUTH_PATH;
+  }
 }
 
 async function readJsonResponse(response: Response): Promise<Record<string, unknown> | null> {
@@ -248,5 +390,14 @@ function parseStreamEvent(line: string): CodexStreamEvent | null {
   }
 
   const parsed = JSON.parse(line) as CodexStreamEvent;
+  return parsed;
+}
+
+function parseAuthEvent(line: string): CodexAuthEvent | null {
+  if (!line.trim()) {
+    return null;
+  }
+
+  const parsed = JSON.parse(line) as CodexAuthEvent;
   return parsed;
 }

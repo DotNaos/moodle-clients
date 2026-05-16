@@ -40,6 +40,28 @@ Run the mobile app:
 bun run mobile:start
 ```
 
+Run the mobile app on iOS:
+
+```sh
+pnpm mobile:ios
+```
+
+The mobile dev commands also start the local Moodle proxy. If `~/.moodle/mobile-session.json`
+exists, the app imports that Moodle CLI session automatically in development.
+
+### Mobile Codex SDK
+
+The iOS app has two hard invariants:
+
+1. Codex must use ChatGPT OAuth. Do not add an OpenAI API key or Codex API key
+   path for iOS.
+2. Codex must run inside the iOS app sandbox. Do not connect the iOS app to a
+   cloud runtime, a macOS Node.js runtime, or a local Codex development proxy.
+
+The current TypeScript `@openai/codex-sdk` package requires Node.js 18+ and
+launches the `codex` CLI. That package is therefore not the iOS implementation
+path. iOS needs an embedded native Codex runtime.
+
 Build the Expo web app:
 
 ```sh

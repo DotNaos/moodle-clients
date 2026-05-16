@@ -1,9 +1,15 @@
 import { CameraView, type BarcodeScanningResult } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
-import { Dialog } from 'heroui-native';
 import { CircleHelp, X } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+    Modal,
+    Platform,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
+} from 'react-native';
 
 import { parseMobileQRLink } from '../moodle';
 import { parseMobilePairTarget } from '../pairing';
@@ -177,29 +183,29 @@ export function ScannerModal(props: {
     }
 
     return (
-        <Dialog
-            isOpen={props.visible}
-            onOpenChange={(nextOpen) => {
-                if (!nextOpen && closeEnabledRef.current) {
+        <Modal
+            visible={props.visible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => {
+                if (closeEnabledRef.current) {
                     props.onClose();
                 }
             }}>
             <StatusBar style="light" />
-            <Dialog.Portal>
-                <Dialog.Overlay style={scannerStyles.overlay} />
-                <Dialog.Content
-                    isSwipeable={true}
-                    style={scannerStyles.dialogContent}>
-                    {scannerContent}
-                </Dialog.Content>
-            </Dialog.Portal>
-        </Dialog>
+            <View style={scannerStyles.nativeOverlay}>{scannerContent}</View>
+        </Modal>
     );
 }
 
 const scannerStyles = StyleSheet.create({
-    overlay: {
+    nativeOverlay: {
+        alignItems: 'center',
         backgroundColor: 'rgba(0, 0, 0, 0.48)',
+        flex: 1,
+        justifyContent: 'center',
+        paddingHorizontal: 24,
+        paddingVertical: 24,
     },
     webOverlay: {
         alignItems: 'center',
@@ -214,20 +220,11 @@ const scannerStyles = StyleSheet.create({
         top: 0,
         zIndex: 9999,
     },
-    dialogContent: {
-        width: '92%',
-        maxWidth: 360,
-        padding: 0,
-        backgroundColor: 'transparent',
-        borderWidth: 0,
-        ...({ boxShadow: 'none' } as object),
-    },
     shell: {
         alignItems: 'center',
         backgroundColor: 'rgba(12, 11, 10, 0.92)',
-        borderColor: 'rgba(255, 255, 255, 0.16)',
         borderRadius: 28,
-        borderWidth: 1,
+        borderWidth: 0,
         gap: 12,
         maxWidth: 440,
         paddingBottom: 22,

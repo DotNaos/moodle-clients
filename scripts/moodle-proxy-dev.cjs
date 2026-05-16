@@ -6,15 +6,12 @@ const {
     DEFAULT_PROXY_PORT,
     createMoodleProxyResponse,
 } = require('../proxy/moodle-proxy.cjs');
-const {
-    createCodexRunResponse,
-    streamCodexRun,
-} = require('../proxy/codex-run.cjs');
 
 const port = Number.parseInt(
     process.env.MOODLE_PROXY_PORT || String(DEFAULT_PROXY_PORT),
     10,
 );
+const codexRunEnabled = process.env.DISABLE_CODEX_RUN !== '1';
 
 const server = http.createServer(async (request, response) => {
     try {
@@ -34,7 +31,8 @@ const server = http.createServer(async (request, response) => {
             return;
         }
 
-        if (requestUrl.includes('/api/codex-run')) {
+        if (requestUrl.includes('/api/codex-run') && codexRunEnabled) {
+            const { streamCodexRun } = require('../proxy/codex-run.cjs');
             await streamCodexRun(
                 {
                     method: request.method,
@@ -47,9 +45,28 @@ const server = http.createServer(async (request, response) => {
             return;
         }
 
-        const responseFactory = requestUrl.includes('/api/codex-run')
-            ? createCodexRunResponse
-            : createMoodleProxyResponse;
+        if (requestUrl.includes('/api/codex-auth') && codexRunEnabled) {
+            const { streamCodexAuth } = require('../proxy/codex-run.cjs');
+            await streamCodexAuth(
+                {
+                    method: request.method,
+                    headers: request.headers,
+                    bodyText,
+                    requestUrl,
+                },
+                response,
+            );
+            return;
+        }
+
+        if (requestUrl.includes('/api/codex-run') || requestUrl.includes('/api/codex-auth')) {
+            response.statusCode = 404;
+            response.setHeader('content-type', 'application/json; charset=utf-8');
+            response.end(JSON.stringify({ error: 'Local Codex proxy is disabled.' }));
+            return;
+        }
+
+        const responseFactory = createMoodleProxyResponse;
         const proxyResponse = await responseFactory({
             method: request.method,
             headers: request.headers,
@@ -80,9 +97,16 @@ server.listen(port, () => {
     console.log(
         `[moodle-proxy] listening on http://localhost:${port}/api/moodle-proxy`,
     );
-    console.log(
-        `[codex-run] listening on http://localhost:${port}/api/codex-run`,
-    );
+    if (codexRunEnabled) {
+        console.log(
+            `[codex-run] listening on http://localhost:${port}/api/codex-run`,
+        );
+        console.log(
+            `[codex-auth] listening on http://localhost:${port}/api/codex-auth`,
+        );
+    } else {
+        console.log('[codex-run] disabled for this dev session');
+    }
     console.log(
         `[moodle-cli-session] listening on http://localhost:${port}/api/moodle-cli-session`,
     );

@@ -62,11 +62,7 @@ export async function storeConnection(connection: MoodleConnection): Promise<voi
 }
 
 export async function importMoodleCliConnection(): Promise<MoodleConnection | null> {
-  if (Platform.OS !== "web") {
-    return null;
-  }
-
-  const importUrl = process?.env?.EXPO_PUBLIC_MOODLE_SESSION_IMPORT_URL?.trim();
+  const importUrl = getMoodleCliSessionImportUrl();
   if (!importUrl) {
     return null;
   }
@@ -141,4 +137,13 @@ function sameConnection(left: MoodleConnection, right: MoodleConnection): boolea
 
 function getStorageLabel(): "localStorage" | "secureStore" {
   return Platform.OS === "web" ? "localStorage" : "secureStore";
+}
+
+function getMoodleCliSessionImportUrl(): string {
+  const configuredUrl = process?.env?.EXPO_PUBLIC_MOODLE_SESSION_IMPORT_URL?.trim();
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+
+  return "";
 }

@@ -388,6 +388,7 @@ export default function App() {
         : [];
     const hasCamera = Platform.OS === 'web' || (permission?.granted ?? false);
     const connected = connection !== null;
+    const showBottomNav = connected;
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
@@ -585,7 +586,7 @@ export default function App() {
                                 ) : null}
                             </View>
 
-                            {activeView !== 'codex' ? (
+                            {showBottomNav ? (
                                 <BottomNav
                                     activeView={activeView}
                                     onChangeView={setActiveView}
@@ -598,7 +599,7 @@ export default function App() {
                                     infoMessage={infoMessage}
                                     errorMessage={errorMessage}
                                     errorDetails={errorDebugDetails}
-                                    withBottomNav
+                                    withBottomNav={showBottomNav}
                                 />
                             ) : null}
                         </View>

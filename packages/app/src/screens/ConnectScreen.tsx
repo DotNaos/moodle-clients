@@ -137,7 +137,7 @@ export function ConnectScreen(props: ConnectScreenProps) {
 
 function DisconnectedConnectState(props: DisconnectedConnectStateProps) {
     const { height } = useWindowDimensions();
-    const stageMinHeight = Math.max(height - 40, 640);
+    const stageMinHeight = Math.max(height - 180, 560);
 
     return (
         <ScreenSection>
