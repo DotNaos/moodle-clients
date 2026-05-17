@@ -38,6 +38,6 @@ cd apps/mobile
 eas update --channel preview --message "OTA test update" --non-interactive
 ```
 
-Then open Profile in the simulator and press `Check now`. The App updates section should show self-update as enabled, the expected channel, and runtime version `1.0.1`. If it says self-update is disabled, that installed build cannot receive OTA updates and must be replaced by a fresh native build once.
+Then open Profile in the simulator and press `Check now`. The App updates section should show self-update as enabled, the expected channel, and runtime version `1.0.2`. If it says self-update is disabled, that installed build cannot receive OTA updates and must be replaced by a fresh native build once.
 
 For production-channel testing, use `production-simulator` and publish with `--channel production`.
