@@ -56,6 +56,7 @@
     "extra": {
       "downloadUrl": "https://github.com/DotNaos/moodle-clients/releases/latest",
       "releaseApiUrl": "https://api.github.com/repos/DotNaos/moodle-clients/releases/latest",
+      "codexBaseUrl": "https://codex.os-home.net/api/apps/moodle",
       "eas": {
         "projectId": "db508694-d456-463c-9a25-2d9e3620c052"
       }

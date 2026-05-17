@@ -19,6 +19,7 @@ import {
     openAppDownloadPage,
     type AppUpdateCheckResult,
 } from './src/appUpdates';
+import { createCodexAppActions } from './src/codexAppActions';
 import { AppUpdateBanner } from './src/components/AppUpdateBanner';
 import { BottomNav } from './src/components/BottomNav';
 import { MoodleBrowserLoginModal } from './src/components/MoodleBrowserLoginModal';
@@ -31,7 +32,6 @@ import { RefreshCw } from './src/icons';
 import {
     exchangeQRToken,
     DEFAULT_MOODLE_SITE_URL,
-    getAuthenticatedFileUrl,
     getCourseContents,
     getCourses,
     getSiteInfo,
@@ -494,6 +494,16 @@ export default function App() {
         }
     }
 
+    const codexActions = createCodexAppActions({
+        connection,
+        courseContentsById,
+        setActiveView,
+        setSelectedCourseId,
+        setCourseContentsById,
+        setPdfPreview,
+        loadCourseContents,
+    });
+
     const currentCourse =
         courses.find((course) => course.id === selectedCourseId) ?? null;
     const currentSections = selectedCourseId
@@ -658,26 +668,7 @@ export default function App() {
                                             if (!connection) {
                                                 return;
                                             }
-
-                                            const url = getAuthenticatedFileUrl(
-                                                connection,
-                                                file.fileUrl,
-                                            );
-                                            if (
-                                                file.mimeType ===
-                                                    'application/pdf' ||
-                                                file.filename
-                                                    .toLowerCase()
-                                                    .endsWith('.pdf')
-                                            ) {
-                                                setPdfPreview({
-                                                    title: file.filename,
-                                                    url,
-                                                });
-                                                return;
-                                            }
-
-                                            void Linking.openURL(url);
+                                            codexActions.openMoodleFile(file);
                                         }}
                                     />
                                 ) : null}
@@ -713,6 +704,18 @@ export default function App() {
                                         connection={connection}
                                         courses={courses}
                                         courseContentsById={courseContentsById}
+                                        activeView={activeView}
+                                        selectedCourseId={selectedCourseId}
+                                        onNavigateTab={setActiveView}
+                                        onOpenCourse={
+                                            codexActions.openCourseFromCodex
+                                        }
+                                        onLoadCourseContents={
+                                            codexActions.loadCourseContentsFromCodex
+                                        }
+                                        onOpenResource={
+                                            codexActions.openResourceFromCodex
+                                        }
                                     />
                                 ) : null}
                             </View>

@@ -672,10 +672,10 @@ export const styles = StyleSheet.create({
     paddingBottom: 116,
   },
   codexStatusBar: {
-    alignItems: "center",
+    alignItems: "flex-start",
     backgroundColor: "transparent",
     borderRadius: 0,
-    flexDirection: "row",
+    flexDirection: "column",
     gap: 12,
     paddingVertical: 8,
   },

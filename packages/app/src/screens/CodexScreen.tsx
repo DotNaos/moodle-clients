@@ -4,10 +4,15 @@ import { Linking, Platform, Pressable, ScrollView, Text, View } from 'react-nati
 import { Card, ScreenSection, TextField } from '../components/ui';
 import {
     getCodexAuthStatus,
+    claimCodexPairing,
     startCodexAuth,
+    startCodexPairing,
     streamCodexTask,
+    syncMoodleSessionToCodex,
     type CodexAuthEvent,
+    type CodexPairing,
     type MoodleCodexContext,
+    type MoodleCodexAction,
     type CodexStreamEvent,
 } from '../codex';
 import { Bot, Link2, SendHorizontal } from '../icons';
@@ -18,11 +23,22 @@ import type {
 } from '../moodle';
 import { getCourseContents } from '../moodle';
 import { palette, styles } from '../styles';
+import type { AppView } from '../types';
 
 type CodexScreenProps = Readonly<{
     connection: MoodleConnection | null;
     courses: MoodleCourse[];
     courseContentsById: Record<number, MoodleCourseSection[]>;
+    activeView: AppView;
+    selectedCourseId: number | null;
+    onNavigateTab: (view: AppView) => void;
+    onOpenCourse: (courseId: number) => Promise<void> | void;
+    onLoadCourseContents: (courseId: number) => Promise<void> | void;
+    onOpenResource: (
+        courseId: number,
+        resourceId?: string | null,
+        filename?: string | null,
+    ) => Promise<void> | void;
 }>;
 
 type ChatMessage = {
@@ -38,7 +54,7 @@ type BuildMoodleContextOptions = Readonly<{
     loadMissingCourseContents?: boolean;
 }>;
 
-type CodexAuthState = 'checking' | 'missing' | 'connecting' | 'connected';
+type CodexAuthState = 'checking' | 'missing' | 'syncing' | 'pairing' | 'connecting' | 'connected';
 
 type CodexDeviceCode = {
     verificationUri: string;
@@ -54,8 +70,11 @@ export function CodexScreen(props: CodexScreenProps) {
         Record<number, MoodleCourseSection[]>
     >({});
     const [authState, setAuthState] = useState<CodexAuthState>(
-        Platform.OS === 'web' ? 'checking' : 'missing',
+        'checking',
     );
+    const [needsPairing, setNeedsPairing] = useState(false);
+    const [pairing, setPairing] = useState<CodexPairing | null>(null);
+    const [moodleAgentConnected, setMoodleAgentConnected] = useState(false);
     const [deviceCode, setDeviceCode] = useState<CodexDeviceCode | null>(null);
     const [busy, setBusy] = useState(false);
     const [globalError, setGlobalError] = useState('');
@@ -70,17 +89,15 @@ export function CodexScreen(props: CodexScreenProps) {
     }, [messages]);
 
     useEffect(() => {
-        if (Platform.OS !== 'web') {
-            return;
-        }
-
         let cancelled = false;
-        void getCodexAuthStatus()
+        void refreshCodexStatus()
             .then((status) => {
                 if (cancelled) {
                     return;
                 }
+                setNeedsPairing(status.paired === false);
                 setAuthState(status.authenticated ? 'connected' : 'missing');
+                setMoodleAgentConnected(status.moodleConnected === true);
             })
             .catch((error) => {
                 if (cancelled) {
@@ -97,10 +114,74 @@ export function CodexScreen(props: CodexScreenProps) {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [props.connection]);
+
+    useEffect(() => {
+        if (!pairing) {
+            return;
+        }
+
+        let cancelled = false;
+        const timer = setInterval(() => {
+            void claimCodexPairing(pairing)
+                .then(async (result) => {
+                    if (cancelled || result.status === 'pending') {
+                        return;
+                    }
+                    if (result.status === 'expired') {
+                        setAuthState('missing');
+                        setNeedsPairing(true);
+                        setPairing(null);
+                        setGlobalError('The pairing code expired. Start pairing again.');
+                        return;
+                    }
+
+                    setPairing(null);
+                    setNeedsPairing(false);
+                    setGlobalError('');
+                    const status = await refreshCodexStatus();
+                    if (!cancelled) {
+                        setAuthState(status.authenticated ? 'connected' : 'missing');
+                        setMoodleAgentConnected(status.moodleConnected === true);
+                    }
+                })
+                .catch((error) => {
+                    if (!cancelled) {
+                        setGlobalError(
+                            error instanceof Error
+                                ? error.message
+                                : 'Could not finish pairing.',
+                        );
+                    }
+                });
+        }, 2000);
+
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
+        };
+    }, [pairing, props.connection]);
+
+    async function refreshCodexStatus() {
+        const status = await getCodexAuthStatus();
+        if (status.paired === false) {
+            return status;
+        }
+        if (props.connection && Platform.OS !== 'web') {
+            setAuthState('syncing');
+            await syncMoodleSessionToCodex(props.connection);
+            return getCodexAuthStatus();
+        }
+        return status;
+    }
 
     async function connectCodex() {
-        if (Platform.OS !== 'web' || authState === 'connecting') {
+        if (authState === 'connecting' || authState === 'pairing') {
+            return;
+        }
+
+        if (needsPairing) {
+            await beginPairing();
             return;
         }
 
@@ -123,6 +204,26 @@ export function CodexScreen(props: CodexScreenProps) {
                 error instanceof Error
                     ? error.message
                     : 'Codex authentication failed.',
+            );
+        }
+    }
+
+    async function beginPairing() {
+        setAuthState('pairing');
+        setDeviceCode(null);
+        setPairing(null);
+        setGlobalError('');
+
+        try {
+            const nextPairing = await startCodexPairing();
+            setPairing(nextPairing);
+            setNeedsPairing(true);
+        } catch (error) {
+            setAuthState('missing');
+            setGlobalError(
+                error instanceof Error
+                    ? error.message
+                    : 'Could not start Codex device pairing.',
             );
         }
     }
@@ -156,7 +257,9 @@ export function CodexScreen(props: CodexScreenProps) {
 
         if (authState !== 'connected') {
             setGlobalError(
-                'Connect ChatGPT first. Codex will not run until the sandbox is signed in with your ChatGPT subscription.',
+                needsPairing
+                    ? 'Pair this app with the VPS first.'
+                    : 'Connect ChatGPT first. Codex will not run until the sandbox is signed in with your ChatGPT subscription.',
             );
             return;
         }
@@ -192,6 +295,10 @@ export function CodexScreen(props: CodexScreenProps) {
                     prompt: trimmedPrompt,
                     threadId,
                     moodleContext,
+                    messages: messages.map((message) => ({
+                        role: message.role === 'codex' ? 'assistant' : 'user',
+                        text: message.text,
+                    })),
                 },
                 (event: CodexStreamEvent) => {
                     if (event.type === 'thread') {
@@ -222,6 +329,7 @@ export function CodexScreen(props: CodexScreenProps) {
                 }
             );
             setThreadId(nextResult.threadId);
+            await applyCodexActions(nextResult.actions ?? [], props);
         } catch (error) {
             setMessages((current) => current.map(m =>
                 m.id === codexMsgId ? {
@@ -236,15 +344,21 @@ export function CodexScreen(props: CodexScreenProps) {
     }
 
     const codexReady = authState === 'connected';
-    const composerDisabled = busy || !codexReady;
+    const composerDisabled = busy || !codexReady || !moodleAgentConnected;
     const connectButtonLabel =
         authState === 'checking'
             ? 'Checking...'
+            : authState === 'syncing'
+              ? 'Syncing...'
+              : authState === 'pairing'
+                ? 'Pairing...'
             : authState === 'connecting'
               ? 'Waiting...'
               : codexReady
                 ? 'Connected'
-                : 'Connect ChatGPT';
+                : needsPairing
+                  ? 'Pair VPS'
+                  : 'Connect ChatGPT';
 
     return (
         <ScreenSection>
@@ -256,30 +370,35 @@ export function CodexScreen(props: CodexScreenProps) {
                     keyboardShouldPersistTaps="handled">
 
                     <View style={styles.codexStatusBar}>
-                        <View style={styles.codexIcon}>
-                            <Bot color={palette.blue} size={21} />
-                        </View>
-                        <View style={styles.brandCopy}>
-                            <Text style={styles.codexStatusTitle}>
-                                Native Codex required
-                            </Text>
-                            <Text style={styles.codexStatusBody}>
-                                The iPad app must run Codex through ChatGPT
-                                OAuth inside the app sandbox. API keys and
-                                remote Codex runtimes are blocked.
-                            </Text>
+                        <View style={styles.codexHeaderRow}>
+                            <View style={styles.codexIcon}>
+                                <Bot color={palette.blue} size={21} />
+                            </View>
+                            <View style={styles.brandCopy}>
+                                <Text style={styles.codexStatusTitle}>
+                                    codex.moodle
+                                </Text>
+                                <Text style={styles.codexStatusBody}>
+                                    The scoped VPS agent uses its own encrypted
+                                    Moodle session. This phone sends the current app
+                                    context while you work.
+                                </Text>
+                            </View>
                         </View>
                         <Pressable
                             accessibilityRole="button"
                             accessibilityLabel="Connect ChatGPT for Codex"
-                            disabled={codexReady || authState === 'checking' || authState === 'connecting'}
+                            disabled={codexReady || authState === 'checking' || authState === 'syncing' || authState === 'pairing' || authState === 'connecting'}
                             onPress={() => void connectCodex()}
                             style={({ pressed }) => [
                                 styles.codexAuthButton,
                                 codexReady && styles.codexAuthButtonReady,
                                 pressed && styles.pressed,
                                 (authState === 'checking' ||
-                                    authState === 'connecting') &&
+                                    authState === 'connecting' ||
+                                    authState === 'pairing') &&
+                                    styles.buttonDisabled,
+                                authState === 'syncing' &&
                                     styles.buttonDisabled,
                             ]}>
                             <Link2
@@ -327,15 +446,35 @@ export function CodexScreen(props: CodexScreenProps) {
                         </View>
                     ) : null}
 
-                    {Platform.OS !== 'web' && messages.length === 0 ? (
+                    {pairing ? (
+                        <View style={styles.codexAuthCard}>
+                            <Text style={styles.codexAuthCardTitle}>
+                                Pair this phone with the VPS
+                            </Text>
+                            <Text style={styles.codexAuthCardBody}>
+                                Run this once on the VPS. The app will finish
+                                pairing automatically.
+                            </Text>
+                            <Text selectable style={styles.codexDeviceCode}>
+                                {pairing.userCode}
+                            </Text>
+                            {pairing.approveCommand ? (
+                                <Text selectable style={styles.codexAuthCardBody}>
+                                    {pairing.approveCommand}
+                                </Text>
+                            ) : null}
+                        </View>
+                    ) : null}
+
+                    {!moodleAgentConnected && props.connection ? (
                         <Card>
                             <Text style={styles.heroLabel}>
-                                Real Codex only
+                                Moodle session pending
                             </Text>
                             <Text style={styles.cardBody}>
-                                This screen will not answer from a local mock or
-                                a Mac dev server. It needs the embedded native
-                                Codex runtime.
+                                The phone is sending the current Moodle login to
+                                codex.moodle. Try again when the status is
+                                connected.
                             </Text>
                         </Card>
                     ) : null}
@@ -347,8 +486,7 @@ export function CodexScreen(props: CodexScreenProps) {
                             </Text>
                             <Text style={styles.codexEmptyBody}>
                                 It can list your courses, inspect course files,
-                                and use loaded Moodle file metadata once native
-                                Codex is wired into the app.
+                                and open Moodle content in this app.
                             </Text>
                         </View>
                     ) : null}
@@ -431,8 +569,10 @@ export function CodexScreen(props: CodexScreenProps) {
                         onChangeText={setPrompt}
                         placeholder={
                             codexReady
-                                ? 'Message Codex'
-                                : 'Connect ChatGPT before asking'
+                                ? moodleAgentConnected
+                                    ? 'Message Codex'
+                                    : 'Syncing Moodle'
+                                : 'Connect ChatGPT'
                         }
                         multiline
                         style={styles.codexPromptInput}
@@ -477,6 +617,8 @@ async function buildMoodleContext(
         source: 'moodle-mobile-api',
         siteUrl: props.connection.moodleSiteUrl,
         userId: props.connection.moodleUserId,
+        activeView: props.activeView,
+        selectedCourseId: props.selectedCourseId,
         courses: props.courses.map((course) => ({
             id: course.id,
             fullName: course.fullName,
@@ -495,12 +637,14 @@ async function buildMoodleContext(
                     sections: sections.map((section) => ({
                         name: section.name,
                         modules: section.modules.map((module) => ({
+                            id: module.id,
                             name: module.name,
                             type: module.modname ?? '',
                             files: module.contents.map((file) => ({
                                 filename: file.filename,
                                 mimeType: file.mimeType,
                                 fileSize: file.fileSize,
+                                resourceId: file.fileUrl,
                             })),
                         })),
                     })),
@@ -578,4 +722,53 @@ function getSearchTokens(value: string): string[] {
                     'moodle',
                 ].includes(token),
         );
+}
+
+async function applyCodexActions(
+    actions: MoodleCodexAction[],
+    props: CodexScreenProps,
+): Promise<void> {
+    for (const action of actions) {
+        if (action.type === 'navigate_tab') {
+            props.onNavigateTab(action.view);
+            continue;
+        }
+
+        if (action.type === 'show_profile') {
+            props.onNavigateTab('profile');
+            continue;
+        }
+
+        if (action.type === 'open_course') {
+            const courseId = parseCourseId(action.courseId);
+            if (courseId) {
+                await props.onOpenCourse(courseId);
+            }
+            continue;
+        }
+
+        if (action.type === 'load_course_contents') {
+            const courseId = parseCourseId(action.courseId);
+            if (courseId) {
+                await props.onLoadCourseContents(courseId);
+            }
+            continue;
+        }
+
+        if (action.type === 'open_pdf') {
+            const courseId = parseCourseId(action.courseId);
+            if (courseId) {
+                await props.onOpenResource(
+                    courseId,
+                    action.resourceId,
+                    action.filename,
+                );
+            }
+        }
+    }
+}
+
+function parseCourseId(value: string): number | null {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }

@@ -4,6 +4,7 @@ import { logDevInfo } from "./debug";
 import type { MoodleConnection } from "./moodle";
 
 const CONNECTION_KEY = "moodle-clients.connection.v1";
+const CODEX_DEVICE_TOKEN_KEY = "moodle-clients.codex.device-token.v1";
 const KEYCHAIN_AFTER_FIRST_UNLOCK = "AFTER_FIRST_UNLOCK";
 
 declare const process:
@@ -101,6 +102,23 @@ export async function clearStoredConnection(): Promise<void> {
   }
 
   await getSecureStore().deleteItemAsync(CONNECTION_KEY);
+}
+
+export async function loadCodexDeviceToken(): Promise<string | null> {
+  return readValue(CODEX_DEVICE_TOKEN_KEY);
+}
+
+export async function storeCodexDeviceToken(token: string): Promise<void> {
+  await writeValue(CODEX_DEVICE_TOKEN_KEY, token);
+}
+
+export async function clearCodexDeviceToken(): Promise<void> {
+  if (Platform.OS === "web") {
+    globalThis.localStorage?.removeItem(CODEX_DEVICE_TOKEN_KEY);
+    return;
+  }
+
+  await getSecureStore().deleteItemAsync(CODEX_DEVICE_TOKEN_KEY);
 }
 
 async function readValue(key: string): Promise<string | null> {
