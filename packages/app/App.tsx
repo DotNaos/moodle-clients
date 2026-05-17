@@ -13,6 +13,13 @@ import {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+    checkAndApplyAppUpdate,
+    getCurrentAppVersion,
+    openAppDownloadPage,
+    type AppUpdateCheckResult,
+} from './src/appUpdates';
+import { AppUpdateBanner } from './src/components/AppUpdateBanner';
 import { BottomNav } from './src/components/BottomNav';
 import { MoodleBrowserLoginModal } from './src/components/MoodleBrowserLoginModal';
 import { PdfViewerModal } from './src/components/PdfViewerModal';
@@ -52,6 +59,8 @@ import {
 import { palette, styles } from './src/styles';
 import type { AppView, ScannerMode } from './src/types';
 
+declare const __DEV__: boolean;
+
 export default function App() {
     const [permission, requestPermission] = useCameraPermissions();
     const [activeView, setActiveView] = useState<AppView>('courses');
@@ -59,6 +68,12 @@ export default function App() {
     const [busy, setBusy] = useState(false);
     const [loadingDashboard, setLoadingDashboard] = useState(false);
     const [loadingCourseId, setLoadingCourseId] = useState<number | null>(null);
+    const [checkingForUpdate, setCheckingForUpdate] = useState(false);
+    const [appUpdateNotice, setAppUpdateNotice] = useState<{
+        title: string;
+        message: string;
+        downloadUrl: string;
+    } | null>(null);
     const [errorMessage, setErrorMessage] = useState('');
     const [errorDebugDetails, setErrorDebugDetails] = useState<string[]>([]);
     const [infoMessage, setInfoMessage] = useState(
@@ -84,6 +99,12 @@ export default function App() {
     } | null>(null);
     const scanLockRef = useRef(false);
     const browserLoginLockRef = useRef(false);
+
+    useEffect(() => {
+        if (!__DEV__) {
+            void runAppUpdateCheck(false);
+        }
+    }, []);
 
     useEffect(() => {
         let mounted = true;
@@ -361,6 +382,79 @@ export default function App() {
         }
     }
 
+    async function runAppUpdateCheck(manual: boolean): Promise<void> {
+        setCheckingForUpdate(true);
+        if (manual) {
+            setAppUpdateNotice(null);
+            setInfoMessage('Checking for app updates.');
+        }
+
+        try {
+            const result = await checkAndApplyAppUpdate();
+            handleAppUpdateResult(result, manual);
+        } catch (error) {
+            logDevError('App update check failed', error);
+            if (manual) {
+                setErrorDebugDetails(getErrorDebugDetails(error));
+                setErrorMessage(getSafeMessage(error));
+            } else {
+                setAppUpdateNotice({
+                    title: 'Could not check for updates',
+                    message:
+                        'Automatic update check failed. Open the download page if you want to install the latest app.',
+                    downloadUrl: '',
+                });
+            }
+        } finally {
+            setCheckingForUpdate(false);
+        }
+    }
+
+    function handleAppUpdateResult(
+        result: AppUpdateCheckResult,
+        manual: boolean,
+    ) {
+        if (result.kind === 'manual-update') {
+            setAppUpdateNotice({
+                title: result.title,
+                message: result.message,
+                downloadUrl: result.downloadUrl,
+            });
+            setInfoMessage(result.message);
+            return;
+        }
+
+        if (result.kind === 'reloading') {
+            setInfoMessage('App update installed. Restarting now.');
+            return;
+        }
+
+        if (manual && result.kind === 'development') {
+            setInfoMessage(
+                'Update checks run in installed builds. Use the download button for the latest install.',
+            );
+            return;
+        }
+
+        if (manual) {
+            setInfoMessage('The app is already up to date.');
+        }
+    }
+
+    async function openUpdateDownload(downloadUrl?: string): Promise<void> {
+        try {
+            if (downloadUrl) {
+                await Linking.openURL(downloadUrl);
+                return;
+            }
+            await openAppDownloadPage();
+        } catch (error) {
+            logDevError('App download link failed', error);
+            setErrorDebugDetails(getErrorDebugDetails(error));
+            setErrorMessage(getSafeMessage(error));
+        }
+    }
+
     function reviewPairing(rawPairQr: string): void {
         try {
             const target = parseMobilePairTarget(rawPairQr);
@@ -600,6 +694,16 @@ export default function App() {
                                             onOpenConnect={() =>
                                                 setActiveView('connect')
                                             }
+                                            appVersion={getCurrentAppVersion()}
+                                            checkingForUpdate={
+                                                checkingForUpdate
+                                            }
+                                            onCheckForUpdate={() => {
+                                                void runAppUpdateCheck(true);
+                                            }}
+                                            onOpenDownload={() => {
+                                                void openUpdateDownload();
+                                            }}
                                         />
                                     </ScrollView>
                                 ) : null}
@@ -627,6 +731,23 @@ export default function App() {
                                     errorMessage={errorMessage}
                                     errorDetails={errorDebugDetails}
                                     withBottomNav={showBottomNav}
+                                />
+                            ) : null}
+                            {activeView !== 'codex' &&
+                            appUpdateNotice &&
+                            !busy &&
+                            !loadingDashboard &&
+                            !errorMessage ? (
+                                <AppUpdateBanner
+                                    title={appUpdateNotice.title}
+                                    message={appUpdateNotice.message}
+                                    withBottomNav={showBottomNav}
+                                    onDismiss={() => setAppUpdateNotice(null)}
+                                    onDownload={() => {
+                                        void openUpdateDownload(
+                                            appUpdateNotice.downloadUrl,
+                                        );
+                                    }}
                                 />
                             ) : null}
                         </View>

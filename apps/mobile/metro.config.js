@@ -16,6 +16,29 @@ config.resolver.nodeModulesPaths = [
 ];
 config.resolver.disableHierarchicalLookup = true;
 
-module.exports = withUniwindConfig(wrapWithReanimatedMetroConfig(config), {
+const wrappedConfig = withUniwindConfig(wrapWithReanimatedMetroConfig(config), {
     cssEntryFile: path.resolve(workspaceRoot, 'packages/app/global.css'),
 });
+
+const defaultResolveRequest = wrappedConfig.resolver.resolveRequest;
+const yallistV4Path = path.resolve(
+    workspaceRoot,
+    'node_modules/lru-cache/node_modules/yallist/yallist.js',
+);
+
+wrappedConfig.resolver.resolveRequest = (context, moduleName, platform) => {
+    if (moduleName === 'yallist') {
+        return {
+            type: 'sourceFile',
+            filePath: yallistV4Path,
+        };
+    }
+
+    if (defaultResolveRequest) {
+        return defaultResolveRequest(context, moduleName, platform);
+    }
+
+    return context.resolveRequest(context, moduleName, platform);
+};
+
+module.exports = wrappedConfig;
