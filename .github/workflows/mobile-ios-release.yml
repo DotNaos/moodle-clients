@@ -10,6 +10,9 @@ on:
         type: choice
         options:
           - preview
+          - preview-simulator
+          - production
+          - production-simulator
           - development
       create_release:
         description: "Create a GitHub release with the iOS build metadata"
@@ -105,6 +108,10 @@ jobs:
           const status = build?.status ?? "";
           const tagInput = process.env.RELEASE_TAG?.trim();
           const releaseTag = tagInput || `ios-${process.env.GITHUB_RUN_NUMBER}`;
+          const isSimulator = process.env.BUILD_PROFILE?.includes("simulator");
+          const archiveName = isSimulator
+            ? `moodle-client-ios-${releaseTag}.tar.gz`
+            : `moodle-client-ios-${releaseTag}.ipa`;
 
           fs.appendFileSync(
             process.env.GITHUB_OUTPUT,
@@ -114,6 +121,7 @@ jobs:
               `build_id=${id}`,
               `build_status=${status}`,
               `release_tag=${releaseTag}`,
+              `archive_name=${archiveName}`,
               "",
             ].join("\n"),
           );
@@ -126,6 +134,7 @@ jobs:
             `- EAS status: ${status || "unknown"}`,
             detailsUrl ? `- EAS install/details URL: ${detailsUrl}` : "",
             artifactUrl ? `- iOS archive URL: ${artifactUrl}` : "",
+            isSimulator ? "- Simulator install: extract the archive and install the .app with xcrun simctl install booted <path-to-app>." : "",
             "",
             "Install note: this is an iOS internal/ad hoc build. The iPhone must be registered in the Apple provisioning profile used by EAS.",
             "",
@@ -139,7 +148,7 @@ jobs:
       - name: Download iOS archive
         if: ${{ steps.build.outputs.artifact_url != '' }}
         run: |
-          curl --fail --location --output moodle-client-ios.ipa "${{ steps.build.outputs.artifact_url }}"
+          curl --fail --location --output "${{ steps.build.outputs.archive_name }}" "${{ steps.build.outputs.artifact_url }}"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -148,7 +157,7 @@ jobs:
           path: |
             mobile-ios-build.json
             mobile-ios-release-notes.md
-            moodle-client-ios.ipa
+            moodle-client-ios-*
           if-no-files-found: warn
           retention-days: 30
 
@@ -163,5 +172,5 @@ jobs:
           files: |
             mobile-ios-build.json
             mobile-ios-release-notes.md
-            moodle-client-ios.ipa
+            moodle-client-ios-*
           fail_on_unmatched_files: false

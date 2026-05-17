@@ -7,6 +7,7 @@ import {
     SecondaryButton,
     SessionCard,
 } from '../components/ui';
+import type { AppUpdateDiagnostics } from '../appUpdates';
 import { compactUrl } from '../format';
 import { Link2, RefreshCw } from '../icons';
 import type { MoodleConnection, MoodleSiteInfo } from '../moodle';
@@ -18,12 +19,21 @@ type ProfileScreenProps = {
     readonly courseCount: number;
     readonly appVersion: string;
     readonly checkingForUpdate: boolean;
+    readonly updateDiagnostics: AppUpdateDiagnostics;
     readonly onOpenConnect: () => void;
     readonly onCheckForUpdate: () => void;
     readonly onOpenDownload: () => void;
 };
 
 export function ProfileScreen(props: ProfileScreenProps) {
+    const selfUpdateStatus = props.updateDiagnostics.selfUpdateEnabled
+        ? 'Enabled'
+        : 'Disabled';
+    const updateChannel = formatUpdateValue(props.updateDiagnostics.channel);
+    const runtimeVersion = formatUpdateValue(
+        props.updateDiagnostics.runtimeVersion,
+    );
+
     if (!props.connection) {
         return (
             <ScreenSection>
@@ -68,6 +78,11 @@ export function ProfileScreen(props: ProfileScreenProps) {
                     updates automatically and keeps the latest download page one
                     tap away when a full install is needed.
                 </Text>
+                <Text style={styles.cardBody}>
+                    Self-update: {selfUpdateStatus}
+                </Text>
+                <Text style={styles.cardBody}>Channel: {updateChannel}</Text>
+                <Text style={styles.cardBody}>Runtime: {runtimeVersion}</Text>
                 <View style={styles.actionRow}>
                     <SecondaryButton
                         label={
@@ -90,4 +105,8 @@ export function ProfileScreen(props: ProfileScreenProps) {
             </Card>
         </ScreenSection>
     );
+}
+
+function formatUpdateValue(value: string | null): string {
+    return value?.trim() ? value : 'not set';
 }

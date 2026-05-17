@@ -19,11 +19,25 @@ export type AppUpdateCheckResult =
     | { kind: 'development' }
     | { kind: 'reloading' }
     | {
+          kind: 'self-update-disabled';
+          title: string;
+          message: string;
+          downloadUrl: string;
+      }
+    | {
           kind: 'manual-update';
           title: string;
           message: string;
           downloadUrl: string;
       };
+
+export type AppUpdateDiagnostics = {
+    readonly selfUpdateEnabled: boolean;
+    readonly runtimeVersion: string | null;
+    readonly channel: string | null;
+    readonly updateId: string | null;
+    readonly createdAt: string | null;
+};
 
 type GitHubReleaseResponse = {
     readonly html_url?: unknown;
@@ -46,6 +60,16 @@ export function getAppDownloadUrl(): string {
         readExpoExtraString('downloadUrl') ||
         DEFAULT_DOWNLOAD_URL
     );
+}
+
+export function getAppUpdateDiagnostics(): AppUpdateDiagnostics {
+    return {
+        selfUpdateEnabled: Updates.isEnabled,
+        runtimeVersion: Updates.runtimeVersion,
+        channel: Updates.channel,
+        updateId: Updates.updateId,
+        createdAt: Updates.createdAt?.toISOString() ?? null,
+    };
 }
 
 export async function openAppDownloadPage(): Promise<void> {
@@ -82,7 +106,13 @@ export async function checkAndApplyAppUpdate(): Promise<AppUpdateCheckResult> {
 
 async function applyCompatibleAppUpdate(): Promise<AppUpdateCheckResult | null> {
     if (!Updates.isEnabled) {
-        return null;
+        return {
+            kind: 'self-update-disabled',
+            title: 'Install once to enable self-updates',
+            message:
+                'This app install cannot check for app-only updates. Install the latest build once; future updates can then arrive automatically.',
+            downloadUrl: getAppDownloadUrl(),
+        };
     }
 
     try {

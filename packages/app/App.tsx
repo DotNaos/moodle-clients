@@ -15,8 +15,10 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import {
     checkAndApplyAppUpdate,
+    getAppUpdateDiagnostics,
     getCurrentAppVersion,
     openAppDownloadPage,
+    type AppUpdateDiagnostics,
     type AppUpdateCheckResult,
 } from './src/appUpdates';
 import { createCodexAppActions } from './src/codexAppActions';
@@ -74,6 +76,8 @@ export default function App() {
         message: string;
         downloadUrl: string;
     } | null>(null);
+    const [appUpdateDiagnostics, setAppUpdateDiagnostics] =
+        useState<AppUpdateDiagnostics>(getAppUpdateDiagnostics);
     const [errorMessage, setErrorMessage] = useState('');
     const [errorDebugDetails, setErrorDebugDetails] = useState<string[]>([]);
     const [infoMessage, setInfoMessage] = useState(
@@ -406,6 +410,7 @@ export default function App() {
                 });
             }
         } finally {
+            setAppUpdateDiagnostics(getAppUpdateDiagnostics());
             setCheckingForUpdate(false);
         }
     }
@@ -414,7 +419,10 @@ export default function App() {
         result: AppUpdateCheckResult,
         manual: boolean,
     ) {
-        if (result.kind === 'manual-update') {
+        if (
+            result.kind === 'manual-update' ||
+            result.kind === 'self-update-disabled'
+        ) {
             setAppUpdateNotice({
                 title: result.title,
                 message: result.message,
@@ -688,6 +696,9 @@ export default function App() {
                                             appVersion={getCurrentAppVersion()}
                                             checkingForUpdate={
                                                 checkingForUpdate
+                                            }
+                                            updateDiagnostics={
+                                                appUpdateDiagnostics
                                             }
                                             onCheckForUpdate={() => {
                                                 void runAppUpdateCheck(true);

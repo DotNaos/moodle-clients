@@ -63,6 +63,7 @@
     },
     "owner": "omiq",
     "plugins": [
+      "expo-updates",
       "expo-secure-store"
     ]
   }
