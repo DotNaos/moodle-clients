@@ -3,6 +3,7 @@ import { logDevError, logDevInfo, sanitizeForLog } from "./debug";
 const MOODLE_MOBILE_SCHEME = "moodlemobile://";
 const MOODLE_MOBILE_USER_AGENT = "Mozilla/5.0 MoodleMobile";
 const MOBILE_QR_TOKEN_FUNCTION = "tool_mobile_get_tokens_for_qr_login";
+export const DEFAULT_MOODLE_SITE_URL = "https://moodle.fhgr.ch";
 export const QR_NETWORK_MISMATCH_MESSAGE =
   "QR login was blocked by Moodle's same-IP check.";
 

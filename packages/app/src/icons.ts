@@ -18,6 +18,7 @@ export const Clipboard = icons.Clipboard;
 export const CircleHelp = icons.CircleHelp;
 export const FileText = icons.FileText;
 export const Link2 = icons.Link2;
+export const LogIn = icons.LogIn;
 export const Keyboard = icons.Keyboard;
 export const RefreshCw = icons.RefreshCw;
 export const ScanLine = icons.ScanLine;

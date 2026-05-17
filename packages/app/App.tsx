@@ -14,6 +14,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { BottomNav } from './src/components/BottomNav';
+import { MoodleBrowserLoginModal } from './src/components/MoodleBrowserLoginModal';
 import { PdfViewerModal } from './src/components/PdfViewerModal';
 import { ScannerModal } from './src/components/ScannerModal';
 import { StatusBanner } from './src/components/StatusBanner';
@@ -22,6 +23,7 @@ import { getErrorDebugDetails, getSafeMessage } from './src/format';
 import { RefreshCw } from './src/icons';
 import {
     exchangeQRToken,
+    DEFAULT_MOODLE_SITE_URL,
     getAuthenticatedFileUrl,
     getCourseContents,
     getCourses,
@@ -63,6 +65,7 @@ export default function App() {
         'Connect Moodle to load courses, or pair a browser session when needed.',
     );
     const [moodleQrInput, setMoodleQrInput] = useState('');
+    const [browserLoginVisible, setBrowserLoginVisible] = useState(false);
     const [pairQrInput, setPairQrInput] = useState('');
     const [pendingPairTarget, setPendingPairTarget] =
         useState<MobilePairTarget | null>(null);
@@ -80,6 +83,7 @@ export default function App() {
         url: string;
     } | null>(null);
     const scanLockRef = useRef(false);
+    const browserLoginLockRef = useRef(false);
 
     useEffect(() => {
         let mounted = true;
@@ -342,6 +346,21 @@ export default function App() {
         }
     }
 
+    async function connectMoodleFromBrowser(rawQrLink: string): Promise<void> {
+        if (browserLoginLockRef.current) {
+            return;
+        }
+
+        browserLoginLockRef.current = true;
+        setInfoMessage('Moodle profile QR found. Connecting in the background.');
+        try {
+            await connectMoodle(rawQrLink);
+            setBrowserLoginVisible(false);
+        } finally {
+            browserLoginLockRef.current = false;
+        }
+    }
+
     function reviewPairing(rawPairQr: string): void {
         try {
             const target = parseMobilePairTarget(rawPairQr);
@@ -449,6 +468,14 @@ export default function App() {
                                             pairQrInput={pairQrInput}
                                             onChangeMoodleQr={setMoodleQrInput}
                                             onChangePairQr={setPairQrInput}
+                                            onOpenBrowserLogin={() => {
+                                                setErrorMessage('');
+                                                setErrorDebugDetails([]);
+                                                setInfoMessage(
+                                                    'Opening Moodle login. Sign in normally; the app will finish setup.',
+                                                );
+                                                setBrowserLoginVisible(true);
+                                            }}
                                             onScanMoodleQr={() =>
                                                 void openScanner('moodle')
                                             }
@@ -619,6 +646,20 @@ export default function App() {
                             title={pdfPreview?.title ?? ''}
                             url={pdfPreview?.url ?? null}
                             onClose={() => setPdfPreview(null)}
+                        />
+                        <MoodleBrowserLoginModal
+                            visible={browserLoginVisible}
+                            busy={busy}
+                            siteUrl={
+                                connection?.moodleSiteUrl ??
+                                DEFAULT_MOODLE_SITE_URL
+                            }
+                            onClose={() => setBrowserLoginVisible(false)}
+                            onResolvedQr={(value) => {
+                                void connectMoodleFromBrowser(value);
+                            }}
+                            onStatus={setInfoMessage}
+                            onError={setErrorMessage}
                         />
                     </SafeAreaView>
                 </HeroUINativeProvider>

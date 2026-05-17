@@ -16,7 +16,7 @@ import {
     SectionHeader,
     SessionCard,
 } from '../components/ui';
-import { ScanLine } from '../icons';
+import { LogIn, ScanLine } from '../icons';
 import type { MoodleConnection } from '../moodle';
 import type { MobilePairTarget } from '../pairing';
 import { styles } from '../styles';
@@ -32,6 +32,7 @@ type ConnectScreenProps = Readonly<{
     pairQrInput: string;
     onChangeMoodleQr: (value: string) => void;
     onChangePairQr: (value: string) => void;
+    onOpenBrowserLogin: () => void;
     onScanMoodleQr: () => void;
     onUseMoodleQrValue: (value: string) => void;
     onMoodleQrImportError: (message: string) => void;
@@ -47,6 +48,7 @@ type DisconnectedConnectStateProps = Readonly<{
     moodleQrInput: string;
     showOptions: boolean;
     onChangeMoodleQr: (value: string) => void;
+    onOpenBrowserLogin: () => void;
     onScanMoodleQr: () => void;
     onUseMoodleQrValue: (value: string) => void;
     onMoodleQrImportError: (message: string) => void;
@@ -58,6 +60,7 @@ type ConnectedSetupCardProps = Readonly<{
     showOptions: boolean;
     moodleQrInput: string;
     onChangeMoodleQr: (value: string) => void;
+    onOpenBrowserLogin: () => void;
     onScanMoodleQr: () => void;
     onUseMoodleQrValue: (value: string) => void;
     onMoodleQrImportError: (message: string) => void;
@@ -89,6 +92,7 @@ export function ConnectScreen(props: ConnectScreenProps) {
                 moodleQrInput={props.moodleQrInput}
                 showOptions={showMoodleOptions}
                 onChangeMoodleQr={props.onChangeMoodleQr}
+                onOpenBrowserLogin={props.onOpenBrowserLogin}
                 onScanMoodleQr={props.onScanMoodleQr}
                 onUseMoodleQrValue={props.onUseMoodleQrValue}
                 onMoodleQrImportError={props.onMoodleQrImportError}
@@ -124,6 +128,7 @@ export function ConnectScreen(props: ConnectScreenProps) {
                 showOptions={showMoodleOptions}
                 moodleQrInput={props.moodleQrInput}
                 onChangeMoodleQr={props.onChangeMoodleQr}
+                onOpenBrowserLogin={props.onOpenBrowserLogin}
                 onScanMoodleQr={props.onScanMoodleQr}
                 onUseMoodleQrValue={props.onUseMoodleQrValue}
                 onMoodleQrImportError={props.onMoodleQrImportError}
@@ -171,24 +176,31 @@ function DisconnectedConnectState(props: DisconnectedConnectStateProps) {
                                 Moodle Client
                             </Text>
                             <Text style={styles.connectWelcomeBody}>
-                                Scan the QR code on your Moodle login page.
+                                Sign in with Moodle. The app will read the
+                                mobile login QR from your profile automatically.
                             </Text>
                         </View>
                     </View>
 
                     <View style={styles.connectWelcomeActions}>
                         <PrimaryButton
-                            label={props.busy ? 'Working...' : 'Scan QR Code'}
-                            icon={ScanLine}
-                            onPress={props.onScanMoodleQr}
+                            label={props.busy ? 'Working...' : 'Login with Moodle'}
+                            icon={LogIn}
+                            onPress={props.onOpenBrowserLogin}
                             disabled={props.busy}
                             style={styles.connectWelcomePrimaryButton}
                             labelStyle={styles.connectWelcomePrimaryButtonText}
                         />
+                        <SecondaryButton
+                            label="Scan Moodle QR"
+                            icon={ScanLine}
+                            onPress={props.onScanMoodleQr}
+                            disabled={props.busy}
+                        />
                         <QRImportMenu
                             open={props.showOptions}
                             busy={props.busy}
-                            revealLabel="No camera?"
+                            revealLabel="More QR options"
                             title="Import Moodle QR"
                             placeholder="moodlemobile://..."
                             value={props.moodleQrInput}
@@ -228,6 +240,12 @@ function ConnectedSetupCard(props: ConnectedSetupCardProps) {
                         onError={props.onMoodleQrImportError}
                     />
                 }
+            />
+            <SecondaryButton
+                label={props.busy ? 'Working...' : 'Login with Moodle'}
+                icon={LogIn}
+                onPress={props.onOpenBrowserLogin}
+                disabled={props.busy}
             />
             <SecondaryButton
                 label={props.busy ? 'Working…' : 'Scan Moodle QR'}
