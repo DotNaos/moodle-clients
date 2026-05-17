@@ -2,12 +2,10 @@
   "expo": {
     "name": "Moodle Client",
     "slug": "moodle-client",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.2",
     "updates": {
       "url": "https://u.expo.dev/db508694-d456-463c-9a25-2d9e3620c052",
       "checkAutomatically": "ON_LOAD",
