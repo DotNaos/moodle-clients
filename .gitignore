@@ -24,6 +24,7 @@ apps/extension/dogfood-output/
 *.log
 .DS_Store
 .verification/
+test-artifacts/
 
 # local config
 .env

@@ -68,7 +68,7 @@ export type MoodleCodexContext = {
 export type MoodleCodexAction =
   | {
       readonly type: "navigate_tab";
-      readonly view: "courses" | "connect" | "codex" | "profile";
+      readonly view: "courses" | "videos" | "calendar" | "connect" | "codex" | "profile";
       readonly reason?: string;
     }
   | {
@@ -662,9 +662,11 @@ function parseActions(value: unknown): MoodleCodexAction[] {
   });
 }
 
-function isAppView(value: unknown): value is "courses" | "connect" | "codex" | "profile" {
+function isAppView(value: unknown): value is "courses" | "videos" | "calendar" | "connect" | "codex" | "profile" {
   return (
     value === "courses" ||
+    value === "videos" ||
+    value === "calendar" ||
     value === "connect" ||
     value === "codex" ||
     value === "profile"

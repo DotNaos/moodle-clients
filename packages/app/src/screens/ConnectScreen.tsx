@@ -176,8 +176,8 @@ function DisconnectedConnectState(props: DisconnectedConnectStateProps) {
                                 Moodle Client
                             </Text>
                             <Text style={styles.connectWelcomeBody}>
-                                Sign in with Moodle. The app will read the
-                                mobile login QR from your profile automatically.
+                                Sign in through the browser. Moodle redirects
+                                back to this app when the session is ready.
                             </Text>
                         </View>
                     </View>
@@ -192,7 +192,7 @@ function DisconnectedConnectState(props: DisconnectedConnectStateProps) {
                             labelStyle={styles.connectWelcomePrimaryButtonText}
                         />
                         <SecondaryButton
-                            label="Scan Moodle QR"
+                            label="Legacy QR"
                             icon={ScanLine}
                             onPress={props.onScanMoodleQr}
                             disabled={props.busy}
@@ -248,7 +248,7 @@ function ConnectedSetupCard(props: ConnectedSetupCardProps) {
                 disabled={props.busy}
             />
             <SecondaryButton
-                label={props.busy ? 'Working…' : 'Scan Moodle QR'}
+                label={props.busy ? 'Working...' : 'Legacy QR'}
                 icon={ScanLine}
                 onPress={props.onScanMoodleQr}
                 disabled={props.busy}

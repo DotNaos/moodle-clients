@@ -15,8 +15,7 @@
     "newArchEnabled": true,
     "scheme": [
       "moodle-client",
-      "moodleauth",
-      "moodlemobile"
+      "moodleauth"
     ],
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -63,7 +62,8 @@
     "plugins": [
       "expo-updates",
       "@sentry/react-native/expo",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-video"
     ]
   }
 }

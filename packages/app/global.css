@@ -6,6 +6,19 @@
 @source "./App.tsx";
 @source "./src";
 
+@theme inline static {
+  --color-accent-hover: color-mix(in oklab, var(--accent) 90%, var(--accent-foreground) 10%);
+}
+
+:root {
+  --color-default-hover: color-mix(in oklab, var(--default) 96%, var(--default-foreground) 4%);
+  --color-accent-hover: color-mix(in oklab, var(--accent) 90%, var(--accent-foreground) 10%);
+  --color-success-hover: color-mix(in oklab, var(--success) 90%, var(--success-foreground) 10%);
+  --color-warning-hover: color-mix(in oklab, var(--warning) 90%, var(--warning-foreground) 10%);
+  --color-danger-hover: color-mix(in oklab, var(--danger) 90%, var(--danger-foreground) 10%);
+  --color-danger-soft-hover: color-mix(in oklab, var(--danger) 20%, transparent);
+}
+
 @layer theme {
   @variant dark {
     --background: #0b0f14;
@@ -27,6 +40,7 @@
     --default-foreground: #f8fafc;
 
     --accent: #8cc7ff;
+    --color-accent-hover: color-mix(in oklab, #8cc7ff 88%, #f8fafc 12%);
     --accent-foreground: #071018;
 
     --success: #7dd3a6;
@@ -55,6 +69,7 @@
 
   @variant light {
     --accent: #2563eb;
+    --color-accent-hover: #1d4ed8;
     --accent-foreground: #ffffff;
     --focus: #2563eb;
     --link: #2563eb;

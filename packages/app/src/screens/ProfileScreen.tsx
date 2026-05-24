@@ -68,6 +68,10 @@ export function ProfileScreen(props: ProfileScreenProps) {
                 <Text style={styles.cardBody}>
                     Courses loaded: {props.courseCount}
                 </Text>
+                <Text style={styles.cardBody}>
+                    Video web login:{' '}
+                    {props.connection.moodlePrivateToken ? 'Ready' : 'Reconnect required'}
+                </Text>
             </Card>
 
             <Card>

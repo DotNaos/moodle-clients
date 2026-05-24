@@ -1,10 +1,17 @@
 import { Platform } from "react-native";
 
 import { logDevInfo } from "./debug";
-import type { MoodleConnection } from "./moodle";
+import type { MoodleBrowserSSOLaunch, MoodleConnection } from "./moodle";
+import {
+  normalizeWebexLoginCredentials,
+  type WebexLoginCredentials,
+} from "./webexLoginAutomation";
 
 const CONNECTION_KEY = "moodle-clients.connection.v1";
+const MOODLE_BROWSER_SSO_LAUNCH_KEY = "moodle-clients.browser-sso-launch.v1";
 const CODEX_DEVICE_TOKEN_KEY = "moodle-clients.codex.device-token.v1";
+const CALENDAR_URL_KEY = "moodle-clients.calendar-url.v1";
+const WEBEX_LOGIN_CREDENTIALS_KEY = "moodle-clients.webex-login-credentials.v1";
 const KEYCHAIN_AFTER_FIRST_UNLOCK = "AFTER_FIRST_UNLOCK";
 
 declare const process:
@@ -104,6 +111,41 @@ export async function clearStoredConnection(): Promise<void> {
   await getSecureStore().deleteItemAsync(CONNECTION_KEY);
 }
 
+export async function loadMoodleBrowserSSOLaunch(): Promise<MoodleBrowserSSOLaunch | null> {
+  const raw = await readValue(MOODLE_BROWSER_SSO_LAUNCH_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<MoodleBrowserSSOLaunch>;
+    if (
+      typeof parsed.siteUrl === "string" &&
+      typeof parsed.passport === "string" &&
+      typeof parsed.urlScheme === "string"
+    ) {
+      return parsed as MoodleBrowserSSOLaunch;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+export async function storeMoodleBrowserSSOLaunch(launch: MoodleBrowserSSOLaunch): Promise<void> {
+  await writeValue(MOODLE_BROWSER_SSO_LAUNCH_KEY, JSON.stringify(launch));
+}
+
+export async function clearMoodleBrowserSSOLaunch(): Promise<void> {
+  if (Platform.OS === "web") {
+    globalThis.localStorage?.removeItem(MOODLE_BROWSER_SSO_LAUNCH_KEY);
+    return;
+  }
+
+  await getSecureStore().deleteItemAsync(MOODLE_BROWSER_SSO_LAUNCH_KEY);
+}
+
 export async function loadCodexDeviceToken(): Promise<string | null> {
   return readValue(CODEX_DEVICE_TOKEN_KEY);
 }
@@ -119,6 +161,48 @@ export async function clearCodexDeviceToken(): Promise<void> {
   }
 
   await getSecureStore().deleteItemAsync(CODEX_DEVICE_TOKEN_KEY);
+}
+
+export async function loadCalendarUrl(): Promise<string | null> {
+  const value = await readValue(CALENDAR_URL_KEY);
+  const trimmed = value?.trim();
+  return trimmed || null;
+}
+
+export async function storeCalendarUrl(url: string): Promise<void> {
+  await writeValue(CALENDAR_URL_KEY, url.trim());
+}
+
+export async function loadWebexLoginCredentials(): Promise<WebexLoginCredentials | null> {
+  const raw = await readValue(WEBEX_LOGIN_CREDENTIALS_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return normalizeWebexLoginCredentials(JSON.parse(raw) as Partial<WebexLoginCredentials>);
+  } catch {
+    return null;
+  }
+}
+
+export async function storeWebexLoginCredentials(
+  credentials: WebexLoginCredentials,
+): Promise<void> {
+  const normalized = normalizeWebexLoginCredentials(credentials);
+  if (!normalized) {
+    throw new Error("Webex login credentials are incomplete.");
+  }
+  await writeValue(WEBEX_LOGIN_CREDENTIALS_KEY, JSON.stringify(normalized));
+}
+
+export async function clearWebexLoginCredentials(): Promise<void> {
+  if (Platform.OS === "web") {
+    globalThis.localStorage?.removeItem(WEBEX_LOGIN_CREDENTIALS_KEY);
+    return;
+  }
+
+  await getSecureStore().deleteItemAsync(WEBEX_LOGIN_CREDENTIALS_KEY);
 }
 
 async function readValue(key: string): Promise<string | null> {
@@ -149,7 +233,8 @@ function sameConnection(left: MoodleConnection, right: MoodleConnection): boolea
   return (
     left.moodleSiteUrl === right.moodleSiteUrl &&
     left.moodleUserId === right.moodleUserId &&
-    left.moodleMobileToken === right.moodleMobileToken
+    left.moodleMobileToken === right.moodleMobileToken &&
+    left.moodlePrivateToken === right.moodlePrivateToken
   );
 }
 

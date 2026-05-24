@@ -1,8 +1,9 @@
-import { Button, Input as HeroInput } from 'heroui-native';
+import { Button } from 'heroui-native';
 import {
     ActivityIndicator,
     Pressable,
     Text,
+    TextInput,
     View,
     type StyleProp,
     type TextInputProps,
@@ -259,10 +260,12 @@ export function MetricTile(props: MetricTileProps) {
 
 export function TextField({ style, ...inputProps }: AppTextFieldProps) {
     return (
-        <HeroInput
+        <TextInput
             autoCapitalize="none"
             autoCorrect={false}
+            cursorColor={palette.blue}
             placeholderTextColor="rgba(248, 250, 252, 0.4)"
+            selectionColor={palette.blue}
             {...inputProps}
             style={[styles.input, style]}
         />

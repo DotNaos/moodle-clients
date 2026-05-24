@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import {
     ActivityIndicator,
-    Image,
     Pressable,
     ScrollView,
     Text,
@@ -15,6 +14,7 @@ import Animated, {
     withSpring,
 } from 'react-native-reanimated';
 
+import { CourseArtwork } from '../components/CourseArtwork';
 import { EmptyState, ScreenSection } from '../components/ui';
 import { sanitizeCourseName, stripHtml } from '../format';
 import { ChevronLeft, ChevronRight, FileText } from '../icons';
@@ -298,19 +298,11 @@ function CourseListRow(props: CourseListRowProps) {
                 styles.courseListRowPlain,
                 pressed ? [styles.pressed, { opacity: 0.8 }] : null,
             ]}>
-            <View style={styles.courseImagePreview}>
-                {props.course.courseImage ? (
-                    <Image
-                        source={{ uri: props.course.courseImage }}
-                        style={{ width: '100%', height: '100%' }}
-                        resizeMode="cover"
-                    />
-                ) : (
-                    <Text style={styles.courseAvatarText}>
-                        {props.course.shortName.slice(0, 2).toUpperCase()}
-                    </Text>
-                )}
-            </View>
+            <CourseArtwork
+                imageUrl={props.course.courseImage}
+                title={props.course.fullName || props.course.shortName}
+                style={styles.courseImagePreview}
+            />
             <View style={styles.courseListRowContent}>
                 <Text style={styles.rowTitle} numberOfLines={2}>
                     {sanitizeCourseName(props.course.fullName)}

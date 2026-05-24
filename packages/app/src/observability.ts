@@ -57,6 +57,14 @@ export function initObservability(): void {
         Sentry.setTag('expoUpdateGroup', updateGroup);
         Sentry.setTag('expoUpdateUrl', getExpoUpdateUrl(updateGroup));
     }
+
+    recordInfo('Observability initialized', {
+        release: getReleaseName(),
+        environment: getEnvironment(),
+        platform: Platform.OS,
+        expoChannel: Updates.channel ?? 'unknown',
+        expoUpdateId: Updates.updateId ?? 'embedded',
+    });
 }
 
 export function wrapWithObservability<P extends Record<string, unknown>>(
@@ -81,7 +89,13 @@ export function recordInfo(
         message: scopeName,
         data: attributes,
     });
-    Sentry.logger.info(scopeName, attributes);
+    Sentry.logger?.info?.(scopeName, attributes);
+    Sentry.withScope((scope) => {
+        scope.setLevel('info');
+        scope.setTag('moodle.scope', scopeName);
+        scope.setContext('moodle.details', attributes);
+        Sentry.captureMessage(scopeName);
+    });
 }
 
 export function recordError(
@@ -100,7 +114,7 @@ export function recordError(
         message: scopeName,
         data: attributes,
     });
-    Sentry.logger.error(scopeName, attributes);
+    Sentry.logger?.error?.(scopeName, attributes);
     Sentry.withScope((scope) => {
         scope.setTag('moodle.scope', scopeName);
         scope.setContext('moodle.details', attributes);

@@ -6,6 +6,8 @@
     "types": "App.tsx",
     "scripts": {
         "build": "tsc --noEmit",
+        "lint": "eslint \"src/**/*.{ts,tsx}\" \"test/**/*.ts\"",
+        "test": "bun test test",
         "typecheck": "tsc --noEmit"
     },
     "peerDependencies": {
@@ -35,6 +37,7 @@
     },
     "devDependencies": {
         "@gorhom/bottom-sheet": "^5.2.10",
+        "@react-native-cookies/cookies": "^6.2.1",
         "@sentry/react-native": "~7.2.0",
         "@types/react": "~19.1.0",
         "expo": "~54.0.33",

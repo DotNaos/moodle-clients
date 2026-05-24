@@ -7,9 +7,11 @@ The mobile app is wired for Sentry error reporting and structured logs.
 Create a Sentry React Native project, then configure these values outside the repo:
 
 - `EXPO_PUBLIC_SENTRY_DSN`: public DSN used by the app at runtime.
-- `SENTRY_AUTH_TOKEN`: Sentry token for release and source-map uploads.
+- `SENTRY_AUTH_TOKEN`: Sentry token for release/source-map uploads and smoke-test verification.
 - `SENTRY_ORG`: Sentry organization slug.
 - `SENTRY_PROJECT`: Sentry project slug.
+- `SENTRY_PROJECT_ID`: numeric Sentry project id for log smoke-test verification.
+- `SENTRY_URL`: Sentry region URL. Use `https://de.sentry.io` for the current `oliver-schuetz` organization.
 
 For GitHub/EAS iOS builds, add these as GitHub repository secrets. The release workflow forwards them to EAS. `SENTRY_ALLOW_FAILURE=true` is set in the workflow so a temporary Sentry upload problem does not block installing the app.
 
@@ -25,6 +27,14 @@ For local development, copy `apps/mobile/.env.example` to `apps/mobile/.env` and
 The app does not enable `sendDefaultPii`. Moodle mobile links and token-like query parameters are scrubbed before app logs are sent.
 
 ## Testing
+
+Before trusting a DSN, run the smoke test from the repo root:
+
+```sh
+SENTRY_AUTH_TOKEN=... bun run mobile:sentry:smoke
+```
+
+Use a Sentry token with `org:read`, `project:read`, and `event:read`. The test sends one handled error and one info-level app log event, then fails unless both can be read back from Sentry. It also sends a raw structured-log envelope and reports whether Sentry Logs indexed it, but the pass/fail signal uses the visible Sentry events because Sentry Logs may be unavailable for the project.
 
 After setting `EXPO_PUBLIC_SENTRY_DSN`, run the app and trigger a handled error, for example by opening the Moodle browser login while the device has no internet connection. The app should show the local error, and Sentry should receive a `Moodle browser login failed` event with the WebView code/status details.
 

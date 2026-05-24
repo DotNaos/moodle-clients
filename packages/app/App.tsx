@@ -25,6 +25,7 @@ import { createCodexAppActions } from './src/codexAppActions';
 import { AppUpdateBanner } from './src/components/AppUpdateBanner';
 import { BottomNav } from './src/components/BottomNav';
 import { MoodleBrowserLoginModal } from './src/components/MoodleBrowserLoginModal';
+import { MoodleSSOLoginModal } from './src/components/MoodleSSOLoginModal';
 import { PdfViewerModal } from './src/components/PdfViewerModal';
 import { ScannerModal } from './src/components/ScannerModal';
 import { StatusBanner } from './src/components/StatusBanner';
@@ -32,11 +33,14 @@ import { logDevError, logDevInfo } from './src/debug';
 import { getErrorDebugDetails, getSafeMessage } from './src/format';
 import { RefreshCw } from './src/icons';
 import {
+    completeMoodleBrowserSSO,
+    createMoodleBrowserSSOLaunch,
     exchangeQRToken,
     DEFAULT_MOODLE_SITE_URL,
     getCourseContents,
     getCourses,
     getSiteInfo,
+    isMoodleBrowserSSOTokenUrl,
     isQRNetworkMismatchError,
     parseMobileQRLink,
     type MoodleConnection,
@@ -50,22 +54,30 @@ import {
     type MobilePairTarget,
 } from './src/pairing';
 import { ConnectScreen } from './src/screens/ConnectScreen';
+import { CalendarScreen } from './src/screens/CalendarScreen';
 import { CodexScreen } from './src/screens/CodexScreen';
 import { CoursesScreen } from './src/screens/CoursesScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
+import { VideosScreen } from './src/screens/VideosScreen';
 import {
+    clearMoodleBrowserSSOLaunch,
     importMoodleCliConnection,
+    loadMoodleBrowserSSOLaunch,
     loadStoredConnection,
     storeConnection,
+    storeMoodleBrowserSSOLaunch,
 } from './src/storage';
 import {
     setObservabilityUser,
     wrapWithObservability,
 } from './src/observability';
 import { palette, styles } from './src/styles';
+import { registerAppThemeVariables } from './src/themeVariables';
 import type { AppView, ScannerMode } from './src/types';
 
 declare const __DEV__: boolean;
+
+registerAppThemeVariables();
 
 function App() {
     const [permission, requestPermission] = useCameraPermissions();
@@ -89,6 +101,7 @@ function App() {
     );
     const [moodleQrInput, setMoodleQrInput] = useState('');
     const [browserLoginVisible, setBrowserLoginVisible] = useState(false);
+    const [moodleSsoLaunchUrl, setMoodleSsoLaunchUrl] = useState('');
     const [pairQrInput, setPairQrInput] = useState('');
     const [pendingPairTarget, setPendingPairTarget] =
         useState<MobilePairTarget | null>(null);
@@ -322,6 +335,15 @@ function App() {
 
         logDevInfo('Incoming link received', { source, rawUrl });
 
+        if (isMoodleBrowserSSOTokenUrl(rawUrl)) {
+            setActiveView('connect');
+            setInfoMessage(
+                'Received the Moodle browser login callback.',
+            );
+            await finishMoodleBrowserSSO(rawUrl);
+            return;
+        }
+
         if (rawUrl.toLowerCase().startsWith('moodlemobile://')) {
             setActiveView('connect');
             setInfoMessage(
@@ -333,13 +355,71 @@ function App() {
 
         try {
             const target = parseMobilePairTarget(rawUrl);
-            setActiveView('connect');
+            setActiveView('profile');
             setPendingPairTarget(target);
             setInfoMessage(
                 `Review the bridge request from ${target.appName ?? target.origin}.`,
             );
         } catch {
             return;
+        }
+    }
+
+    async function startMoodleBrowserSSO(): Promise<void> {
+        setBusy(true);
+        setErrorMessage('');
+        setErrorDebugDetails([]);
+        setInfoMessage('Preparing Moodle browser login.');
+
+        try {
+            const launchRequest = await createMoodleBrowserSSOLaunch(
+                connection?.moodleSiteUrl ?? DEFAULT_MOODLE_SITE_URL,
+            );
+            await storeMoodleBrowserSSOLaunch(launchRequest.launch);
+            setInfoMessage(
+                'Opening Moodle login. The app will finish setup when Moodle redirects back.',
+            );
+            setMoodleSsoLaunchUrl(launchRequest.launchUrl);
+        } catch (error) {
+            logDevError('Moodle browser SSO start failed', error);
+            setErrorDebugDetails(getErrorDebugDetails(error));
+            setErrorMessage(getSafeMessage(error));
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function finishMoodleBrowserSSO(rawUrl: string): Promise<void> {
+        setBusy(true);
+        setErrorMessage('');
+        setErrorDebugDetails([]);
+
+        try {
+            const launch = await loadMoodleBrowserSSOLaunch();
+            if (!launch) {
+                throw new Error(
+                    'Moodle returned a login token, but this device has no matching login request.',
+                );
+            }
+
+            const nextConnection = await completeMoodleBrowserSSO(rawUrl, launch);
+            await storeConnection(nextConnection);
+            await clearMoodleBrowserSSOLaunch();
+            setConnection(nextConnection);
+            setPendingPairTarget(null);
+            setScannerMode(null);
+            setBrowserLoginVisible(false);
+            setMoodleSsoLaunchUrl('');
+            setActiveView('courses');
+            setInfoMessage(
+                `Connected to Moodle as user ${nextConnection.moodleUserId}.`,
+            );
+        } catch (error) {
+            logDevError('Moodle browser SSO finish failed', error);
+            setErrorDebugDetails(getErrorDebugDetails(error));
+            setErrorMessage(getSafeMessage(error));
+        } finally {
+            setBusy(false);
         }
     }
 
@@ -474,7 +554,7 @@ function App() {
             const target = parseMobilePairTarget(rawPairQr);
             setPendingPairTarget(target);
             setScannerMode(null);
-            setActiveView('connect');
+            setActiveView('profile');
             setInfoMessage(
                 `Review the bridge request from ${target.appName ?? target.origin}.`,
             );
@@ -530,7 +610,8 @@ function App() {
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <SafeAreaProvider>
-                <HeroUINativeProvider>
+                <HeroUINativeProvider
+                    config={{ devInfo: { stylingPrinciples: false } }}>
                     <SafeAreaView style={styles.safeArea}>
                         <StatusBar style="light" />
                         <View style={styles.appShell}>
@@ -570,7 +651,9 @@ function App() {
                             )}
 
                             <View style={styles.mainScroll}>
-                                {(!connected && activeView !== 'codex') ||
+                                {(!connected &&
+                                    activeView !== 'codex' &&
+                                    activeView !== 'profile') ||
                                 activeView === 'connect' ? (
                                     <ScrollView
                                         contentContainerStyle={
@@ -587,12 +670,7 @@ function App() {
                                             onChangeMoodleQr={setMoodleQrInput}
                                             onChangePairQr={setPairQrInput}
                                             onOpenBrowserLogin={() => {
-                                                setErrorMessage('');
-                                                setErrorDebugDetails([]);
-                                                setInfoMessage(
-                                                    'Opening Moodle login. Sign in normally; the app will finish setup.',
-                                                );
-                                                setBrowserLoginVisible(true);
+                                                void startMoodleBrowserSSO();
                                             }}
                                             onScanMoodleQr={() =>
                                                 void openScanner('moodle')
@@ -661,7 +739,7 @@ function App() {
                                         loadingDashboard={loadingDashboard}
                                         loadingCourseId={loadingCourseId}
                                         onOpenConnect={() =>
-                                            setActiveView('connect')
+                                            setActiveView('profile')
                                         }
                                         onSelectCourse={(courseId) => {
                                             setSelectedCourseId(courseId);
@@ -683,6 +761,36 @@ function App() {
                                                 return;
                                             }
                                             codexActions.openMoodleFile(file);
+                                        }}
+                                    />
+                                ) : null}
+
+                                {connected && activeView === 'videos' ? (
+                                    <VideosScreen
+                                        connection={connection}
+                                        courses={courses}
+                                        loadingCourses={loadingDashboard}
+                                        onOpenConnect={() =>
+                                            setActiveView('profile')
+                                        }
+                                    />
+                                ) : null}
+
+                                {connected && activeView === 'calendar' ? (
+                                    <CalendarScreen
+                                        courses={courses}
+                                        onOpenCourse={(courseId) => {
+                                            setSelectedCourseId(courseId);
+                                            setActiveView('courses');
+                                            if (
+                                                connection &&
+                                                !courseContentsById[courseId]
+                                            ) {
+                                                void loadCourseContents(
+                                                    connection,
+                                                    courseId,
+                                                );
+                                            }
                                         }}
                                     />
                                 ) : null}
@@ -713,6 +821,78 @@ function App() {
                                                 void openUpdateDownload();
                                             }}
                                         />
+                                        {connection ? (
+                                            <ConnectScreen
+                                                busy={busy}
+                                                connection={connection}
+                                                pendingPairTarget={
+                                                    pendingPairTarget
+                                                }
+                                                moodleQrInput={moodleQrInput}
+                                                pairQrInput={pairQrInput}
+                                                onChangeMoodleQr={
+                                                    setMoodleQrInput
+                                                }
+                                                onChangePairQr={setPairQrInput}
+                                                onOpenBrowserLogin={() => {
+                                                    void startMoodleBrowserSSO();
+                                                }}
+                                                onScanMoodleQr={() =>
+                                                    void openScanner('moodle')
+                                                }
+                                                onUseMoodleQrValue={(value) => {
+                                                    setMoodleQrInput(value);
+                                                    void connectMoodle(value);
+                                                }}
+                                                onMoodleQrImportError={
+                                                    setErrorMessage
+                                                }
+                                                onScanPairQr={() => {
+                                                    if (!connection) {
+                                                        setErrorMessage(
+                                                            'Connect Moodle first.',
+                                                        );
+                                                        return;
+                                                    }
+                                                    void openScanner('pair');
+                                                }}
+                                                onUsePairQrValue={(value) => {
+                                                    if (!connection) {
+                                                        setErrorMessage(
+                                                            'Connect Moodle first.',
+                                                        );
+                                                        return;
+                                                    }
+                                                    setPairQrInput(value);
+                                                    reviewPairing(value);
+                                                }}
+                                                onConfirmPairing={() => {
+                                                    if (
+                                                        !connection ||
+                                                        !pendingPairTarget
+                                                    ) {
+                                                        setErrorMessage(
+                                                            'Scan a bridge QR first.',
+                                                        );
+                                                        return;
+                                                    }
+                                                    void sendPairing(
+                                                        pendingPairTarget,
+                                                        connection,
+                                                    );
+                                                }}
+                                                onCancelPairing={() => {
+                                                    setPendingPairTarget(null);
+                                                    setPairQrInput('');
+                                                    setInfoMessage(
+                                                        'Bridge request cancelled.',
+                                                    );
+                                                }}
+                                                onPairQrImportError={
+                                                    setErrorMessage
+                                                }
+                                            />
+                                        ) : null}
                                     </ScrollView>
                                 ) : null}
 
@@ -802,6 +982,16 @@ function App() {
                             onStatus={setInfoMessage}
                             onError={setErrorMessage}
                         />
+                        <MoodleSSOLoginModal
+                            visible={Boolean(moodleSsoLaunchUrl)}
+                            launchUrl={moodleSsoLaunchUrl}
+                            busy={busy}
+                            onClose={() => setMoodleSsoLaunchUrl('')}
+                            onCallback={(url) => {
+                                void finishMoodleBrowserSSO(url);
+                            }}
+                            onStatus={setInfoMessage}
+                        />
                     </SafeAreaView>
                 </HeroUINativeProvider>
             </SafeAreaProvider>
@@ -815,6 +1005,10 @@ function getScreenTitle(view: AppView): string {
     switch (view) {
         case 'courses':
             return 'Courses';
+        case 'videos':
+            return 'Videos';
+        case 'calendar':
+            return 'Calendar';
         case 'connect':
             return 'Connect';
         case 'codex':
@@ -827,15 +1021,19 @@ function getScreenTitle(view: AppView): string {
 function getScreenSubtitle(view: AppView, connected: boolean): string {
     if (!connected) {
         return view === 'connect'
-            ? 'Scan the Moodle QR code once.'
+            ? 'Sign in with Moodle in the browser.'
             : 'Connect once. The token stays local.';
     }
 
     switch (view) {
         case 'courses':
             return '';
+        case 'videos':
+            return 'FS26 Webex recordings.';
+        case 'calendar':
+            return 'Your FHGR schedule.';
         case 'connect':
-            return 'QR login and browser pairing.';
+            return 'Browser login and session sharing.';
         case 'codex':
             return 'Run Codex with ChatGPT sign-in.';
         case 'profile':
