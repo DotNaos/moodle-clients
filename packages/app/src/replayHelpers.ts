@@ -109,7 +109,7 @@ export function extractRecordUUID(value: string): string {
 }
 
 export function deriveRecordingDate(name: string, ...candidates: string[]): string {
-    for (const candidate of [...candidates, name]) {
+    for (const candidate of [name, ...candidates]) {
         const value = candidate.trim();
         const dashed = value.match(/^(\d{4}-\d{2}-\d{2})/);
         if (dashed) {

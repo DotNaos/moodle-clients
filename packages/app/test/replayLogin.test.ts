@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { buildFhgrDirectLoginUrl } from '../src/fhgrLogin';
 import { buildMoodleBrowserSSOLaunchUrl } from '../src/moodleBrowserSSOLaunchUrl';
 import { buildMoodleAutoLoginUrl } from '../src/moodleAutoLoginUrl';
+import { deriveRecordingDate } from '../src/replayHelpers';
 import { buildWebexNavigationGuardScript } from '../src/screens/videos/webexBridgeScript';
 
 describe('Replay Webex Moodle login URL', () => {
@@ -85,5 +86,14 @@ describe('Replay Webex Moodle login URL', () => {
         expect(script).toContain('lti1p3_new_window');
         expect(script).toContain('https://lti.webex.com/lti/login');
         expect(script).toContain('location.href = url.toString()');
+    });
+
+    test('prefers the lecture date embedded in the Webex recording name', () => {
+        expect(
+            deriveRecordingDate(
+                'Vorlesung-20260515 1038-1',
+                '2026-05-16T00:04:00Z',
+            ),
+        ).toBe('2026-05-15');
     });
 });

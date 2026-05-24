@@ -44,6 +44,8 @@ export function WebexBridge(props: {
     const fhgrLoginNavigationCount = useRef(0);
     const automationStopped = useRef(false);
     const nativeCookieLoadStarted = useRef(false);
+    const nativeCookieAttemptCount = useRef(0);
+    const nativeCookieRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [mode, setMode] = useState<WebexBridgeMode>('credentials');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -107,7 +109,7 @@ export function WebexBridge(props: {
             automationSubmitCount.current = 0;
             fhgrLoginNavigationCount.current = 0;
             automationStopped.current = false;
-            nativeCookieLoadStarted.current = false;
+            resetNativeCookieLoad();
             return () => {
                 mounted = false;
             };
@@ -136,7 +138,7 @@ export function WebexBridge(props: {
             automationSubmitCount.current = 0;
             fhgrLoginNavigationCount.current = 0;
             automationStopped.current = false;
-            nativeCookieLoadStarted.current = false;
+            resetNativeCookieLoad();
             void loadWebexLoginCredentials().then((stored) => {
                 if (!mounted || !props.request) {
                     return;
@@ -166,7 +168,7 @@ export function WebexBridge(props: {
         automationSubmitCount.current = 0;
         fhgrLoginNavigationCount.current = 0;
         automationStopped.current = false;
-        nativeCookieLoadStarted.current = false;
+        resetNativeCookieLoad();
         setWebViewKey((value) => value + 1);
         void loadWebexLoginCredentials().then((stored) => {
             if (!mounted || !props.request) {
@@ -262,6 +264,7 @@ export function WebexBridge(props: {
             }
             if (event.hasWebexApplication) {
                 setStatus('Reading Webex recording data.');
+                scheduleNativeCookieLoad('webex-application-page');
             }
             if (event.hasMoodleGuest || event.hasMoodleEnrol) {
                 setStatus('Moodle browser session is still a guest session.');
@@ -287,7 +290,7 @@ export function WebexBridge(props: {
                 (event.itemCount ?? 0) === 0 &&
                 (event.totalCount ?? 0) > 0
             ) {
-                void loadFromNativeCookies();
+                scheduleNativeCookieLoad('recording-item-drops', 0);
             }
             return;
         }
@@ -325,11 +328,40 @@ export function WebexBridge(props: {
         }
     }
 
-    async function loadFromNativeCookies() {
+    function resetNativeCookieLoad() {
+        nativeCookieLoadStarted.current = false;
+        nativeCookieAttemptCount.current = 0;
+        if (nativeCookieRetryTimer.current) {
+            clearTimeout(nativeCookieRetryTimer.current);
+            nativeCookieRetryTimer.current = null;
+        }
+    }
+
+    function scheduleNativeCookieLoad(reason: string, delayMs = 1200) {
+        if (!props.request || nativeCookieLoadStarted.current || nativeCookieRetryTimer.current) {
+            return;
+        }
+        logWebexBridge('native-cookie-api-scheduled', {
+            reason,
+            delayMs,
+            attempt: nativeCookieAttemptCount.current + 1,
+        });
+        nativeCookieRetryTimer.current = setTimeout(() => {
+            nativeCookieRetryTimer.current = null;
+            void loadFromNativeCookies(reason);
+        }, delayMs);
+    }
+
+    async function loadFromNativeCookies(reason: string) {
         if (!props.request || nativeCookieLoadStarted.current) {
             return;
         }
         nativeCookieLoadStarted.current = true;
+        nativeCookieAttemptCount.current += 1;
+        logWebexBridge('native-cookie-api-started', {
+            reason,
+            attempt: nativeCookieAttemptCount.current,
+        });
         try {
             const recordings = await loadWebexRecordingsFromNativeCookies({
                 courseId: props.request.courseId,
@@ -339,7 +371,22 @@ export function WebexBridge(props: {
             });
             if (recordings.length === 0) {
                 nativeCookieLoadStarted.current = false;
+                logWebexBridge('native-cookie-api-empty', {
+                    reason,
+                    attempt: nativeCookieAttemptCount.current,
+                });
+                if (nativeCookieAttemptCount.current < 4) {
+                    scheduleNativeCookieLoad('native-cookie-api-empty-retry', 2500);
+                } else {
+                    setStatus('Webex is open, but recordings have not been exposed yet.');
+                }
+                return;
             }
+            logWebexBridge('native-cookie-api-completed', {
+                reason,
+                attempt: nativeCookieAttemptCount.current,
+                count: recordings.length,
+            });
             props.onRecordings({
                 courseId: props.request.courseId,
                 loadId: props.request.loadId,
@@ -348,8 +395,15 @@ export function WebexBridge(props: {
         } catch (error) {
             nativeCookieLoadStarted.current = false;
             logWebexBridge('native-cookie-api-error', {
+                reason,
+                attempt: nativeCookieAttemptCount.current,
                 message: error instanceof Error ? error.message : String(error),
             });
+            if (nativeCookieAttemptCount.current < 4) {
+                scheduleNativeCookieLoad('native-cookie-api-error-retry', 2500);
+            } else {
+                setStatus('Webex is open, but recordings could not be read yet.');
+            }
         }
     }
 
@@ -539,6 +593,7 @@ export function WebexBridge(props: {
                                 isWebexApplicationUrl(event.url)
                             ) {
                                 setStatus('Reading Webex recording data.');
+                                scheduleNativeCookieLoad('webex-application-navigation');
                             }
                         }}
                         onShouldStartLoadWithRequest={(request) => {
