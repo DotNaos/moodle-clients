@@ -33,6 +33,9 @@ export function ProfileScreen(props: ProfileScreenProps) {
     const runtimeVersion = formatUpdateValue(
         props.updateDiagnostics.runtimeVersion,
     );
+    const buildDate = formatBuildDate(props.updateDiagnostics.buildDate);
+    const commitHash = formatCommitHash(props.updateDiagnostics.commitHash);
+    const updateId = formatCommitHash(props.updateDiagnostics.updateId);
 
     if (!props.connection) {
         return (
@@ -87,6 +90,9 @@ export function ProfileScreen(props: ProfileScreenProps) {
                 </Text>
                 <Text style={styles.cardBody}>Channel: {updateChannel}</Text>
                 <Text style={styles.cardBody}>Runtime: {runtimeVersion}</Text>
+                <Text style={styles.cardBody}>Build: {buildDate}</Text>
+                <Text style={styles.cardBody}>Commit: {commitHash}</Text>
+                <Text style={styles.cardBody}>Update: {updateId}</Text>
                 <View style={styles.actionRow}>
                     <SecondaryButton
                         label={
@@ -113,4 +119,26 @@ export function ProfileScreen(props: ProfileScreenProps) {
 
 function formatUpdateValue(value: string | null): string {
     return value?.trim() ? value : 'not set';
+}
+
+function formatCommitHash(value: string | null): string {
+    const normalized = value?.trim();
+    if (!normalized) {
+        return 'not set';
+    }
+    return normalized.length > 12 ? normalized.slice(0, 12) : normalized;
+}
+
+function formatBuildDate(value: string | null): string {
+    const normalized = value?.trim();
+    if (!normalized) {
+        return 'not set';
+    }
+
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) {
+        return normalized;
+    }
+
+    return date.toISOString().replace('T', ' ').slice(0, 16);
 }

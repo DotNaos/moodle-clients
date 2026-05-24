@@ -10,6 +10,8 @@ declare const process:
           env?: {
               EXPO_PUBLIC_MOODLE_CLIENT_DOWNLOAD_URL?: string;
               EXPO_PUBLIC_MOODLE_CLIENT_RELEASE_API_URL?: string;
+              EXPO_PUBLIC_MOODLE_CLIENT_BUILD_DATE?: string;
+              EXPO_PUBLIC_MOODLE_CLIENT_COMMIT_HASH?: string;
           };
       }
     | undefined;
@@ -37,6 +39,8 @@ export type AppUpdateDiagnostics = {
     readonly channel: string | null;
     readonly updateId: string | null;
     readonly createdAt: string | null;
+    readonly buildDate: string | null;
+    readonly commitHash: string | null;
 };
 
 type GitHubReleaseResponse = {
@@ -69,6 +73,12 @@ export function getAppUpdateDiagnostics(): AppUpdateDiagnostics {
         channel: Updates.channel,
         updateId: Updates.updateId,
         createdAt: Updates.createdAt?.toISOString() ?? null,
+        buildDate:
+            process?.env?.EXPO_PUBLIC_MOODLE_CLIENT_BUILD_DATE?.trim() ||
+            readExpoExtraString('buildDate'),
+        commitHash:
+            process?.env?.EXPO_PUBLIC_MOODLE_CLIENT_COMMIT_HASH?.trim() ||
+            readExpoExtraString('commitHash'),
     };
 }
 
@@ -178,17 +188,26 @@ function getReleaseApiUrl(): string | null {
 }
 
 function readExpoExtraString(key: string): string | null {
-    const extra = Constants.expoConfig?.extra;
-    if (!extra || typeof extra !== 'object') {
-        return null;
-    }
-
-    const value = (extra as Record<string, unknown>)[key];
-    return stringValue(value);
+    return (
+        readNestedString(Constants.expoConfig?.extra, [key]) ||
+        readNestedString(Updates.manifest, ['extra', key]) ||
+        readNestedString(Updates.manifest, ['extra', 'expoClient', 'extra', key])
+    );
 }
 
 function stringValue(value: unknown): string | null {
     return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function readNestedString(value: unknown, path: string[]): string | null {
+    let current = value;
+    for (const segment of path) {
+        if (!current || typeof current !== 'object') {
+            return null;
+        }
+        current = (current as Record<string, unknown>)[segment];
+    }
+    return stringValue(current);
 }
 
 function normalizeVersion(value: string | null): string | null {
