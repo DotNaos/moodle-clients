@@ -32,7 +32,7 @@ export function BottomNav(props: BottomNavProps) {
         <View
             style={[
                 styles.bottomNav,
-                { paddingBottom: Math.max(insets.bottom, 14) + 6 },
+                { paddingBottom: Math.max(insets.bottom, 14) + 8 },
             ]}>
             {navItems.map((item) => {
                 const active = props.activeView === item.id;
@@ -49,9 +49,15 @@ export function BottomNav(props: BottomNavProps) {
                         onPress={() => props.onChangeView(item.id)}
                         accessibilityLabel={item.label}
                         accessibilityRole="button">
+                        <View
+                            style={[
+                                styles.navMarker,
+                                active && styles.navMarkerActive,
+                            ]}
+                        />
                         <Icon
                             color={
-                                active ? palette.ink : palette.subtle
+                                active ? palette.text : palette.subtle
                             }
                             size={21}
                         />
