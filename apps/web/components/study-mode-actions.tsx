@@ -1,23 +1,25 @@
 "use client";
 
-import { BookOpenText, CheckCircle2, Files, Video } from "lucide-react";
+import { BookOpenText, CheckCircle2, Files, Sigma, Video } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-export type StudyMode = "materials" | "tasks" | "script" | "recordings";
+export type StudyMode = "materials" | "tasks" | "script" | "formula" | "recordings";
 
 export function StudyModeActions({
   studyMode,
   onMaterials,
   onTasks,
   onScript,
+  onFormula,
   onRecordings,
 }: {
   studyMode: StudyMode;
   onMaterials: () => void;
   onTasks: () => void;
   onScript: () => void;
+  onFormula?: () => void;
   onRecordings: () => void;
 }) {
   return (
@@ -43,6 +45,15 @@ export function StudyModeActions({
         description="KaTeX-fähiger Kurstext"
         onClick={onScript}
       />
+      {onFormula ? (
+        <StudyModeButton
+          active={studyMode === "formula"}
+          icon={<Sigma aria-hidden />}
+          label="Formeln"
+          description="Formelsammlung erstellen"
+          onClick={onFormula}
+        />
+      ) : null}
       <StudyModeButton
         active={studyMode === "recordings"}
         icon={<Video aria-hidden />}

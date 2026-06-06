@@ -1,16 +1,19 @@
 "use client";
 
 import { ExternalLink, FileText } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { CourseThumbnail } from "@/components/dashboard-ui";
 import { FileViewer } from "@/components/file-viewer";
-import { TaskStudyPanel } from "@/components/task-study-panel";
+import { FormulaCollectionPanel } from "@/components/formula-collection-panel";
+import { buildScriptPDFMapping, TaskStudyPanel, type TaskViewResponse } from "@/components/task-study-panel";
 import { WebexRecordingsPanel } from "@/components/webex-recordings-panel";
 import { Button } from "@/components/ui/button";
 import type { Course, Material, WebexRecording, WebexRecordingState } from "@/lib/dashboard-data";
 import { courseSubtitle, courseTitle } from "@/lib/dashboard-data";
 import type { PDFScrollCommand, PDFViewState } from "@/lib/pdf-context";
 import type { StudyOutline } from "@/lib/study-outline";
+import type { StudyMode } from "@/components/study-mode-actions";
 
 export function CourseMainPanel({
   course,
@@ -40,7 +43,7 @@ export function CourseMainPanel({
   selectedScriptSectionId: string | null;
   selectedRecording: WebexRecording | null;
   selectedTaskId: string | null;
-  studyMode: "materials" | "tasks" | "script" | "recordings";
+  studyMode: StudyMode;
   pdfScrollCommand: PDFScrollCommand | null;
   onOpenResource: (resourceId: string) => void;
   onPDFStateChange: (state: PDFViewState | null) => void;
@@ -51,6 +54,16 @@ export function CourseMainPanel({
   onSignInWebexBrowser: (credentials: { username: string; password: string }) => Promise<void>;
   onStudyOutlineChange: (outline: StudyOutline) => void;
 }) {
+  const [taskView, setTaskView] = useState<TaskViewResponse | null>(null);
+  const pdfMapping = useMemo(
+    () => taskView ? buildScriptPDFMapping(taskView.scriptMarkdown, taskView.resources) : [],
+    [taskView],
+  );
+
+  useEffect(() => {
+    setTaskView(null);
+  }, [courseId]);
+
   if (studyMode === "recordings") {
     return (
       <WebexRecordingsPanel
@@ -75,9 +88,22 @@ export function CourseMainPanel({
           onSelectedScriptSectionIdChange={onSelectedScriptSectionIdChange}
           onSelectedTaskIdChange={onSelectedTaskIdChange}
           onStudyOutlineChange={onStudyOutlineChange}
+          onTaskViewChange={setTaskView}
           selectedScriptSectionId={selectedScriptSectionId}
           selectedTaskId={selectedTaskId}
         />
+      </section>
+    );
+  }
+
+  if (studyMode === "formula") {
+    return (
+      <section className="flex min-h-[60dvh] flex-col overflow-visible rounded-[1.5rem] bg-card lg:min-h-0 lg:overflow-hidden lg:rounded-[2rem]">
+        {course ? (
+          <FormulaCollectionPanel course={course} pdfMapping={pdfMapping} view={taskView} />
+        ) : (
+          <NoCourseSelected />
+        )}
       </section>
     );
   }

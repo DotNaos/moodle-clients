@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import type { Course, Material } from "@/lib/dashboard-data";
 import { courseSubtitle, courseTitle } from "@/lib/dashboard-data";
-import type { StudyOutline } from "@/lib/study-outline";
+import type { ScriptSectionOutline, StudyOutline } from "@/lib/study-outline";
 import { cn } from "@/lib/utils";
 
 type CategoryOption = {
@@ -580,6 +580,29 @@ function ScriptOutline({
       ))}
     </div>
   );
+}
+
+export function groupScriptSections(scriptSections: ScriptSectionOutline[]) {
+  const groups: Array<{ children: ScriptSectionOutline[]; parent: ScriptSectionOutline }> = [];
+  for (const section of scriptSections) {
+    if (!isNumberedScriptSection(section.title)) {
+      continue;
+    }
+    if (isTopLevelScriptSection(section.title) || groups.length === 0) {
+      groups.push({ children: [], parent: section });
+      continue;
+    }
+    groups[groups.length - 1].children.push(section);
+  }
+  return groups;
+}
+
+function isNumberedScriptSection(title: string): boolean {
+  return /^\d+(?:\.\d+)*\.?\s+/.test(title);
+}
+
+function isTopLevelScriptSection(title: string): boolean {
+  return /^\d+\.\s+/.test(title);
 }
 
 function RecordingOutline() {

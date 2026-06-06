@@ -13,7 +13,7 @@ import type { StudyOutline } from "@/lib/study-outline";
 import { EMPTY_STUDY_OUTLINE } from "@/lib/study-outline";
 import { cn } from "@/lib/utils";
 
-type TaskViewResponse = {
+export type TaskViewResponse = {
   courseId: string;
   generatedAt: string;
   scriptMarkdown: string;
@@ -58,6 +58,13 @@ type TaskViewTask = {
   status: "open" | "started" | "checked" | "correct" | "wrong" | "needs_review";
 };
 
+export type ScriptPDFMappingItem = {
+  areas: string[];
+  order: number;
+  resourceId: string;
+  title: string;
+};
+
 type TaskChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -78,6 +85,7 @@ export function TaskStudyPanel({
   onSelectedTaskIdChange,
   onSelectedScriptSectionIdChange,
   onStudyOutlineChange,
+  onTaskViewChange,
   selectedScriptSectionId,
   selectedTaskId,
 }: {
@@ -88,6 +96,7 @@ export function TaskStudyPanel({
   onSelectedTaskIdChange: (taskId: string | null) => void;
   onSelectedScriptSectionIdChange: (sectionId: string | null) => void;
   onStudyOutlineChange: (outline: StudyOutline) => void;
+  onTaskViewChange?: (view: TaskViewResponse | null) => void;
   selectedScriptSectionId: string | null;
   selectedTaskId: string | null;
 }) {
@@ -125,6 +134,7 @@ export function TaskStudyPanel({
     setAnswer("");
     setChatMessages([]);
     setScriptIncluded(false);
+    onTaskViewChange?.(null);
     setMessage(null);
     setError(null);
     if (courseId) {
@@ -193,6 +203,7 @@ export function TaskStudyPanel({
         `/courses/${encodeURIComponent(id)}/task-view?includeScript=${includeScript ? "1" : "0"}`,
       );
       setView(nextView);
+      onTaskViewChange?.(nextView);
       setScriptIncluded(includeScript);
       onSelectedTaskIdChange(
         selectedTaskId && nextView.sheets.some((sheet) => sheet.tasks.some((task) => task.taskId === selectedTaskId))
@@ -621,11 +632,35 @@ function renderMarkdownBlock(block: string, sourceBlock?: string): string {
     const id = headingAnchorId(heading[2]);
     return `<div id="${id}" class="mt-7 flex scroll-mt-24 flex-col gap-2 border-b border-border pb-1 sm:flex-row sm:items-baseline sm:justify-between"><h${level} class="${sizeClass} font-semibold tracking-tight text-foreground">${inlineMarkdown(heading[2])}</h${level}>${sourceBlock ? renderSourceLinks(sourceBlock) : ""}</div>`;
   }
+  if (hasMixedSlideLines(block)) {
+    return block.split("\n")
+      .map(cleanSlideLine)
+      .filter(Boolean)
+      .map((line) => `<p>${inlineMarkdown(line)}</p>`)
+      .join("");
+  }
   if (/^[-*]\s+/m.test(block)) {
-    const items = block.split("\n").filter(Boolean).map((line) => line.replace(/^[-*]\s+/, ""));
+    const items = block.split("\n").filter(Boolean).map(cleanListItem);
     return `<ul class="ml-6 list-disc space-y-1">${items.map((item) => `<li>${inlineMarkdown(item)}</li>`).join("")}</ul>`;
   }
   return `<p>${inlineMarkdown(block).replace(/\n/g, "<br />")}</p>`;
+}
+
+function hasMixedSlideLines(block: string): boolean {
+  const lines = block.split("\n").filter((line) => line.trim());
+  return lines.some((line) => !isListLine(line)) && lines.some(isListLine);
+}
+
+function isListLine(line: string): boolean {
+  return /^(?:\s*•\s*)?\s*[-*]\s+/.test(line);
+}
+
+function cleanSlideLine(line: string): string {
+  return cleanListItem(line).trim();
+}
+
+function cleanListItem(line: string): string {
+  return line.replace(/^\s*•\s*/, "").replace(/^\s*[-*]\s+/, "");
 }
 
 function inlineMarkdown(text: string): string {
@@ -651,7 +686,11 @@ function renderSourceLinks(block: string): string {
   return `<span class="inline-flex flex-wrap gap-x-2 gap-y-1 text-xs leading-5 text-muted-foreground">${inlineMarkdown(block)}</span>`;
 }
 
-function extractScriptSections(markdown: string) {
+export function renderScriptMarkdownHTML(markdown: string): string {
+  return renderMarkdownBlocks(splitMarkdownBlocks(markdown)).join("");
+}
+
+export function extractScriptSections(markdown: string) {
   return splitMarkdownBlocks(markdown)
     .map((block, blockIndex) => {
       const heading = block.match(/^(#{1,3})\s+(.+)$/);
@@ -666,6 +705,59 @@ function extractScriptSections(markdown: string) {
       };
     })
     .filter((section): section is { blockIndex: number; id: string; level: number; title: string } => Boolean(section));
+}
+
+export function buildScriptPDFMapping(
+  markdown: string,
+  resources: Array<{ kind: string; resourceId: string; title: string }>,
+): ScriptPDFMappingItem[] {
+  const pdfResources = resources.filter((resource) => resource.kind.toLowerCase().includes("pdf"));
+  const resourceById = new Map(pdfResources.map((resource) => [normalizeMoodleResourceId(resource.resourceId), resource]));
+  const mappingById = new Map<string, ScriptPDFMappingItem>();
+  let currentArea = "Course script";
+
+  splitMarkdownBlocks(markdown).forEach((block) => {
+    const heading = block.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      currentArea = stripMarkdown(heading[2]);
+    }
+
+    for (const match of block.matchAll(/\]\(moodle-resource:([^)]+)\)/g)) {
+      const resourceId = normalizeMoodleResourceId(decodeHtml(match[1]));
+      const resource = resourceById.get(resourceId);
+      if (!resource) {
+        continue;
+      }
+      const item = mappingById.get(resourceId) ?? {
+        areas: [],
+        order: mappingById.size + 1,
+        resourceId,
+        title: resource.title,
+      };
+      if (!item.areas.includes(currentArea)) {
+        item.areas.push(currentArea);
+      }
+      mappingById.set(resourceId, item);
+    }
+  });
+
+  for (const resource of pdfResources) {
+    const resourceId = normalizeMoodleResourceId(resource.resourceId);
+    if (!mappingById.has(resourceId)) {
+      mappingById.set(resourceId, {
+        areas: [],
+        order: mappingById.size + 1,
+        resourceId,
+        title: resource.title,
+      });
+    }
+  }
+
+  return Array.from(mappingById.values());
+}
+
+function normalizeMoodleResourceId(resourceId: string): string {
+  return resourceId.replace(/^\/+/, "");
 }
 
 function headingAnchorId(value: string): string {

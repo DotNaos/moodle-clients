@@ -22,7 +22,24 @@ type CreateAPIKeyResponse = {
 };
 
 export function APIKeyMenu() {
-  const [open, setOpen] = useState(false);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button className="h-11 px-4" type="button" variant="secondary">
+          <KeyRound data-icon="inline-start" aria-hidden />
+          <span className="hidden sm:inline">API key</span>
+          <ChevronDown data-icon="inline-end" aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="end" className="w-[min(92vw,420px)] rounded-[1.75rem] border-0 bg-card p-4 shadow-xl">
+        <APIKeyPanel />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function APIKeyPanel() {
   const [creating, setCreating] = useState(false);
   const [apiKey, setAPIKey] = useState("");
   const [prefix, setPrefix] = useState("");
@@ -73,48 +90,36 @@ export function APIKeyMenu() {
   }
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <Button className="h-11 px-4" type="button" variant="secondary">
-          <KeyRound data-icon="inline-start" aria-hidden />
-          <span className="hidden sm:inline">API key</span>
-          <ChevronDown data-icon="inline-end" aria-hidden />
-        </Button>
-      </DropdownMenuTrigger>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-base font-semibold tracking-tight">API key</h2>
+        <p className="text-sm leading-6 text-muted-foreground">
+          Create a fresh key for tools outside this website. Creating one invalidates older active API keys.
+        </p>
+      </div>
 
-      <DropdownMenuContent align="end" className="w-[min(92vw,420px)] rounded-[1.75rem] border-0 bg-card p-4 shadow-xl">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-base font-semibold tracking-tight">API key</h2>
-            <p className="text-sm leading-6 text-muted-foreground">
-              Create a fresh key for tools outside this website. Creating one invalidates older active API keys.
+      {error ? <Alert>{error}</Alert> : null}
+
+      {apiKey ? (
+        <div className="flex flex-col gap-2">
+          <div className="rounded-2xl bg-muted px-4 py-3 font-mono text-xs leading-6 break-all">{apiKey}</div>
+          <div className="flex items-center justify-between gap-3">
+            <p className="truncate text-xs text-muted-foreground">
+              {prefix ? `Prefix: ${prefix}` : "Copy it now. It is only shown once."}
             </p>
+            <Button type="button" variant="secondary" onClick={() => void copyAPIKey()}>
+              {copied ? <Check data-icon="inline-start" aria-hidden /> : <Copy data-icon="inline-start" aria-hidden />}
+              {copied ? "Copied" : "Copy"}
+            </Button>
           </div>
-
-          {error ? <Alert>{error}</Alert> : null}
-
-          {apiKey ? (
-            <div className="flex flex-col gap-2">
-              <div className="rounded-2xl bg-muted px-4 py-3 font-mono text-xs leading-6 break-all">{apiKey}</div>
-              <div className="flex items-center justify-between gap-3">
-                <p className="truncate text-xs text-muted-foreground">
-                  {prefix ? `Prefix: ${prefix}` : "Copy it now. It is only shown once."}
-                </p>
-                <Button type="button" variant="secondary" onClick={() => void copyAPIKey()}>
-                  {copied ? <Check data-icon="inline-start" aria-hidden /> : <Copy data-icon="inline-start" aria-hidden />}
-                  {copied ? "Copied" : "Copy"}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          <Button type="button" onClick={() => void createAPIKey()} disabled={creating}>
-            {creating ? <Loader2 className="animate-spin" data-icon="inline-start" aria-hidden /> : <KeyRound data-icon="inline-start" aria-hidden />}
-            {apiKey ? "Rotate key" : "Create key"}
-          </Button>
         </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      ) : null}
+
+      <Button type="button" onClick={() => void createAPIKey()} disabled={creating}>
+        {creating ? <Loader2 className="animate-spin" data-icon="inline-start" aria-hidden /> : <KeyRound data-icon="inline-start" aria-hidden />}
+        {apiKey ? "Rotate key" : "Create key"}
+      </Button>
+    </div>
   );
 }
 
