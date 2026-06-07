@@ -5,6 +5,7 @@ import {
   getCodexStateSnapshot,
   saveCodexStateSnapshot,
 } from "@/lib/codex-state";
+import { codexRuntimeErrorMessage } from "@/lib/codex-runtime";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -133,19 +134,21 @@ async function runCodexDeviceAuth(
   clerkUserId: string,
   writer: WritableStreamDefaultWriter<Uint8Array>,
 ) {
-  const sandbox = await Sandbox.create({
-    runtime: "node24",
-    timeout: 170_000,
-    resources: { vcpus: 1 },
-    env: {
-      HOME: CODEX_HOME,
-      CODEX_HOME,
-      npm_config_fund: "false",
-      npm_config_audit: "false",
-    },
-  });
+  let sandbox: Awaited<ReturnType<typeof Sandbox.create>> | null = null;
 
   try {
+    sandbox = await Sandbox.create({
+      runtime: "node24",
+      timeout: 170_000,
+      resources: { vcpus: 1 },
+      env: {
+        HOME: CODEX_HOME,
+        CODEX_HOME,
+        npm_config_fund: "false",
+        npm_config_audit: "false",
+      },
+    });
+
     await sandbox.writeFiles([
       {
         path: `${RUNNER_DIR}/package.json`,
@@ -228,13 +231,10 @@ async function runCodexDeviceAuth(
   } catch (error) {
     await writeEvent(writer, {
       type: "error",
-      error:
-        error instanceof Error
-          ? error.message
-          : "Codex ChatGPT sign-in failed.",
+      error: codexRuntimeErrorMessage(error),
     });
   } finally {
-    await sandbox.stop({ blocking: false }).catch(() => undefined);
+    await sandbox?.stop({ blocking: false }).catch(() => undefined);
   }
 }
 

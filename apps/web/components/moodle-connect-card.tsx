@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Copy, ExternalLink, KeyRound, Loader2, QrCode, RefreshCw, Smartphone } from "lucide-react";
+import { CheckCircle2, Copy, ExternalLink, Loader2, QrCode, RefreshCw, Smartphone } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -33,7 +33,8 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
   const [bridgeUrl, setBridgeUrl] = useState("");
   const [challenge, setChallenge] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [bridgeError, setBridgeError] = useState<string | null>(null);
+  const [credentialError, setCredentialError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -44,7 +45,7 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
     setBridgeUrl("");
     setChallenge("");
     setExpiresAt("");
-    setError(null);
+    setBridgeError(null);
     setCopied(false);
 
     try {
@@ -62,7 +63,7 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
       setState("waiting");
     } catch (startError) {
       setState("failed");
-      setError(getErrorMessage(startError));
+      setBridgeError(getErrorMessage(startError));
     }
   }, []);
 
@@ -87,7 +88,7 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
         }
         if (response.status === 410 || payload.status === "expired") {
           setState("failed");
-          setError("This bridge QR expired. Create a new one and scan it again.");
+          setBridgeError("This bridge QR expired. Create a new one and scan it again.");
           return;
         }
         if (!response.ok) {
@@ -95,13 +96,13 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
         }
         if (payload.status === "connected") {
           setState("connected");
-          setError(null);
+          setBridgeError(null);
           onConnected();
         }
       } catch (pollError) {
         if (!cancelled) {
           setState("failed");
-          setError(getErrorMessage(pollError));
+          setBridgeError(getErrorMessage(pollError));
         }
       }
     };
@@ -126,14 +127,14 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch (copyError) {
-      setError(getErrorMessage(copyError));
+      setBridgeError(getErrorMessage(copyError));
     }
   }
 
   async function submitCredentials(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setCredentialLoading(true);
-    setError(null);
+    setCredentialError(null);
     try {
       const response = await fetch("/api/moodle/connect", {
         method: "POST",
@@ -148,98 +149,116 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
       setState("connected");
       onConnected();
     } catch (loginError) {
-      setError(getErrorMessage(loginError));
+      setCredentialError(getErrorMessage(loginError));
     } finally {
       setCredentialLoading(false);
     }
   }
 
+  const connectError = credentialError ? getConnectErrorMessage(credentialError) : null;
+  const bridgeMessage = bridgeError ? getBridgeErrorMessage(bridgeError) : null;
+
   return (
-    <section className="mx-auto grid w-full max-w-5xl gap-6 rounded-[2rem] bg-card p-6 lg:grid-cols-[360px_minmax(0,1fr)] lg:items-center lg:p-8">
-      <div className="flex flex-col gap-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground">
-          <KeyRound aria-hidden />
-        </div>
-        <div className="flex flex-col gap-2">
-          <h2 className="text-3xl font-semibold tracking-tight">Connect Moodle</h2>
-          <p className="max-w-2xl text-base leading-7 text-muted-foreground">
-            Sign in once with your FHGR Moodle login. The server creates the same mobile token the app would provide and
-            stores that token session, not your password.
+    <section className="mx-auto grid w-full max-w-6xl gap-8 px-5 py-8 lg:grid-cols-[minmax(320px,440px)_1px_minmax(280px,1fr)] lg:items-start lg:px-8 lg:py-12">
+      <div className="space-y-8">
+        <div className="space-y-3">
+          <p className="text-sm font-medium uppercase tracking-[0.22em] text-muted-foreground">One-time setup</p>
+          <h2 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">Connect Moodle</h2>
+          <p className="max-w-md text-base leading-7 text-muted-foreground">
+            Use your FHGR Moodle login once. The app stores the Moodle token, not your password.
           </p>
         </div>
-        <form className="flex flex-col gap-2" onSubmit={submitCredentials}>
-          <Input
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            placeholder="FHGR username"
-            autoComplete="username"
-          />
-          <Input
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Password"
-            type="password"
-            autoComplete="current-password"
-          />
-          <Button type="submit" disabled={credentialLoading || !username.trim() || !password}>
-            {credentialLoading ? <Loader2 className="animate-spin" aria-hidden /> : <KeyRound aria-hidden />}
-            Sign in
+
+        <form className="space-y-3" onSubmit={submitCredentials}>
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-foreground">FHGR username</span>
+            <Input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="username"
+              autoComplete="username"
+              className="h-13 border border-border/70 bg-white/80 px-5 shadow-sm focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/25"
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-foreground">Password</span>
+            <Input
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Moodle password"
+              type="password"
+              autoComplete="current-password"
+              className="h-13 border border-border/70 bg-white/80 px-5 shadow-sm focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/25"
+            />
+          </label>
+          <Button className="h-13 w-full rounded-full text-base" type="submit" disabled={credentialLoading || !username.trim() || !password}>
+            {credentialLoading ? <Loader2 className="animate-spin" aria-hidden /> : null}
+            Connect
           </Button>
         </form>
-        <div className="flex flex-col gap-2 pt-2">
-          <p className="text-sm text-muted-foreground">Already using the iPhone app?</p>
-          <Button asChild variant="secondary" className="w-fit">
-            <a href={mobileClientDownloadUrl} target="_blank" rel="noreferrer">
-              <ExternalLink aria-hidden />
-              Download Moodle Client
-            </a>
-          </Button>
-        </div>
-        {error ? <Alert>{error}</Alert> : null}
+
+        {connectError ? <Alert className="bg-red-500/10 text-red-700">{connectError}</Alert> : null}
       </div>
 
-      <div className="grid gap-5 rounded-[1.75rem] bg-muted p-5 sm:grid-cols-[320px_1fr] sm:items-center">
-        <div className="grid aspect-square place-items-center rounded-[1.5rem] bg-white p-5">
-          {state === "starting" ? (
-            <Loader2 className="size-12 animate-spin text-primary" aria-hidden />
-          ) : bridgeUrl ? (
-            <QRCodeSVG className="h-full w-full max-w-[280px]" value={bridgeUrl} size={280} marginSize={1} />
-          ) : (
-            <QrCode className="size-12 text-muted-foreground" aria-hidden />
-          )}
+      <div className="hidden h-full min-h-[360px] bg-border/70 lg:block" />
+
+      <div className="space-y-7">
+        <div className="space-y-2">
+          <h3 className="text-xl font-semibold tracking-tight">iPhone bridge</h3>
+          <p className="max-w-lg text-sm leading-6 text-muted-foreground">
+            Already using the mobile app? Scan or copy this bridge link instead of typing your password.
+          </p>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            {state === "connected" ? (
-              <CheckCircle2 className="text-primary" aria-hidden />
-            ) : state === "waiting" ? (
-              <Smartphone className="text-primary" aria-hidden />
+        <div className="grid gap-5 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center">
+          <div className="grid aspect-square w-44 max-w-full place-items-center rounded-[1.25rem] border border-border/70 bg-white/85 p-4 shadow-sm">
+            {state === "starting" ? (
+              <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
+            ) : bridgeUrl ? (
+              <QRCodeSVG className="h-full w-full max-w-[152px]" value={bridgeUrl} size={152} marginSize={1} />
             ) : (
-              <Loader2 className="animate-spin text-primary" aria-hidden />
+              <QrCode className="size-8 text-muted-foreground" aria-hidden />
             )}
-            {getStatusLabel(state)}
           </div>
-          <p className="text-sm leading-6 text-muted-foreground">
-            The QR flow still works if your phone already has the mobile token. Otherwise, use the sign-in form on the
-            left.
-          </p>
-          {expiresAt ? (
-            <p className="text-xs text-muted-foreground">
-              Expires at {new Date(expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
-            </p>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" onClick={() => void copyBridgeURL()} disabled={!bridgeUrl}>
-              <Copy aria-hidden />
-              {copied ? "Copied" : "Copy"}
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => void startBridge()}>
-              <RefreshCw aria-hidden />
-              New QR
-            </Button>
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              {state === "connected" ? (
+                <CheckCircle2 className="size-4 text-primary" aria-hidden />
+              ) : state === "waiting" ? (
+                <Smartphone className="size-4 text-primary" aria-hidden />
+              ) : state === "failed" ? (
+                <QrCode className="size-4 text-muted-foreground" aria-hidden />
+              ) : (
+                <Loader2 className="size-4 animate-spin text-primary" aria-hidden />
+              )}
+              {getStatusLabel(state)}
+            </div>
+            {expiresAt ? (
+              <p className="text-xs text-muted-foreground">
+                Valid until {new Date(expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+              </p>
+            ) : null}
+            {bridgeMessage ? <p className="max-w-sm text-sm leading-6 text-muted-foreground">{bridgeMessage}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" onClick={() => void copyBridgeURL()} disabled={!bridgeUrl}>
+                <Copy aria-hidden />
+                {copied ? "Copied" : "Copy link"}
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => void startBridge()}>
+                <RefreshCw aria-hidden />
+                New QR
+              </Button>
+            </div>
           </div>
         </div>
+
+        <Button asChild variant="ghost" className="w-fit rounded-full px-0 hover:bg-transparent">
+          <a href={mobileClientDownloadUrl} target="_blank" rel="noreferrer">
+            <ExternalLink aria-hidden />
+            Download Moodle Client
+          </a>
+        </Button>
       </div>
     </section>
   );
@@ -254,8 +273,22 @@ function getStatusLabel(state: BridgeState): string {
     case "connected":
       return "Moodle connected";
     case "failed":
-      return "Bridge needs attention";
+      return "Bridge unavailable";
   }
+}
+
+function getConnectErrorMessage(error: string): string {
+  if (error === "Could not connect Moodle account.") {
+    return "Moodle login failed. Check your FHGR username and password, then try again.";
+  }
+  return error;
+}
+
+function getBridgeErrorMessage(error: string): string {
+  if (error === "Unauthorized") {
+    return "Bridge setup is not available in this session.";
+  }
+  return error;
 }
 
 function getErrorMessage(error: unknown): string {

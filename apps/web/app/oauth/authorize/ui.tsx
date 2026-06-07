@@ -1,6 +1,6 @@
 "use client";
 
-import { SignInButton, SignUpButton, useAuth } from "@clerk/nextjs";
+import { useAuth } from "@clerk/nextjs";
 import { CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -8,6 +8,8 @@ import { useSearchParams } from "next/navigation";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { GrainientBackground } from "@/components/grainient-background";
+import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { MoodleConnectCard } from "@/components/moodle-connect-card";
 
 type CompletionState = "idle" | "authorizing" | "redirecting" | "failed";
@@ -77,30 +79,13 @@ export function OAuthAuthorizeClient() {
 
   if (!isSignedIn) {
     return (
-      <main className="grid min-h-screen place-items-center px-4 py-10">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <ShieldCheck aria-hidden />
-            </div>
-            <CardTitle>Authorize ChatGPT</CardTitle>
-            <CardDescription>
-              Sign in to OS Home Moodle to connect ChatGPT to your Moodle account.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <SignInButton mode="modal">
-              <Button className="w-full" size="lg">
-                Sign in <CheckCircle2 aria-hidden />
-              </Button>
-            </SignInButton>
-            <SignUpButton mode="modal">
-              <Button className="w-full" variant="secondary">
-                Create account
-              </Button>
-            </SignUpButton>
-          </CardContent>
-        </Card>
+      <main className="relative isolate flex min-h-screen items-center justify-center overflow-hidden px-6 py-16 sm:px-8 lg:py-28">
+        <GrainientBackground colorBalance={0.15} centerX={0.08} centerY={-0.04} />
+        <div className="pointer-events-none absolute inset-0 z-[1] bg-white/20" />
+        <div className="relative z-10 w-full max-w-[34rem] space-y-10">
+          <h1 className="text-4xl font-semibold tracking-tight text-[#111318] sm:text-5xl">Authorize ChatGPT</h1>
+          <GoogleSignInButton />
+        </div>
       </main>
     );
   }

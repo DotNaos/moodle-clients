@@ -23,7 +23,7 @@ export function StudyModeActions({
   onRecordings: () => void;
 }) {
   return (
-    <div className="-mx-1 flex w-full min-w-0 max-w-full gap-2 overflow-x-auto px-1 pb-1 lg:mx-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:px-0 lg:pb-0">
+    <div className="grid w-full min-w-0 grid-cols-2 gap-2 lg:flex lg:flex-col lg:gap-1">
       <StudyModeButton
         active={studyMode === "materials"}
         icon={<Files aria-hidden />}
@@ -81,7 +81,7 @@ function StudyModeButton({
   return (
     <button
       className={cn(
-        "flex min-h-14 min-w-56 items-center gap-3 rounded-2xl px-3 py-2 text-left transition-colors lg:min-w-0",
+        "flex min-h-14 min-w-0 items-center gap-3 rounded-2xl px-3 py-2 text-left transition-colors",
         active ? "bg-primary text-primary-foreground" : "hover:bg-secondary",
       )}
       onClick={onClick}

@@ -79,9 +79,9 @@ export function MockDashboardPage() {
   }
 
   return (
-    <main className="h-dvh max-h-dvh overflow-hidden px-4 py-4 sm:px-6">
-      <div className="mx-auto grid h-full max-w-[1680px] grid-rows-[auto_minmax(0,1fr)] gap-4">
-        <header className="flex min-h-0 items-center justify-between gap-3">
+    <main className="min-h-dvh overflow-x-hidden px-3 py-3 sm:px-6 sm:py-4 lg:h-dvh lg:max-h-dvh lg:overflow-hidden">
+      <div className="mx-auto grid min-h-full w-full min-w-0 max-w-[1680px] gap-3 lg:h-full lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-4">
+        <header className="flex min-h-0 w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="truncate text-2xl font-semibold tracking-tight">Moodle</h1>
@@ -91,14 +91,14 @@ export function MockDashboardPage() {
               {mockUser.displayName} · {mockUser.moodleSiteUrl}
             </p>
           </div>
-          <Button variant="secondary" type="button">
+          <Button className="h-11 w-full sm:w-auto" variant="secondary" type="button">
             <RefreshCw aria-hidden />
             Mock refresh
           </Button>
         </header>
 
-        <section className="grid min-h-0 gap-4 lg:grid-cols-[360px_minmax(0,1fr)_400px]">
-          <aside className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] bg-card">
+        <section className="grid min-h-0 w-full min-w-0 gap-3 pb-8 lg:grid-cols-[360px_minmax(0,1fr)_400px] lg:gap-4 lg:pb-0">
+          <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.5rem] bg-card lg:rounded-[2rem]">
             <div className="px-5 py-5">
               <h2 className="text-base font-semibold tracking-tight">Mock courses</h2>
               <p className="mt-1 text-sm text-muted-foreground">{mockCourses.length} local courses</p>

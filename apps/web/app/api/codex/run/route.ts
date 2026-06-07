@@ -6,6 +6,7 @@ import {
   type CodexStreamEvent,
 } from "@/lib/codex-actions";
 import { withMoodlePrompt } from "@/lib/codex-prompt";
+import { codexRuntimeErrorMessage } from "@/lib/codex-runtime";
 import { runCodexInVercelSandbox } from "@/lib/codex-sandbox";
 import { getCodexStateSnapshot } from "@/lib/codex-state";
 
@@ -142,14 +143,5 @@ function parseMessages(value: unknown): CodexChatMessage[] {
 }
 
 function codexErrorMessage(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return "Codex failed before returning a result.";
-  }
-
-  const message = error.message.trim();
-  if (!message) {
-    return "Codex failed before returning a result.";
-  }
-
-  return message;
+  return codexRuntimeErrorMessage(error);
 }

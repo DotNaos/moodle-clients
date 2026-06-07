@@ -1,43 +1,26 @@
 "use client";
 
-import { CheckCircle2, ExternalLink, ShieldCheck } from "lucide-react";
-import { SignInButton, SignUpButton } from "@clerk/nextjs";
-
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { GrainientBackground } from "@/components/grainient-background";
+import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { Spinner } from "@/components/ui/spinner";
 
 export function SignedOutHome({ moodleServicesUrl }: { moodleServicesUrl: string }) {
   return (
-    <main className="grid min-h-screen place-items-center px-4 py-10">
-      <Card className="w-full max-w-md">
-        <CardHeader className="pb-4">
-          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <ShieldCheck aria-hidden />
-          </div>
-          <CardTitle>Moodle</CardTitle>
-          <CardDescription>
-            Sign in to open your private Moodle workspace.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <SignInButton mode="modal">
-            <Button className="w-full" size="lg">
-              Sign in <CheckCircle2 aria-hidden />
-            </Button>
-          </SignInButton>
-          <SignUpButton mode="modal">
-            <Button className="w-full" variant="secondary">
-              Create account
-            </Button>
-          </SignUpButton>
-          <Button asChild className="w-full" variant="ghost">
+    <main className="relative isolate flex min-h-screen items-center justify-center overflow-hidden px-6 py-16 sm:px-8 lg:py-28">
+      <GrainientBackground />
+      <div className="pointer-events-none absolute inset-0 z-[1] bg-white/20" />
+      <div className="relative z-10 w-full max-w-[34rem] space-y-10">
+        <h1 className="text-5xl font-semibold tracking-tight text-[#111318] sm:text-6xl">Moodle</h1>
+        <div className="space-y-5">
+          <GoogleSignInButton />
+          <Button asChild className="h-11 w-full rounded-full text-sm font-medium" variant="ghost">
             <a href={`${moodleServicesUrl}/api/docs`} target="_blank" rel="noreferrer">
-              API docs <ExternalLink aria-hidden />
+              API docs
             </a>
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </main>
   );
 }
