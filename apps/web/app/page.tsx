@@ -18,7 +18,7 @@ import type { StudyMode } from "@/components/study-mode-actions";
 import { Spinner } from "@/components/ui/spinner";
 import { useCodexMoodleActions } from "@/hooks/use-codex-moodle-actions";
 import { useWebexRecordings } from "@/hooks/use-webex-recordings";
-import { readDashboardCache, writeDashboardCache } from "@/lib/dashboard-cache";
+import { clearDashboardCache, readDashboardCache, writeDashboardCache } from "@/lib/dashboard-cache";
 import type { Course, Material, User } from "@/lib/dashboard-data";
 import {
   buildCategoryOptionGroups,
@@ -29,7 +29,13 @@ import {
   normalizeCourses,
   normalizeMaterials,
 } from "@/lib/dashboard-data";
-import { apiRequest, getErrorMessage, isMoodleNotConnected, pruneMaterialCache } from "@/lib/moodle-api";
+import {
+  apiRequest,
+  getErrorMessage,
+  getMoodleConnectionMessage,
+  isMoodleNotConnected,
+  pruneMaterialCache,
+} from "@/lib/moodle-api";
 import type { PDFScrollCommand, PDFViewState } from "@/lib/pdf-context";
 import { EMPTY_STUDY_OUTLINE, type StudyOutline } from "@/lib/study-outline";
 import { cn } from "@/lib/utils";
@@ -54,6 +60,7 @@ export default function Home() {
   const [materialsLoading, setMaterialsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsConnection, setNeedsConnection] = useState(false);
+  const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
   const [codexOpen, setCodexOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMaterialPreviewOpen, setMobileMaterialPreviewOpen] = useState(false);
@@ -111,6 +118,7 @@ export default function Home() {
       setSelectedCategory("all");
       setError(null);
       setNeedsConnection(false);
+      setConnectionMessage(null);
       return;
     }
 
@@ -135,6 +143,7 @@ export default function Home() {
       setMobileMaterialPreviewOpen(Boolean(cached.selectedMaterialId));
       setMaterials(cached.selectedCourseId ? cached.materialsByCourseId[cached.selectedCourseId] ?? [] : []);
       setNeedsConnection(false);
+      setConnectionMessage(null);
       setError(null);
     }
 
@@ -234,6 +243,7 @@ export default function Home() {
     setRefreshing(options.background || courses.length > 0);
     setMaterialsLoading(false);
     setError(null);
+    setConnectionMessage(null);
 
     try {
       const [userResponse, coursesResponse] = await Promise.all([
@@ -261,6 +271,7 @@ export default function Home() {
       setMaterials(nextMaterials);
       setMaterialsByCourseId(nextMaterialsByCourseId);
       setNeedsConnection(false);
+      setConnectionMessage(null);
       setSelectedCourseId(nextSelectedCourseId);
       setSelectedMaterialId(nextSelectedMaterialId);
       setStudyMode("materials");
@@ -279,26 +290,11 @@ export default function Home() {
         selectedMaterialId: nextSelectedMaterialId,
       });
     } catch (loadError) {
-      if (!options.background) {
-        setUser(null);
-        setCourses([]);
-        setMaterials([]);
-        setMaterialsByCourseId({});
-        setSelectedCourseId(null);
-        setSelectedMaterialId(null);
-        setStudyMode("materials");
-        setSelectedTaskId(null);
-        setSelectedScriptSectionId(null);
-        setNavigationMode("courses");
-        setHomeView("courses");
-        setMobileMaterialPreviewOpen(false);
-        setSelectedCategory("all");
-      }
       if (isMoodleNotConnected(loadError)) {
-        setNeedsConnection(true);
-        setError(null);
+        handleMoodleDisconnected(loadError);
       } else {
         setNeedsConnection(false);
+        setConnectionMessage(null);
         setError(getErrorMessage(loadError));
       }
     } finally {
@@ -378,6 +374,10 @@ export default function Home() {
       if (materialsRequestId.current !== requestId) {
         return [];
       }
+      if (isMoodleNotConnected(loadError)) {
+        handleMoodleDisconnected(loadError);
+        return [];
+      }
       setMaterials([]);
       setSelectedMaterialId(null);
       setError(getErrorMessage(loadError));
@@ -395,6 +395,36 @@ export default function Home() {
     setSelectedTaskId(null);
     setSelectedScriptSectionId(null);
     await loadRecordings(courseId, options);
+  }
+
+  function clearMoodleWorkspace() {
+    setUser(null);
+    setCourses([]);
+    setMaterials([]);
+    setMaterialsByCourseId({});
+    resetRecordings();
+    setSelectedCourseId(null);
+    setSelectedMaterialId(null);
+    setStudyMode("materials");
+    setSelectedTaskId(null);
+    setSelectedScriptSectionId(null);
+    setStudyOutline(EMPTY_STUDY_OUTLINE);
+    setNavigationMode("courses");
+    setHomeView("courses");
+    setMobileMaterialPreviewOpen(false);
+    setSelectedCategory("all");
+    setMaterialsLoading(false);
+  }
+
+  function handleMoodleDisconnected(disconnectError: unknown) {
+    materialsRequestId.current += 1;
+    if (userId) {
+      clearDashboardCache(userId);
+    }
+    clearMoodleWorkspace();
+    setNeedsConnection(true);
+    setConnectionMessage(getMoodleConnectionMessage(disconnectError));
+    setError(null);
   }
 
   if (!isLoaded) {
@@ -417,10 +447,12 @@ export default function Home() {
                   <Badge>Signed in</Badge>
                 </div>
                 <p className="hidden truncate text-sm text-muted-foreground sm:block">
-                  {user ? `${user.displayName} · ${user.moodleSiteUrl}` : "Loading Moodle workspace"}
+                  {needsConnection
+                    ? "Moodle connection required"
+                    : user ? `${user.displayName} · ${user.moodleSiteUrl}` : "Loading Moodle workspace"}
                 </p>
                 <p className="truncate text-xs text-muted-foreground sm:hidden">
-                  {user ? mobileWorkspaceLabel(user) : "Loading workspace"}
+                  {needsConnection ? "Connect Moodle" : user ? mobileWorkspaceLabel(user) : "Loading workspace"}
                 </p>
               </div>
 
@@ -443,13 +475,15 @@ export default function Home() {
               </div>
             </header>
 
-            {error ? <Alert>{error}</Alert> : null}
+            {error ? <DashboardNotice message={error} /> : null}
 
             {needsConnection ? (
               <section className="min-h-0 overflow-auto py-4">
                 <MoodleConnectCard
+                  reason={connectionMessage}
                   onConnected={() => {
                     setNeedsConnection(false);
+                    setConnectionMessage(null);
                     void loadDashboard();
                   }}
                 />
@@ -703,4 +737,14 @@ export default function Home() {
 
 function mobileWorkspaceLabel(user: User): string {
   return user.moodleSiteUrl.replace(/^https?:\/\//, "");
+}
+
+function DashboardNotice({ message }: { message: string }) {
+  return (
+    <div className="min-w-0">
+      <Alert className="inline-flex max-w-3xl items-start rounded-2xl px-4 py-3 text-sm font-medium leading-6">
+        {message}
+      </Alert>
+    </div>
+  );
 }

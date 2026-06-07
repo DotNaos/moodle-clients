@@ -74,6 +74,11 @@ export async function GET(request: Request, context: RouteContext) {
     }
   }
 
+  const tokenError = await readMoodleTokenError(upstreamResponse);
+  if (tokenError) {
+    return moodleNotConnectedResponse(tokenError);
+  }
+
   const headers = new Headers();
   for (const header of ["content-type", "content-disposition", "cache-control", "accept-ranges", "content-range"]) {
     const value = upstreamResponse.headers.get(header);
@@ -202,6 +207,11 @@ async function proxyMoodlePost(request: Request, path: string[]) {
     }
   }
 
+  const tokenError = await readMoodleTokenError(upstreamResponse);
+  if (tokenError) {
+    return moodleNotConnectedResponse(tokenError);
+  }
+
   const payload = await readServiceJSON<unknown>(upstreamResponse);
   return Response.json(payload, { status: upstreamResponse.status || 502 });
 }
@@ -232,6 +242,10 @@ async function saveWebexCredentials(request: Request) {
     },
     body: body || "{}",
   });
+  const tokenError = await readMoodleTokenError(upstreamResponse);
+  if (tokenError) {
+    return moodleNotConnectedResponse(tokenError);
+  }
   const payload = await readServiceJSON<unknown>(upstreamResponse);
   return Response.json(payload, { status: upstreamResponse.status || 502 });
 }
@@ -262,6 +276,10 @@ async function createAPIKey(request: Request) {
     },
     body: body || "{}",
   });
+  const tokenError = await readMoodleTokenError(upstreamResponse);
+  if (tokenError) {
+    return moodleNotConnectedResponse(tokenError);
+  }
   const payload = await readServiceJSON<CreateAPIKeyPayload>(upstreamResponse);
 
   if (upstreamResponse.ok && payload.apiKey) {
@@ -277,6 +295,50 @@ async function createAPIKey(request: Request) {
   }
 
   return Response.json(payload, { status: upstreamResponse.status || 502 });
+}
+
+async function readMoodleTokenError(response: Response): Promise<string | null> {
+  if (response.status !== 401) {
+    return null;
+  }
+
+  const text = await response.clone().text().catch(() => "");
+  const message = extractErrorMessage(text, response.headers.get("content-type"));
+  if (!isMoodleTokenError(message || text)) {
+    return null;
+  }
+
+  return "Your Moodle connection expired. Connect Moodle again to load fresh courses and materials.";
+}
+
+function extractErrorMessage(text: string, contentType: string | null): string {
+  if (!contentType?.includes("application/json")) {
+    return text;
+  }
+
+  try {
+    const payload = JSON.parse(text) as { error?: unknown; message?: unknown };
+    if (typeof payload.error === "string") {
+      return payload.error;
+    }
+    if (typeof payload.message === "string") {
+      return payload.message;
+    }
+  } catch {
+    return text;
+  }
+
+  return text;
+}
+
+function isMoodleTokenError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("mobile api error") && normalized.includes("token") ||
+    normalized.includes("ungültiges token") ||
+    normalized.includes("token wurde nicht gefunden") ||
+    normalized.includes("invalid token")
+  );
 }
 
 type SessionRestorePayload = {

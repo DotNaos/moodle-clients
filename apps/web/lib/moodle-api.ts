@@ -35,11 +35,26 @@ export class APIRequestError extends Error {
 }
 
 export function isMoodleNotConnected(error: unknown): boolean {
-  return error instanceof APIRequestError && error.status === 409 && error.code === "moodle_not_connected";
+  if (!(error instanceof APIRequestError)) {
+    return false;
+  }
+
+  return (
+    error.status === 409 && error.code === "moodle_not_connected" ||
+    isMoodleTokenError(error.message)
+  );
 }
 
 export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+export function getMoodleConnectionMessage(error: unknown): string {
+  const message = getErrorMessage(error);
+  if (isMoodleTokenError(message)) {
+    return "Your Moodle connection expired. Connect Moodle again to load fresh courses and materials.";
+  }
+  return message;
 }
 
 export function pruneMaterialCache(
@@ -84,6 +99,16 @@ function getAPIErrorMessage(payload: unknown, text: string, status: number): str
 
 function getAPIErrorCode(payload: unknown): string | undefined {
   return isObject(payload) && typeof payload.code === "string" ? payload.code : undefined;
+}
+
+function isMoodleTokenError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("mobile api error") && normalized.includes("token") ||
+    normalized.includes("ungültiges token") ||
+    normalized.includes("token wurde nicht gefunden") ||
+    normalized.includes("invalid token")
+  );
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

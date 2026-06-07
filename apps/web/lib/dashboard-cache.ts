@@ -59,6 +59,14 @@ export function writeDashboardCache(userId: string, cache: Omit<DashboardCache, 
   );
 }
 
+export function clearDashboardCache(userId: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(cacheKey(userId));
+}
+
 function cacheKey(userId: string): string {
   return `${CACHE_PREFIX}${userId}`;
 }

@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { CourseMainPanel } from "@/components/course-main-panel";
 import { CourseThumbnail, MaterialRow } from "@/components/dashboard-ui";
+import { MoodleConnectCard } from "@/components/moodle-connect-card";
 import { StudyModeActions, type StudyMode } from "@/components/study-mode-actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,7 @@ const mockRecordingState = {
 
 export function MockDashboardPage() {
   useHideClerkDevOverlay();
+  const [mockState, setMockState] = useState<string | null>(null);
 
   const [selectedCourseId, setSelectedCourseId] = useState(String(mockCourses[0]?.id ?? ""));
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
@@ -66,6 +68,10 @@ export function MockDashboardPage() {
   const materials = mockMaterialsByCourseId[selectedCourseId] ?? [];
   const selectedMaterial = materials.find((material) => material.id === selectedMaterialId) ?? null;
 
+  useEffect(() => {
+    setMockState(new URLSearchParams(window.location.search).get("state"));
+  }, []);
+
   function selectCourse(courseId: string) {
     setSelectedCourseId(courseId);
     setSelectedMaterialId(null);
@@ -75,6 +81,10 @@ export function MockDashboardPage() {
   function openMaterial(material: Material) {
     setSelectedMaterialId(material.id);
     setStudyMode("materials");
+  }
+
+  if (mockState === "disconnected") {
+    return <MockDisconnectedDashboard />;
   }
 
   return (
@@ -212,6 +222,32 @@ export function MockDashboardPage() {
             selectedCourseName={selectedCourse ? courseTitle(selectedCourse) : "No course"}
           />
         </section>
+      </div>
+    </main>
+  );
+}
+
+function MockDisconnectedDashboard() {
+  return (
+    <main className="min-h-dvh overflow-x-hidden px-3 py-3 sm:px-6 sm:py-4">
+      <div className="mx-auto grid min-h-full w-full min-w-0 max-w-[1680px] gap-4">
+        <header className="flex min-h-0 w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-2xl font-semibold tracking-tight">Moodle</h1>
+              <Badge>Mock mode</Badge>
+            </div>
+            <p className="truncate text-sm text-muted-foreground">Moodle connection required</p>
+          </div>
+          <Button className="h-11 w-full sm:w-auto" variant="secondary" type="button">
+            <RefreshCw aria-hidden />
+            Mock refresh
+          </Button>
+        </header>
+        <MoodleConnectCard
+          reason="Your Moodle connection expired. Connect Moodle again to load fresh courses and materials."
+          onConnected={() => undefined}
+        />
       </div>
     </main>
   );

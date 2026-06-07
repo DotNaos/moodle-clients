@@ -11,6 +11,7 @@ import { getMobileClientDownloadUrl } from "@/lib/mobile-client";
 
 type MoodleConnectCardProps = {
   onConnected: () => void;
+  reason?: string | null;
 };
 
 type BridgeStartResponse = {
@@ -27,7 +28,7 @@ type BridgeStatusResponse = {
 
 type BridgeState = "starting" | "waiting" | "connected" | "failed";
 
-export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
+export function MoodleConnectCard({ onConnected, reason }: MoodleConnectCardProps) {
   const mobileClientDownloadUrl = getMobileClientDownloadUrl();
   const [state, setState] = useState<BridgeState>("starting");
   const [bridgeUrl, setBridgeUrl] = useState("");
@@ -159,14 +160,19 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
   const bridgeMessage = bridgeError ? getBridgeErrorMessage(bridgeError) : null;
 
   return (
-    <section className="mx-auto grid w-full max-w-6xl gap-8 px-5 py-8 lg:grid-cols-[minmax(320px,440px)_1px_minmax(280px,1fr)] lg:items-start lg:px-8 lg:py-12">
-      <div className="space-y-8">
+    <section className="mx-auto grid w-full max-w-6xl gap-7 px-4 py-6 sm:px-6 sm:py-8 lg:grid-cols-[minmax(320px,440px)_1px_minmax(280px,1fr)] lg:items-start lg:px-8 lg:py-12">
+      <div className="space-y-7">
         <div className="space-y-3">
           <p className="text-sm font-medium uppercase tracking-[0.22em] text-muted-foreground">One-time setup</p>
-          <h2 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">Connect Moodle</h2>
-          <p className="max-w-md text-base leading-7 text-muted-foreground">
+          <h2 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl lg:text-5xl">Connect Moodle</h2>
+          <p className="max-w-md text-sm leading-6 text-muted-foreground sm:text-base sm:leading-7">
             Use your FHGR Moodle login once. The app stores the Moodle token, not your password.
           </p>
+          {reason ? (
+            <p className="max-w-md border-l-2 border-red-500/50 pl-3 text-sm font-medium leading-6 text-red-700">
+              {reason}
+            </p>
+          ) : null}
         </div>
 
         <form className="space-y-3" onSubmit={submitCredentials}>
@@ -177,7 +183,7 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
               onChange={(event) => setUsername(event.target.value)}
               placeholder="username"
               autoComplete="username"
-              className="h-13 border border-border/70 bg-white/80 px-5 shadow-sm focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/25"
+              className="h-12 border border-border/70 bg-white/80 px-5 shadow-sm focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/25 sm:h-13"
             />
           </label>
           <label className="block space-y-2">
@@ -188,10 +194,10 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
               placeholder="Moodle password"
               type="password"
               autoComplete="current-password"
-              className="h-13 border border-border/70 bg-white/80 px-5 shadow-sm focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/25"
+              className="h-12 border border-border/70 bg-white/80 px-5 shadow-sm focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/25 sm:h-13"
             />
           </label>
-          <Button className="h-13 w-full rounded-full text-base" type="submit" disabled={credentialLoading || !username.trim() || !password}>
+          <Button className="h-12 w-full rounded-full text-base sm:h-13" type="submit" disabled={credentialLoading || !username.trim() || !password}>
             {credentialLoading ? <Loader2 className="animate-spin" aria-hidden /> : null}
             Connect
           </Button>
@@ -204,14 +210,14 @@ export function MoodleConnectCard({ onConnected }: MoodleConnectCardProps) {
 
       <div className="space-y-7">
         <div className="space-y-2">
-          <h3 className="text-xl font-semibold tracking-tight">iPhone bridge</h3>
+          <h3 className="text-lg font-semibold tracking-tight sm:text-xl">iPhone bridge</h3>
           <p className="max-w-lg text-sm leading-6 text-muted-foreground">
             Already using the mobile app? Scan or copy this bridge link instead of typing your password.
           </p>
         </div>
 
         <div className="grid gap-5 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center">
-          <div className="grid aspect-square w-44 max-w-full place-items-center rounded-[1.25rem] border border-border/70 bg-white/85 p-4 shadow-sm">
+          <div className="grid aspect-square w-36 max-w-full place-items-center rounded-[1.25rem] border border-border/70 bg-white/85 p-4 shadow-sm sm:w-44">
             {state === "starting" ? (
               <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
             ) : bridgeUrl ? (
