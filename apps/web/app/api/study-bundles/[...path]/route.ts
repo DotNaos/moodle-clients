@@ -38,6 +38,13 @@ type StudyBundleManifest = {
 
 export const runtime = "nodejs";
 
+const bundleRoot = path.join(process.cwd(), "apps", "web", "study-bundles");
+const courseBundleSlugs: Record<string, string> = {
+  "22584": "high-performance-computing",
+  "high-performance-computing": "high-performance-computing",
+  "mock-hpc": "high-performance-computing",
+};
+
 export async function GET(request: Request, context: RouteContext) {
   const { userId } = await auth();
   if (!userId && process.env.NODE_ENV !== "development") {
@@ -141,31 +148,20 @@ async function assetResponse(request: Request, courseId: string) {
 }
 
 async function loadBundle(courseId: string): Promise<{ dir: string; manifest: StudyBundleManifest } | null> {
-  const normalizedCourseId = courseId === "mock-hpc" ? "22584" : courseId;
-  for (const bundleRoot of candidateBundleRoots()) {
-    const entries = await readdir(bundleRoot, { withFileTypes: true }).catch(() => []);
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-      const dir = path.join(bundleRoot, entry.name);
-      const manifest = await readManifest(dir).catch(() => null);
-      if (!manifest) {
-        continue;
-      }
-      if (manifest.courseId === normalizedCourseId || manifest.courseSlug === normalizedCourseId) {
-        return { dir, manifest };
-      }
-    }
-  }
-  return null;
+  const slug = courseBundleSlugs[courseId];
+  if (!slug) return null;
+  const dir = path.join(bundleRoot, slug);
+  await traceBundleRuntimeFiles(dir);
+  const manifest = await readManifest(dir).catch(() => null);
+  return manifest ? { dir, manifest } : null;
 }
 
-function candidateBundleRoots(): string[] {
-  return [
-    path.join(process.cwd(), "study-bundles"),
-    path.join(process.cwd(), "apps/web/study-bundles"),
-  ];
+async function traceBundleRuntimeFiles(dir: string) {
+  await Promise.all([
+    readdir(path.join(dir, "assets"), { recursive: true }).catch(() => []),
+    readdir(path.join(dir, "script"), { recursive: true }).catch(() => []),
+    readdir(path.join(dir, "tasks"), { recursive: true }).catch(() => []),
+  ]);
 }
 
 async function readManifest(dir: string): Promise<StudyBundleManifest> {
