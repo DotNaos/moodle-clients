@@ -86,6 +86,12 @@ type TaskChatMessage = {
   createdAt: string;
 };
 
+type CodexModelOption = {
+  id: string;
+  label: string;
+  description?: string;
+};
+
 type Mode = "tasks" | "script";
 
 export function TaskStudyPanel({
@@ -124,6 +130,10 @@ export function TaskStudyPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refiningTarget, setRefiningTarget] = useState<string | null>(null);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
+  const [refineModels, setRefineModels] = useState<CodexModelOption[]>([]);
+  const [selectedRefineModel, setSelectedRefineModel] = useState("");
   const loadRequestId = useRef(0);
 
   const courseId = course ? String(course.id) : null;
@@ -178,6 +188,18 @@ export function TaskStudyPanel({
       void loadView(courseId, false, true);
     }
   }, [courseId, loading, mode, scriptIncluded, view]);
+
+  useEffect(() => {
+    if (!courseId) {
+      setRefineModels([]);
+      setSelectedRefineModel("");
+      setModelError(null);
+      return;
+    }
+    const controller = new AbortController();
+    void loadCodexModels(controller.signal);
+    return () => controller.abort();
+  }, [courseId]);
 
   useEffect(() => {
     if (!selectedTask) {
@@ -381,8 +403,38 @@ export function TaskStudyPanel({
     }
   }
 
+  async function loadCodexModels(signal?: AbortSignal) {
+    setModelLoading(true);
+    setModelError(null);
+    try {
+      const response = await fetch("/api/codex/models", {
+        cache: "no-store",
+        signal,
+      });
+      const payload = await response.json().catch(() => ({})) as { error?: string; models?: CodexModelOption[] };
+      if (!response.ok) {
+        throw new Error(payload.error ?? `Model catalog failed with ${response.status}.`);
+      }
+      const models = asArray(payload.models).filter((model) => model.id && model.label);
+      setRefineModels(models);
+      setSelectedRefineModel((current) => models.some((model) => model.id === current) ? current : models[0]?.id ?? "");
+    } catch (modelsError) {
+      if (!isAbortError(modelsError)) {
+        setRefineModels([]);
+        setSelectedRefineModel("");
+        setModelError(getErrorMessage(modelsError));
+      }
+    } finally {
+      setModelLoading(false);
+    }
+  }
+
   async function refineStudyContent(kind: "script-section" | "task", targetID: string) {
     if (!courseId || !targetID || refiningTarget) {
+      return;
+    }
+    if (!selectedRefineModel) {
+      setError("Choose a Codex model from the catalog before improving this content.");
       return;
     }
     const refineKey = `${kind}:${targetID}`;
@@ -392,7 +444,7 @@ export function TaskStudyPanel({
     try {
       await studyPipelineRequest(`/courses/${encodeURIComponent(courseId)}/study-pipeline/refine`, {
         method: "POST",
-        body: JSON.stringify({ kind, targetId: targetID }),
+        body: JSON.stringify({ kind, targetId: targetID, model: selectedRefineModel }),
       });
       await loadView(courseId, false, mode === "script" || scriptIncluded);
       setMessage("Codex-improved version saved separately from the extracted source.");
@@ -429,6 +481,13 @@ export function TaskStudyPanel({
 
       {error ? <div className="mx-4 mt-4 rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive lg:mx-5">{error}</div> : null}
       {message ? <div className="mx-4 mt-4 rounded-2xl bg-secondary px-4 py-3 text-sm text-muted-foreground lg:mx-5">{message}</div> : null}
+      <CodexModelPicker
+        error={modelError}
+        loading={modelLoading}
+        models={refineModels}
+        onChange={setSelectedRefineModel}
+        value={selectedRefineModel}
+      />
 
       {loading && !view ? (
         <div className="grid min-h-0 flex-1 place-items-center text-sm text-muted-foreground">
@@ -437,6 +496,7 @@ export function TaskStudyPanel({
       ) : mode === "script" ? (
         <ScriptReader
           courseTitleText={courseTitle(course)}
+          modelReady={Boolean(selectedRefineModel)}
           onCitationClick={onOpenResource}
           onRefine={(targetID) => void refineStudyContent("script-section", targetID)}
           onSelectSection={onSelectedScriptSectionIdChange}
@@ -493,7 +553,7 @@ export function TaskStudyPanel({
                     <ContentStateBadge state={selectedTask.contentState} />
                     {selectedTask.contentState?.id ? (
                       <Button
-                        disabled={refiningTarget === `task:${selectedTask.contentState.id}`}
+                        disabled={!selectedRefineModel || refiningTarget === `task:${selectedTask.contentState.id}`}
                         onClick={() => void refineStudyContent("task", selectedTask.contentState?.id ?? selectedTask.sourceResourceId)}
                         type="button"
                         variant="secondary"
@@ -611,6 +671,49 @@ export function TaskStudyPanel({
   );
 }
 
+function CodexModelPicker({
+  error,
+  loading,
+  models,
+  onChange,
+  value,
+}: {
+  error: string | null;
+  loading: boolean;
+  models: CodexModelOption[];
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <div className="mx-4 mt-4 flex flex-col gap-2 rounded-[1.5rem] bg-secondary px-4 py-3 text-sm lg:mx-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className="font-medium text-foreground">Codex refinement model</p>
+        <p className="mt-1 truncate text-xs text-muted-foreground">
+          {loading ? "Loading model catalog..." : error ? error : "Loaded from the Codex model catalog."}
+        </p>
+      </div>
+      <label className="flex min-w-0 items-center gap-2">
+        <span className="sr-only">Codex model</span>
+        <select
+          className="h-10 max-w-full rounded-full bg-background px-4 text-sm font-medium outline-none ring-1 ring-border transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+          disabled={loading || models.length === 0}
+          onChange={(event) => onChange(event.target.value)}
+          value={value}
+        >
+          {models.length === 0 ? (
+            <option value="">{loading ? "Loading models..." : "No models available"}</option>
+          ) : null}
+          {models.map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
 function taskPromptText(task: TaskViewTask): string {
   return [
     task.promptMarkdown,
@@ -685,6 +788,7 @@ function slugifyTaskId(value: string): string {
 
 function ScriptReader({
   courseTitleText,
+  modelReady,
   onCitationClick,
   onRefine,
   onSelectSection,
@@ -693,6 +797,7 @@ function ScriptReader({
   view,
 }: {
   courseTitleText: string;
+  modelReady: boolean;
   onCitationClick: (resourceId: string) => void;
   onRefine: (targetID: string) => void;
   onSelectSection: (sectionId: string | null) => void;
@@ -816,7 +921,7 @@ function ScriptReader({
                     {chapter.state?.id ? (
                       <Button
                         className="w-fit"
-                        disabled={refiningTarget === `script-section:${chapter.state.id}`}
+                        disabled={!modelReady || refiningTarget === `script-section:${chapter.state.id}`}
                         onClick={() => onRefine(chapter.state?.id ?? "")}
                         type="button"
                         variant="secondary"
