@@ -3,12 +3,15 @@
 import {
   Bot,
   Check,
+  ChevronDown,
   Copy,
   ExternalLink,
+  LogOut,
+  RotateCcw,
   SendHorizontal,
   ShieldCheck,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -90,6 +93,8 @@ export function CodexPanel({
   const [deviceCode, setDeviceCode] = useState<CodexDeviceCode | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authMenuOpen, setAuthMenuOpen] = useState(false);
+  const authMenuRef = useRef<HTMLDivElement | null>(null);
 
   const contextSummary = useMemo(() => {
     if (selectedMaterial) {
@@ -140,12 +145,35 @@ export function CodexPanel({
     };
   }, []);
 
-  async function connectCodex() {
-    if (authStatus === "checking" || authStatus === "connecting" || authStatus === "connected") {
+  useEffect(() => {
+    if (!authMenuOpen) {
+      return;
+    }
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (authMenuRef.current && !authMenuRef.current.contains(event.target as Node)) {
+        setAuthMenuOpen(false);
+      }
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setAuthMenuOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [authMenuOpen]);
+
+  async function connectCodex({ force = false }: { force?: boolean } = {}) {
+    if (authStatus === "checking" || authStatus === "connecting" || (!force && authStatus === "connected")) {
       return;
     }
 
     setAuthStatus("connecting");
+    setAuthMenuOpen(false);
     setDeviceCode(null);
     setCopiedCode(false);
     setError(null);
@@ -196,6 +224,36 @@ export function CodexPanel({
     } catch (authError) {
       setAuthStatus("missing");
       setError(authError instanceof Error ? authError.message : "Could not connect ChatGPT.");
+    }
+  }
+
+  async function disconnectCodex({ reconnect = false }: { reconnect?: boolean } = {}) {
+    if (authStatus === "checking" || authStatus === "connecting") {
+      return;
+    }
+
+    setAuthStatus("checking");
+    setAuthMenuOpen(false);
+    setDeviceCode(null);
+    setCopiedCode(false);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/codex/auth", {
+        method: "DELETE",
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not sign out of ChatGPT.");
+      }
+      setMessages([]);
+      setAuthStatus("missing");
+      if (reconnect) {
+        await connectCodex({ force: true });
+      }
+    } catch (disconnectError) {
+      setAuthStatus("connected");
+      setError(disconnectError instanceof Error ? disconnectError.message : "Could not sign out of ChatGPT.");
     }
   }
 
@@ -355,7 +413,7 @@ export function CodexPanel({
   }
 
   return (
-    <aside className="flex min-h-[60dvh] flex-col overflow-hidden rounded-[1.5rem] bg-card lg:min-h-0 lg:rounded-[2rem]">
+    <aside className="flex min-h-[60dvh] flex-col overflow-visible rounded-[1.5rem] bg-card lg:min-h-0 lg:rounded-[2rem]">
       <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between lg:px-5 lg:py-5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -364,16 +422,46 @@ export function CodexPanel({
           </div>
           <p className="mt-1 truncate text-xs text-muted-foreground">{contextSummary}</p>
         </div>
-        <Button
-          className="h-9 shrink-0 px-3 text-xs"
-          disabled={authStatus === "checking" || authStatus === "connecting" || isCodexConnected}
-          onClick={() => void connectCodex()}
-          type="button"
-          variant={isCodexConnected ? "secondary" : "default"}
-        >
-          <ShieldCheck aria-hidden className="size-3.5" />
-          {connectLabel}
-        </Button>
+        <div ref={authMenuRef} className="relative shrink-0">
+          <Button
+            aria-expanded={authMenuOpen}
+            className="h-9 shrink-0 px-3 text-xs"
+            disabled={authStatus === "checking" || authStatus === "connecting"}
+            onClick={() => {
+              if (isCodexConnected) {
+                setAuthMenuOpen((open) => !open);
+              } else {
+                void connectCodex();
+              }
+            }}
+            type="button"
+            variant={isCodexConnected ? "secondary" : "default"}
+          >
+            <ShieldCheck aria-hidden className="size-3.5" />
+            {connectLabel}
+            {isCodexConnected ? <ChevronDown aria-hidden className={cn("size-3.5 transition-transform", authMenuOpen ? "rotate-180" : "")} /> : null}
+          </Button>
+          {authMenuOpen ? (
+            <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-[1.5rem] bg-popover p-2 text-sm text-popover-foreground shadow-2xl">
+              <button
+                className="flex w-full items-center gap-3 rounded-full px-3 py-2 text-left transition-colors hover:bg-secondary"
+                onClick={() => void disconnectCodex({ reconnect: true })}
+                type="button"
+              >
+                <RotateCcw aria-hidden className="size-4" />
+                Reconnect ChatGPT
+              </button>
+              <button
+                className="flex w-full items-center gap-3 rounded-full px-3 py-2 text-left transition-colors hover:bg-secondary"
+                onClick={() => void disconnectCodex()}
+                type="button"
+              >
+                <LogOut aria-hidden className="size-4" />
+                Sign out
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-visible px-4 pb-4 lg:overflow-auto">

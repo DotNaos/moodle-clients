@@ -538,7 +538,15 @@ export function TaskStudyPanel({
       await loadView(courseId, false, mode === "script" || scriptIncluded);
       setMessage("Codex-improved version saved separately from the extracted source.");
     } catch (refineError) {
-      setError(getErrorMessage(refineError));
+      const message = getErrorMessage(refineError);
+      setError(message);
+      if (isCodexAuthError(message)) {
+        setCodexConnected(false);
+        setRefineModels([]);
+        setSelectedRefineModel("");
+        setSelectedReasoningEffort("");
+        setModelError("Connect ChatGPT again before improving study content.");
+      }
     } finally {
       setRefiningTarget(null);
       setRefineStream([]);
@@ -546,7 +554,7 @@ export function TaskStudyPanel({
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-visible lg:overflow-hidden">
+    <section className="flex min-h-0 flex-1 flex-col overflow-visible">
       <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-start sm:justify-between lg:px-5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -925,7 +933,7 @@ function CatalogMenu({
         <ChevronDown aria-hidden className={cn("size-4 transition-transform", open ? "rotate-180" : "")} />
       </Button>
       {open ? (
-        <div className="mt-2 max-h-80 w-full overflow-auto rounded-[1.5rem] bg-popover p-2 text-popover-foreground shadow-2xl sm:w-72">
+        <div className="absolute right-0 top-full z-50 mt-2 max-h-80 w-full overflow-auto rounded-[1.5rem] bg-popover p-2 text-popover-foreground shadow-2xl sm:w-72">
           {options.map((option) => (
             <button
               className={cn(
@@ -1749,6 +1757,15 @@ async function runCodex(prompt: string): Promise<{ finalResponse: string }> {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+function isCodexAuthError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("not connected") ||
+    normalized.includes("connect chatgpt") ||
+    normalized.includes("not logged in") ||
+    normalized.includes("missing bearer") ||
+    normalized.includes("401 unauthorized");
 }
 
 function formatStudyPipelineError(error: unknown): string {

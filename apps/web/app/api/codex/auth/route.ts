@@ -43,3 +43,22 @@ export async function POST() {
     return Response.json({ error: codexRuntimeErrorMessage(error) }, { status: 500 });
   }
 }
+
+export async function DELETE() {
+  const { userId } = await auth();
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    return proxyServiceResponse(
+      await fetch(`${MOODLE_SERVICES_URL}/api/codex/auth`, {
+        method: "DELETE",
+        cache: "no-store",
+        headers: moodleInternalHeaders(userId),
+      }),
+    );
+  } catch (error) {
+    return Response.json({ error: codexRuntimeErrorMessage(error) }, { status: 500 });
+  }
+}
