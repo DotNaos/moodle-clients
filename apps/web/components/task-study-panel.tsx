@@ -1,7 +1,7 @@
 "use client";
 
 import katex from "katex";
-import { BookOpenText, CheckCircle2, FileText, MessageCircle, RefreshCw, SendHorizontal, Sparkles, WandSparkles } from "lucide-react";
+import { BookOpenText, Check, CheckCircle2, ChevronDown, FileText, Gauge, MessageCircle, RefreshCw, SendHorizontal, Sparkles, WandSparkles } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -90,6 +90,24 @@ type CodexModelOption = {
   id: string;
   label: string;
   description?: string;
+  defaultReasoningEffort?: string;
+  reasoningEfforts?: CodexReasoningOption[];
+  speedTiers?: string[];
+};
+
+type CodexReasoningOption = {
+  id: string;
+  label: string;
+  description?: string;
+};
+
+type RefineStreamEvent = {
+  type?: string;
+  message?: string;
+  model?: string;
+  reasoningEffort?: string;
+  error?: string;
+  contentPreview?: string;
 };
 
 type Mode = "tasks" | "script";
@@ -134,6 +152,10 @@ export function TaskStudyPanel({
   const [modelError, setModelError] = useState<string | null>(null);
   const [refineModels, setRefineModels] = useState<CodexModelOption[]>([]);
   const [selectedRefineModel, setSelectedRefineModel] = useState("");
+  const [selectedReasoningEffort, setSelectedReasoningEffort] = useState("");
+  const [codexConnected, setCodexConnected] = useState(false);
+  const [codexAuthChecking, setCodexAuthChecking] = useState(false);
+  const [refineStream, setRefineStream] = useState<string[]>([]);
   const loadRequestId = useRef(0);
 
   const courseId = course ? String(course.id) : null;
@@ -149,6 +171,10 @@ export function TaskStudyPanel({
   const selectedResource = useMemo(
     () => selectedTask ? resourceTitle(view, materials, selectedTask.sourceResourceId) : null,
     [materials, selectedTask, view],
+  );
+  const selectedModel = useMemo(
+    () => refineModels.find((model) => model.id === selectedRefineModel) ?? null,
+    [refineModels, selectedRefineModel],
   );
 
   useEffect(() => {
@@ -193,11 +219,13 @@ export function TaskStudyPanel({
     if (!courseId) {
       setRefineModels([]);
       setSelectedRefineModel("");
+      setSelectedReasoningEffort("");
       setModelError(null);
+      setCodexConnected(false);
       return;
     }
     const controller = new AbortController();
-    void loadCodexModels(controller.signal);
+    void refreshCodexModelCatalog(controller.signal);
     return () => controller.abort();
   }, [courseId]);
 
@@ -403,6 +431,41 @@ export function TaskStudyPanel({
     }
   }
 
+  async function refreshCodexModelCatalog(signal?: AbortSignal) {
+    setCodexAuthChecking(true);
+    setModelError(null);
+    try {
+      const response = await fetch("/api/codex/auth", {
+        cache: "no-store",
+        signal,
+      });
+      const payload = await response.json().catch(() => ({})) as { authenticated?: boolean; error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? `Codex status failed with ${response.status}.`);
+      }
+      if (!payload.authenticated) {
+        setCodexConnected(false);
+        setRefineModels([]);
+        setSelectedRefineModel("");
+        setSelectedReasoningEffort("");
+        setModelError("Connect ChatGPT before loading refinement models.");
+        return;
+      }
+      setCodexConnected(true);
+      await loadCodexModels(signal);
+    } catch (authError) {
+      if (!isAbortError(authError)) {
+        setCodexConnected(false);
+        setRefineModels([]);
+        setSelectedRefineModel("");
+        setSelectedReasoningEffort("");
+        setModelError(getErrorMessage(authError));
+      }
+    } finally {
+      setCodexAuthChecking(false);
+    }
+  }
+
   async function loadCodexModels(signal?: AbortSignal) {
     setModelLoading(true);
     setModelError(null);
@@ -417,11 +480,17 @@ export function TaskStudyPanel({
       }
       const models = asArray(payload.models).filter((model) => model.id && model.label);
       setRefineModels(models);
-      setSelectedRefineModel((current) => models.some((model) => model.id === current) ? current : models[0]?.id ?? "");
+      setSelectedRefineModel((current) => {
+        const nextModel = models.some((model) => model.id === current) ? current : models[0]?.id ?? "";
+        const model = models.find((item) => item.id === nextModel) ?? null;
+        setSelectedReasoningEffort((currentEffort) => nextReasoningEffort(model, currentEffort));
+        return nextModel;
+      });
     } catch (modelsError) {
       if (!isAbortError(modelsError)) {
         setRefineModels([]);
         setSelectedRefineModel("");
+        setSelectedReasoningEffort("");
         setModelError(getErrorMessage(modelsError));
       }
     } finally {
@@ -433,6 +502,10 @@ export function TaskStudyPanel({
     if (!courseId || !targetID || refiningTarget) {
       return;
     }
+    if (!codexConnected) {
+      setError("Connect ChatGPT before improving study content.");
+      return;
+    }
     if (!selectedRefineModel) {
       setError("Choose a Codex model from the catalog before improving this content.");
       return;
@@ -440,11 +513,27 @@ export function TaskStudyPanel({
     const refineKey = `${kind}:${targetID}`;
     setRefiningTarget(refineKey);
     setError(null);
-    setMessage("Codex is improving this content on the server...");
+    setRefineStream([]);
+    setMessage(null);
     try {
-      await studyPipelineRequest(`/courses/${encodeURIComponent(courseId)}/study-pipeline/refine`, {
+      const response = await fetch(studyPipelineEndpoint(`/courses/${encodeURIComponent(courseId)}/study-pipeline/refine`), {
         method: "POST",
-        body: JSON.stringify({ kind, targetId: targetID, model: selectedRefineModel }),
+        headers: {
+          accept: "application/x-ndjson",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          kind,
+          targetId: targetID,
+          model: selectedRefineModel,
+          reasoningEffort: selectedReasoningEffort,
+        }),
+      });
+      await readRefineStream(response, (event) => {
+        const line = refineEventMessage(event);
+        if (line) {
+          setRefineStream((current) => [...current.slice(-5), line]);
+        }
       });
       await loadView(courseId, false, mode === "script" || scriptIncluded);
       setMessage("Codex-improved version saved separately from the extracted source.");
@@ -452,6 +541,7 @@ export function TaskStudyPanel({
       setError(getErrorMessage(refineError));
     } finally {
       setRefiningTarget(null);
+      setRefineStream([]);
     }
   }
 
@@ -481,11 +571,33 @@ export function TaskStudyPanel({
 
       {error ? <div className="mx-4 mt-4 rounded-2xl bg-destructive/10 px-4 py-3 text-sm text-destructive lg:mx-5">{error}</div> : null}
       {message ? <div className="mx-4 mt-4 rounded-2xl bg-secondary px-4 py-3 text-sm text-muted-foreground lg:mx-5">{message}</div> : null}
+      {refineStream.length > 0 ? (
+        <div className="mx-4 mt-4 rounded-[1.5rem] bg-secondary px-4 py-3 text-sm text-muted-foreground lg:mx-5">
+          <div className="mb-2 flex items-center gap-2 font-medium text-foreground">
+            <Spinner aria-hidden />
+            Codex arbeitet
+          </div>
+          <div className="space-y-1">
+            {refineStream.map((line, index) => (
+              <p className="truncate" key={`${line}-${index}`}>{line}</p>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <CodexModelPicker
+        authChecking={codexAuthChecking}
+        connected={codexConnected}
         error={modelError}
         loading={modelLoading}
         models={refineModels}
-        onChange={setSelectedRefineModel}
+        onModelChange={(modelId) => {
+          const nextModel = refineModels.find((model) => model.id === modelId) ?? null;
+          setSelectedRefineModel(modelId);
+          setSelectedReasoningEffort((current) => nextReasoningEffort(nextModel, current));
+        }}
+        onReasoningChange={setSelectedReasoningEffort}
+        reasoningValue={selectedReasoningEffort}
+        selectedModel={selectedModel}
         value={selectedRefineModel}
       />
 
@@ -496,7 +608,7 @@ export function TaskStudyPanel({
       ) : mode === "script" ? (
         <ScriptReader
           courseTitleText={courseTitle(course)}
-          modelReady={Boolean(selectedRefineModel)}
+          modelReady={codexConnected && Boolean(selectedRefineModel)}
           onCitationClick={onOpenResource}
           onRefine={(targetID) => void refineStudyContent("script-section", targetID)}
           onSelectSection={onSelectedScriptSectionIdChange}
@@ -553,7 +665,7 @@ export function TaskStudyPanel({
                     <ContentStateBadge state={selectedTask.contentState} />
                     {selectedTask.contentState?.id ? (
                       <Button
-                        disabled={!selectedRefineModel || refiningTarget === `task:${selectedTask.contentState.id}`}
+                        disabled={!codexConnected || !selectedRefineModel || refiningTarget === `task:${selectedTask.contentState.id}`}
                         onClick={() => void refineStudyContent("task", selectedTask.contentState?.id ?? selectedTask.sourceResourceId)}
                         type="button"
                         variant="secondary"
@@ -672,46 +784,254 @@ export function TaskStudyPanel({
 }
 
 function CodexModelPicker({
+  authChecking,
+  connected,
   error,
   loading,
   models,
-  onChange,
+  onModelChange,
+  onReasoningChange,
+  reasoningValue,
+  selectedModel,
   value,
 }: {
+  authChecking: boolean;
+  connected: boolean;
   error: string | null;
   loading: boolean;
   models: CodexModelOption[];
-  onChange: (value: string) => void;
+  onModelChange: (value: string) => void;
+  onReasoningChange: (value: string) => void;
+  reasoningValue: string;
+  selectedModel: CodexModelOption | null;
   value: string;
 }) {
+  const [openMenu, setOpenMenu] = useState<"model" | "reasoning" | null>(null);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+  const reasoningOptions = asArray(selectedModel?.reasoningEfforts);
+  const selectedReasoning = reasoningOptions.find((option) => option.id === reasoningValue) ?? null;
+  const disabled = authChecking || loading || !connected;
+  const statusText = authChecking
+    ? "Checking ChatGPT connection..."
+    : !connected
+      ? "Connect ChatGPT before choosing a model."
+      : loading
+        ? "Loading model catalog..."
+        : error
+          ? error
+      : "Loaded from your Codex catalog.";
+
+  useEffect(() => {
+    if (!openMenu) {
+      return;
+    }
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+        setOpenMenu(null);
+      }
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenMenu(null);
+      }
+    }
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openMenu]);
+
   return (
-    <div className="mx-4 mt-4 flex flex-col gap-2 rounded-[1.5rem] bg-secondary px-4 py-3 text-sm lg:mx-5 sm:flex-row sm:items-center sm:justify-between">
+    <div ref={pickerRef} className="mx-4 mt-4 flex flex-col gap-3 rounded-[1.5rem] bg-secondary px-4 py-3 text-sm lg:mx-5 xl:flex-row xl:items-center xl:justify-between">
       <div className="min-w-0">
-        <p className="font-medium text-foreground">Codex refinement model</p>
-        <p className="mt-1 truncate text-xs text-muted-foreground">
-          {loading ? "Loading model catalog..." : error ? error : "Loaded from the Codex model catalog."}
+        <p className="flex items-center gap-2 font-medium text-foreground">
+          <Sparkles aria-hidden className="size-4" />
+          Codex refinement
         </p>
+        <p className="mt-1 truncate text-xs text-muted-foreground">{statusText}</p>
       </div>
-      <label className="flex min-w-0 items-center gap-2">
-        <span className="sr-only">Codex model</span>
-        <select
-          className="h-10 max-w-full rounded-full bg-background px-4 text-sm font-medium outline-none ring-1 ring-border transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-          disabled={loading || models.length === 0}
-          onChange={(event) => onChange(event.target.value)}
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+        <CatalogMenu
+          disabled={disabled || models.length === 0}
+          icon={<Sparkles aria-hidden className="size-4" />}
+          label="Model"
+          onOpenChange={(open) => setOpenMenu(open ? "model" : null)}
+          open={openMenu === "model"}
+          options={models.map((model) => ({
+            id: model.id,
+            label: model.label,
+            description: model.speedTiers?.length ? `Speed: ${model.speedTiers.join(", ")}` : model.description,
+          }))}
+          onSelect={onModelChange}
           value={value}
-        >
-          {models.length === 0 ? (
-            <option value="">{loading ? "Loading models..." : "No models available"}</option>
-          ) : null}
-          {models.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.label}
-            </option>
-          ))}
-        </select>
-      </label>
+          valueLabel={selectedModel?.label ?? "No model"}
+        />
+        <CatalogMenu
+          disabled={disabled || reasoningOptions.length === 0}
+          icon={<Gauge aria-hidden className="size-4" />}
+          label="Reasoning"
+          onOpenChange={(open) => setOpenMenu(open ? "reasoning" : null)}
+          open={openMenu === "reasoning"}
+          options={reasoningOptions}
+          onSelect={onReasoningChange}
+          value={reasoningValue}
+          valueLabel={selectedReasoning?.label ?? "Default"}
+        />
+      </div>
     </div>
   );
+}
+
+function CatalogMenu({
+  disabled,
+  icon,
+  label,
+  onOpenChange,
+  onSelect,
+  open,
+  options,
+  value,
+  valueLabel,
+}: {
+  disabled: boolean;
+  icon: React.ReactNode;
+  label: string;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (value: string) => void;
+  open: boolean;
+  options: Array<{ id: string; label: string; description?: string }>;
+  value: string;
+  valueLabel: string;
+}) {
+  return (
+    <div className="relative min-w-0">
+      <Button
+        aria-expanded={open}
+        className="h-11 w-full justify-between bg-background px-4 shadow-sm hover:bg-background sm:w-auto sm:min-w-44"
+        disabled={disabled}
+        onClick={() => onOpenChange(!open)}
+        type="button"
+        variant="secondary"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          {icon}
+          <span className="min-w-0">
+            <span className="block text-left text-[0.68rem] font-medium uppercase leading-3 text-muted-foreground">{label}</span>
+            <span className="block max-w-48 truncate text-left text-sm text-foreground">{valueLabel}</span>
+          </span>
+        </span>
+        <ChevronDown aria-hidden className={cn("size-4 transition-transform", open ? "rotate-180" : "")} />
+      </Button>
+      {open ? (
+        <div className="mt-2 max-h-80 w-full overflow-auto rounded-[1.5rem] bg-popover p-2 text-popover-foreground shadow-2xl sm:w-72">
+          {options.map((option) => (
+            <button
+              className={cn(
+                "flex w-full items-start gap-3 rounded-[1rem] px-3 py-2 text-left transition-colors hover:bg-secondary",
+                option.id === value ? "bg-secondary" : "",
+              )}
+              key={option.id}
+              onClick={() => {
+                onSelect(option.id);
+                onOpenChange(false);
+              }}
+              type="button"
+            >
+              <span className="mt-0.5 grid size-5 place-items-center">
+                {option.id === value ? <Check aria-hidden className="size-4" /> : null}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">{option.label}</span>
+                {option.description ? (
+                  <span className="mt-0.5 line-clamp-2 block text-xs leading-4 text-muted-foreground">{option.description}</span>
+                ) : null}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function nextReasoningEffort(model: CodexModelOption | null, current: string): string {
+  const options = asArray(model?.reasoningEfforts);
+  if (options.some((option) => option.id === current)) {
+    return current;
+  }
+  if (model?.defaultReasoningEffort && options.some((option) => option.id === model.defaultReasoningEffort)) {
+    return model.defaultReasoningEffort;
+  }
+  return options[0]?.id ?? "";
+}
+
+async function readRefineStream(response: Response, onEvent: (event: RefineStreamEvent) => void): Promise<void> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/x-ndjson") || !response.body) {
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    if (!response.ok) {
+      throw new Error(payload.error ?? `Codex refinement failed with ${response.status}.`);
+    }
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const event = parseRefineStreamEvent(line);
+      if (!event) {
+        continue;
+      }
+      onEvent(event);
+      if (event.type === "error") {
+        throw new Error(event.error ?? event.message ?? "Codex refinement failed.");
+      }
+    }
+  }
+  if (buffer.trim()) {
+    const event = parseRefineStreamEvent(buffer);
+    if (event) {
+      onEvent(event);
+      if (event.type === "error") {
+        throw new Error(event.error ?? event.message ?? "Codex refinement failed.");
+      }
+    }
+  }
+}
+
+function parseRefineStreamEvent(line: string): RefineStreamEvent | null {
+  if (!line.trim()) {
+    return null;
+  }
+  try {
+    return JSON.parse(line) as RefineStreamEvent;
+  } catch {
+    return null;
+  }
+}
+
+function refineEventMessage(event: RefineStreamEvent): string | null {
+  if (event.error) {
+    return event.error;
+  }
+  if (event.message) {
+    return event.message;
+  }
+  if (event.type === "done") {
+    return "Codex refinement finished.";
+  }
+  return null;
 }
 
 function taskPromptText(task: TaskViewTask): string {
