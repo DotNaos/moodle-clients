@@ -143,6 +143,29 @@ describe("script markdown renderer", () => {
     expect(html).not.toContain("ai_used");
   });
 
+  test("renders display math even when Codex leaves blank lines inside fences", () => {
+    const html = renderScriptMarkdownHTML([
+      "$$",
+      "",
+      "(\\text{window height},\\ \\text{window width},\\ \\text{input depth})",
+      "",
+      "$$",
+      "",
+      "Jedes 3D-Patch wird in einen 1D-Vektor transformiert.",
+      "",
+      "$$",
+      "",
+      "(\\text{output depth})",
+      "",
+      "$$",
+    ].join("\n"));
+
+    expect(html).toContain("katex-display");
+    expect(html).toContain("window height");
+    expect(html).toContain("output depth");
+    expect(html).not.toContain("<p>$$</p>");
+  });
+
   test("splits scripts into state-backed chapters without exposing wrapper headings", () => {
     const chapters = splitScriptChapters([
       "# Course Script",
