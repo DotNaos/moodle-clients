@@ -153,6 +153,7 @@ export function TaskStudyPanel({
   const [refineModels, setRefineModels] = useState<CodexModelOption[]>([]);
   const [selectedRefineModel, setSelectedRefineModel] = useState("");
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState("");
+  const [refineInstructions, setRefineInstructions] = useState("");
   const [codexConnected, setCodexConnected] = useState(false);
   const [codexAuthChecking, setCodexAuthChecking] = useState(false);
   const [refineStream, setRefineStream] = useState<string[]>([]);
@@ -527,6 +528,7 @@ export function TaskStudyPanel({
           targetId: targetID,
           model: selectedRefineModel,
           reasoningEffort: selectedReasoningEffort,
+          customPrompt: refineInstructions.trim() || undefined,
         }),
       });
       await readRefineStream(response, (event) => {
@@ -604,6 +606,8 @@ export function TaskStudyPanel({
           setSelectedReasoningEffort((current) => nextReasoningEffort(nextModel, current));
         }}
         onReasoningChange={setSelectedReasoningEffort}
+        onInstructionsChange={setRefineInstructions}
+        instructions={refineInstructions}
         reasoningValue={selectedReasoningEffort}
         selectedModel={selectedModel}
         value={selectedRefineModel}
@@ -799,6 +803,8 @@ function CodexModelPicker({
   models,
   onModelChange,
   onReasoningChange,
+  onInstructionsChange,
+  instructions,
   reasoningValue,
   selectedModel,
   value,
@@ -810,6 +816,8 @@ function CodexModelPicker({
   models: CodexModelOption[];
   onModelChange: (value: string) => void;
   onReasoningChange: (value: string) => void;
+  onInstructionsChange: (value: string) => void;
+  instructions: string;
   reasoningValue: string;
   selectedModel: CodexModelOption | null;
   value: string;
@@ -852,42 +860,55 @@ function CodexModelPicker({
   }, [openMenu]);
 
   return (
-    <div ref={pickerRef} className="mx-4 mt-4 flex flex-col gap-3 rounded-[1.5rem] bg-secondary px-4 py-3 text-sm lg:mx-5 xl:flex-row xl:items-center xl:justify-between">
-      <div className="min-w-0">
-        <p className="flex items-center gap-2 font-medium text-foreground">
-          <Sparkles aria-hidden className="size-4" />
-          Codex refinement
-        </p>
-        <p className="mt-1 truncate text-xs text-muted-foreground">{statusText}</p>
+    <div ref={pickerRef} className="mx-4 mt-4 flex flex-col gap-3 rounded-[1.5rem] bg-secondary px-4 py-3 text-sm lg:mx-5">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 font-medium text-foreground">
+            <Sparkles aria-hidden className="size-4" />
+            Codex refinement
+          </p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{statusText}</p>
+        </div>
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <CatalogMenu
+            disabled={disabled || models.length === 0}
+            icon={<Sparkles aria-hidden className="size-4" />}
+            label="Model"
+            onOpenChange={(open) => setOpenMenu(open ? "model" : null)}
+            open={openMenu === "model"}
+            options={models.map((model) => ({
+              id: model.id,
+              label: model.label,
+              description: model.speedTiers?.length ? `Speed: ${model.speedTiers.join(", ")}` : model.description,
+            }))}
+            onSelect={onModelChange}
+            value={value}
+            valueLabel={selectedModel?.label ?? "No model"}
+          />
+          <CatalogMenu
+            disabled={disabled || reasoningOptions.length === 0}
+            icon={<Gauge aria-hidden className="size-4" />}
+            label="Reasoning"
+            onOpenChange={(open) => setOpenMenu(open ? "reasoning" : null)}
+            open={openMenu === "reasoning"}
+            options={reasoningOptions}
+            onSelect={onReasoningChange}
+            value={reasoningValue}
+            valueLabel={selectedReasoning?.label ?? "Default"}
+          />
+        </div>
       </div>
-      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-        <CatalogMenu
-          disabled={disabled || models.length === 0}
-          icon={<Sparkles aria-hidden className="size-4" />}
-          label="Model"
-          onOpenChange={(open) => setOpenMenu(open ? "model" : null)}
-          open={openMenu === "model"}
-          options={models.map((model) => ({
-            id: model.id,
-            label: model.label,
-            description: model.speedTiers?.length ? `Speed: ${model.speedTiers.join(", ")}` : model.description,
-          }))}
-          onSelect={onModelChange}
-          value={value}
-          valueLabel={selectedModel?.label ?? "No model"}
+      <label className="block">
+        <span className="sr-only">Additional Codex refinement prompt</span>
+        <textarea
+          className="min-h-20 w-full resize-y rounded-[1.25rem] border-0 bg-background px-4 py-3 text-sm leading-6 text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          disabled={disabled}
+          maxLength={2000}
+          onChange={(event) => onInstructionsChange(event.target.value)}
+          placeholder="Optional: Sag Codex, worauf es beim Verbessern achten soll..."
+          value={instructions}
         />
-        <CatalogMenu
-          disabled={disabled || reasoningOptions.length === 0}
-          icon={<Gauge aria-hidden className="size-4" />}
-          label="Reasoning"
-          onOpenChange={(open) => setOpenMenu(open ? "reasoning" : null)}
-          open={openMenu === "reasoning"}
-          options={reasoningOptions}
-          onSelect={onReasoningChange}
-          value={reasoningValue}
-          valueLabel={selectedReasoning?.label ?? "Default"}
-        />
-      </div>
+      </label>
     </div>
   );
 }
@@ -1416,6 +1437,8 @@ function MarkdownBlock({ onCitationClick, text }: { onCitationClick?: (resourceI
 function splitMarkdownBlocks(text: string): string[] {
   const normalized = stripMarkdownFrontmatter(text)
     .trim()
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, expression: string) => `$$\n${expression.trim()}\n$$`)
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, expression: string) => `\\[\n${expression.trim()}\n\\]`)
     .replace(/([^\n])\n```/g, "$1\n\n```")
     .replace(/```\n([^\n])/g, "```\n\n$1");
   return normalized.split(/\n{2,}/).filter(Boolean);
@@ -1456,6 +1479,9 @@ function renderMarkdownBlock(block: string, sourceBlock?: string): string {
     return code.trim()
       ? `<pre class="overflow-auto rounded-md border border-border bg-secondary p-4 font-mono text-xs leading-5 text-foreground">${escapeHtml(code)}</pre>`
       : "";
+  }
+  if (isDisplayMathBlock(block)) {
+    return `<div class="my-4 overflow-x-auto">${renderMath(escapeHtml(block))}</div>`;
   }
   const leadingHeading = block.match(/^(#{1,3})\s+([^\n]+)\n+([\s\S]+)$/);
   if (leadingHeading) {
@@ -1660,7 +1686,13 @@ function renderMath(value: string): string {
   return value
     .replace(/\$\$([\s\S]+?)\$\$/g, (_, expression: string) => katex.renderToString(unescapeHtml(expression), { displayMode: true, throwOnError: false }))
     .replace(/\\\[([\s\S]+?)\\\]/g, (_, expression: string) => katex.renderToString(unescapeHtml(expression), { displayMode: true, throwOnError: false }))
-    .replace(/\\\(([\s\S]+?)\\\)/g, (_, expression: string) => katex.renderToString(unescapeHtml(expression), { displayMode: false, throwOnError: false }));
+    .replace(/\\\(([\s\S]+?)\\\)/g, (_, expression: string) => katex.renderToString(unescapeHtml(expression), { displayMode: false, throwOnError: false }))
+    .replace(/(^|[^$])\$([^$\n]+?)\$/g, (_, prefix: string, expression: string) => `${prefix}${katex.renderToString(unescapeHtml(expression), { displayMode: false, throwOnError: false })}`);
+}
+
+function isDisplayMathBlock(block: string): boolean {
+  const trimmed = block.trim();
+  return /^\$\$[\s\S]*\$\$$/.test(trimmed) || /^\\\[[\s\S]*\\\]$/.test(trimmed);
 }
 
 function handleMarkdownClick(
