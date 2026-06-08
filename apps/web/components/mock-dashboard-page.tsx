@@ -60,6 +60,15 @@ const mockTaskView: TaskViewResponse = {
     "## 1.1 Schönauer-Vektortriade",
     "Die Vektortriade verbindet Speicherzugriffe mit einer Multiplikation und Addition.",
   ].join("\n"),
+  scriptSections: [
+    {
+      id: "mock-hpc-wide-slide",
+      kind: "script-section",
+      status: "machine-extracted",
+      statusLabel: "Machine extracted",
+      title: "High Performance Computing Script",
+    },
+  ],
   resources: [
     { resourceId: "mock-hpc-wide-slide", title: "Teil 04 (Update 23.04.26)", kind: "slides/pdf" },
     { resourceId: "mock-hpc-portrait", title: "Aufgabenblatt 09", kind: "task/pdf" },
@@ -74,6 +83,13 @@ const mockTaskView: TaskViewResponse = {
           taskId: "mock-task-1",
           sourceResourceId: "mock-hpc-portrait",
           title: "Task 1",
+          contentState: {
+            id: "mock-hpc-portrait",
+            kind: "task",
+            status: "machine-extracted",
+            statusLabel: "Machine extracted",
+            title: "Aufgabenblatt 01",
+          },
           status: "open",
           parts: [],
           promptMarkdown: [
@@ -123,6 +139,14 @@ const mockTaskView: TaskViewResponse = {
           taskId: "mock-task-2",
           sourceResourceId: "mock-hpc-wide-slide",
           title: "Task 2",
+          contentState: {
+            id: "mock-hpc-wide-slide",
+            kind: "task",
+            status: "codex-improved",
+            statusLabel: "Codex improved",
+            model: "gpt5.3 Codex Spark",
+            title: "Aufgabenblatt 02",
+          },
           status: "open",
           parts: [],
           promptMarkdown: [

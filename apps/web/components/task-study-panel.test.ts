@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 
 import { buildExtractedFormulaCollection, buildFormulaSourceExcerpt } from "@/components/formula-collection-panel";
 import { groupScriptSections, groupStudyTasksBySheet } from "@/components/moodle-sidebar";
-import { buildScriptPDFMapping, extractScriptSections, normalizeTaskViewForDisplay, renderScriptMarkdownHTML } from "@/components/task-study-panel";
+import { buildScriptPDFMapping, extractScriptSections, normalizeTaskViewForDisplay, renderScriptMarkdownHTML, splitScriptChapters } from "@/components/task-study-panel";
 import { buildDashboardRouteURL, parseDashboardRouteSearch } from "@/lib/dashboard-route";
 import { renderFormulaMarkdownHTML } from "@/lib/formula-renderer";
 
@@ -125,6 +125,64 @@ describe("script PDF mapping", () => {
 });
 
 describe("script markdown renderer", () => {
+  test("hides generated frontmatter from rendered script text", () => {
+    const html = renderScriptMarkdownHTML([
+      "---",
+      "status: server-curated-from-extracted",
+      "ai_used: false",
+      "---",
+      "",
+      "## Keras",
+      "",
+      "Dense layers.",
+    ].join("\n"));
+
+    expect(html).toContain("Keras");
+    expect(html).toContain("Dense layers");
+    expect(html).not.toContain("server-curated-from-extracted");
+    expect(html).not.toContain("ai_used");
+  });
+
+  test("splits scripts into state-backed chapters without exposing wrapper headings", () => {
+    const chapters = splitScriptChapters([
+      "# Course Script",
+      "",
+      "Intro text.",
+      "",
+      "## Keras Coding Formats",
+      "",
+      "Source: [Keras](moodle-resource:keras)",
+      "",
+      "Use the sequential API.",
+      "",
+      "## Pytorch Coding",
+      "",
+      "Source: [Torch](moodle-resource:torch)",
+      "",
+      "Use modules.",
+    ].join("\n"), [
+      {
+        id: "keras",
+        kind: "script-section",
+        status: "codex-improved",
+        statusLabel: "Codex improved",
+        title: "Keras Coding Formats",
+      },
+      {
+        id: "torch",
+        kind: "script-section",
+        status: "machine-extracted",
+        statusLabel: "Machine extracted",
+        title: "Pytorch Coding",
+      },
+    ]);
+
+    expect(chapters.map((chapter) => chapter.title)).toEqual(["Introduction", "Keras Coding Formats", "Pytorch Coding"]);
+    expect(chapters[1]?.state?.status).toBe("codex-improved");
+    expect(chapters[1]?.bodyMarkdown).toContain("Use the sequential API");
+    expect(chapters[1]?.bodyMarkdown).not.toContain("Keras Coding Formats");
+  });
+
   test("renders study bundle figures as images instead of escaped HTML", () => {
     const html = renderScriptMarkdownHTML([
       "<figure>",

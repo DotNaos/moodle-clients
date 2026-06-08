@@ -1,7 +1,7 @@
 "use client";
 
 import katex from "katex";
-import { BookOpenText, CheckCircle2, FileText, MessageCircle, RefreshCw, SendHorizontal } from "lucide-react";
+import { BookOpenText, CheckCircle2, FileText, MessageCircle, RefreshCw, SendHorizontal, Sparkles, WandSparkles } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -18,6 +18,7 @@ export type TaskViewResponse = {
   generatedAt: string;
   source?: "study-bundle" | "moodle-services";
   scriptMarkdown: string;
+  scriptSections?: StudyContentState[];
   sheets: Array<{
     resourceId: string;
     title: string;
@@ -46,6 +47,7 @@ type TaskViewTask = {
   sourceResourceId: string;
   title: string;
   promptMarkdown: string;
+  contentState?: StudyContentState;
   parts: Array<{ id: string; label?: string; promptMarkdown: string }>;
   latestAttempt?: {
     userAnswer: string;
@@ -57,6 +59,17 @@ type TaskViewTask = {
     };
   };
   status: "open" | "started" | "checked" | "correct" | "wrong" | "needs_review";
+};
+
+export type StudyContentState = {
+  id: string;
+  kind: "script-section" | "task" | string;
+  title: string;
+  status: "machine-extracted" | "codex-improved" | string;
+  statusLabel: string;
+  model?: string;
+  updatedAt?: string;
+  sourcePath?: string;
 };
 
 export type ScriptPDFMappingItem = {
@@ -74,9 +87,6 @@ type TaskChatMessage = {
 };
 
 type Mode = "tasks" | "script";
-
-const SCRIPT_INITIAL_BLOCKS = 80;
-const SCRIPT_BLOCK_BATCH = 80;
 
 export function TaskStudyPanel({
   course,
@@ -113,6 +123,7 @@ export function TaskStudyPanel({
   const [scriptIncluded, setScriptIncluded] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refiningTarget, setRefiningTarget] = useState<string | null>(null);
   const loadRequestId = useRef(0);
 
   const courseId = course ? String(course.id) : null;
@@ -370,6 +381,28 @@ export function TaskStudyPanel({
     }
   }
 
+  async function refineStudyContent(kind: "script-section" | "task", targetID: string) {
+    if (!courseId || !targetID || refiningTarget) {
+      return;
+    }
+    const refineKey = `${kind}:${targetID}`;
+    setRefiningTarget(refineKey);
+    setError(null);
+    setMessage("Codex is improving this content on the server...");
+    try {
+      await studyPipelineRequest(`/courses/${encodeURIComponent(courseId)}/study-pipeline/refine`, {
+        method: "POST",
+        body: JSON.stringify({ kind, targetId: targetID }),
+      });
+      await loadView(courseId, false, mode === "script" || scriptIncluded);
+      setMessage("Codex-improved version saved separately from the extracted source.");
+    } catch (refineError) {
+      setError(getErrorMessage(refineError));
+    } finally {
+      setRefiningTarget(null);
+    }
+  }
+
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-visible lg:overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-start sm:justify-between lg:px-5">
@@ -402,25 +435,20 @@ export function TaskStudyPanel({
           <span className="flex items-center gap-2"><Spinner aria-hidden /> Loading study material</span>
         </div>
       ) : mode === "script" ? (
-        <div className="min-h-0 flex-1 overflow-visible bg-background px-3 py-4 lg:overflow-auto lg:px-8 lg:py-8">
-          <article className="mx-auto max-w-[82ch] rounded-sm border border-border bg-card px-5 py-7 shadow-sm sm:px-10 sm:py-10 lg:px-14">
-            <PaperHeading
-              kicker="Course Script"
-              title={courseTitle(course)}
-              subtitle="Generated from Moodle material"
-            />
-            <ProgressiveMarkdownBlock
-              onCitationClick={onOpenResource}
-              selectedSectionId={selectedScriptSectionId}
-              text={view?.scriptMarkdown ?? "No script generated yet."}
-            />
-          </article>
-        </div>
+        <ScriptReader
+          courseTitleText={courseTitle(course)}
+          onCitationClick={onOpenResource}
+          onRefine={(targetID) => void refineStudyContent("script-section", targetID)}
+          onSelectSection={onSelectedScriptSectionIdChange}
+          refiningTarget={refiningTarget}
+          selectedSectionId={selectedScriptSectionId}
+          view={view}
+        />
       ) : (
         <div
           className={cn(
             "grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-visible lg:overflow-auto",
-            selectedTask ? "xl:grid-cols-[minmax(0,1fr)_340px]" : "",
+            selectedTask ? "2xl:grid-cols-[minmax(0,1fr)_340px]" : "",
           )}
         >
           {selectedTask ? (
@@ -461,7 +489,21 @@ export function TaskStudyPanel({
                   <h3 className="mt-2 text-2xl font-semibold leading-tight tracking-tight text-foreground">
                     {selectedTask.title}
                   </h3>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{selectedResource ?? courseTitle(course)}</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <ContentStateBadge state={selectedTask.contentState} />
+                    {selectedTask.contentState?.id ? (
+                      <Button
+                        disabled={refiningTarget === `task:${selectedTask.contentState.id}`}
+                        onClick={() => void refineStudyContent("task", selectedTask.contentState?.id ?? selectedTask.sourceResourceId)}
+                        type="button"
+                        variant="secondary"
+                      >
+                        {refiningTarget === `task:${selectedTask.contentState.id}` ? <Spinner aria-hidden /> : <WandSparkles aria-hidden />}
+                        Mit Codex verbessern
+                      </Button>
+                    ) : null}
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">{selectedResource ?? courseTitle(course)}</p>
                 </header>
                 <div className="py-2">
                   <MarkdownBlock onCitationClick={onOpenResource} text={taskPromptText(selectedTask)} />
@@ -529,7 +571,7 @@ export function TaskStudyPanel({
             )}
           </main>
           {selectedTask ? (
-            <aside className="mx-auto min-h-0 max-w-[82ch] overflow-visible border-t border-border bg-background px-5 py-6 sm:px-9 xl:mx-0 xl:h-full xl:max-w-none xl:overflow-auto xl:border-l xl:border-t-0">
+            <aside className="mx-auto min-h-0 max-w-[82ch] overflow-visible border-t border-border bg-background px-5 py-6 sm:px-9 2xl:mx-0 2xl:h-full 2xl:max-w-none 2xl:overflow-auto 2xl:border-l 2xl:border-t-0">
               <div className="space-y-5">
                 <div>
                   <p className="text-xs font-medium uppercase text-muted-foreground">Quelle</p>
@@ -579,6 +621,7 @@ function taskPromptText(task: TaskViewTask): string {
 export function normalizeTaskViewForDisplay(view: TaskViewResponse): TaskViewResponse {
   return {
     ...view,
+    scriptSections: asArray(view.scriptSections),
     resources: asArray(view.resources),
     sheets: asArray(view.sheets).map((sheet) => ({
       ...sheet,
@@ -605,6 +648,7 @@ function splitTaskByHeadings(task: TaskViewTask): TaskViewTask[] {
     const end = matches[index + 1]?.index ?? promptMarkdown.length;
     return {
       ...task,
+      contentState: task.contentState,
       parts: [],
       promptMarkdown: promptMarkdown.slice(start, end).trim(),
       taskId: `${task.taskId}-${slugifyTaskId(title) || `aufgabe-${index + 1}`}`,
@@ -639,20 +683,291 @@ function slugifyTaskId(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function PaperHeading({ kicker, subtitle, title }: { kicker?: string | null; subtitle?: string | null; title: string }) {
-  return (
-    <header className="border-b border-border pb-5">
-      {kicker ? (
-        <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">{kicker}</p>
-      ) : null}
-      <h3 className="mt-3 text-2xl font-semibold leading-tight tracking-tight text-foreground sm:text-3xl">
-        {title}
-      </h3>
-      {subtitle ? (
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">{subtitle}</p>
-      ) : null}
-    </header>
+function ScriptReader({
+  courseTitleText,
+  onCitationClick,
+  onRefine,
+  onSelectSection,
+  refiningTarget,
+  selectedSectionId,
+  view,
+}: {
+  courseTitleText: string;
+  onCitationClick: (resourceId: string) => void;
+  onRefine: (targetID: string) => void;
+  onSelectSection: (sectionId: string | null) => void;
+  refiningTarget: string | null;
+  selectedSectionId: string | null;
+  view: TaskViewResponse | null;
+}) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const chapters = useMemo(
+    () => splitScriptChapters(view?.scriptMarkdown ?? "No script generated yet.", view?.scriptSections),
+    [view?.scriptMarkdown, view?.scriptSections],
   );
+  const [scrollProgress, setScrollProgress] = useState(0);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container || !selectedSectionId) {
+      return;
+    }
+    const chapter = chapters.find((item) => item.id === selectedSectionId || item.state?.id === selectedSectionId);
+    if (!chapter) {
+      return;
+    }
+    window.setTimeout(() => {
+      container.querySelector<HTMLElement>(`[data-script-chapter-id="${CSS.escape(chapter.id)}"]`)
+        ?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 50);
+  }, [chapters, selectedSectionId]);
+
+  function updateScrollProgress() {
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    setScrollProgress(maxScroll > 0 ? Math.min(100, Math.max(0, (container.scrollTop / maxScroll) * 100)) : 100);
+  }
+
+  return (
+    <div className="grid min-h-0 flex-1 bg-background 2xl:grid-cols-[260px_minmax(0,1fr)]">
+      <aside className="hidden min-h-0 border-r border-border bg-background px-4 py-5 2xl:block">
+        <div className="sticky top-0">
+          <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Course Script</p>
+          <h3 className="mt-2 line-clamp-2 text-base font-semibold leading-tight">{courseTitleText}</h3>
+          <nav className="mt-5 max-h-[calc(100dvh-14rem)] space-y-1 overflow-auto pr-1">
+            {chapters.map((chapter) => (
+              <button
+                className={cn(
+                  "flex w-full items-start gap-2 rounded-[1.25rem] px-3 py-2 text-left text-sm transition-colors",
+                  selectedSectionId === chapter.id || selectedSectionId === chapter.state?.id
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-secondary",
+                )}
+                key={chapter.id}
+                onClick={() => {
+                  onSelectSection(chapter.state?.id ?? chapter.id);
+                  scrollRef.current?.querySelector<HTMLElement>(`[data-script-chapter-id="${CSS.escape(chapter.id)}"]`)
+                    ?.scrollIntoView({ block: "start", behavior: "smooth" });
+                }}
+                type="button"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="line-clamp-2 font-medium">{chapter.title}</span>
+                  <span className={cn("mt-1 block text-xs", selectedSectionId === chapter.id || selectedSectionId === chapter.state?.id ? "text-primary-foreground/70" : "text-muted-foreground")}>
+                    {chapter.state?.statusLabel ?? "Machine extracted"}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </nav>
+        </div>
+      </aside>
+
+      <div className="flex min-h-0 flex-col">
+        <div className="sticky top-0 z-10 border-b border-border bg-background/95 px-4 py-3 backdrop-blur lg:px-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Reading progress</p>
+              <p className="mt-1 truncate text-sm font-medium">{Math.round(scrollProgress)}% through this script</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <ContentStateBadge state={scriptAggregateState(view?.scriptSections)} />
+            </div>
+          </div>
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-secondary">
+            <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${scrollProgress}%` }} />
+          </div>
+        </div>
+
+        <div
+          className="min-h-0 flex-1 overflow-auto px-4 py-6 lg:px-10 lg:py-8"
+          onScroll={updateScrollProgress}
+          ref={scrollRef}
+        >
+          <article className="mx-auto max-w-[1080px]">
+            <header className="mb-8 border-b border-border pb-6">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Course Script</p>
+              <h3 className="mt-3 text-2xl font-semibold leading-tight tracking-tight text-foreground sm:text-3xl">
+                {courseTitleText}
+              </h3>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                Moodle material, shown section by section. Improved sections are stored separately from the extracted source.
+              </p>
+            </header>
+
+            <div className="space-y-8">
+              {chapters.map((chapter) => (
+                <section
+                  className="scroll-mt-28 border-b border-border pb-8 [contain-intrinsic-size:1px_760px] [content-visibility:auto]"
+                  data-script-chapter-id={chapter.id}
+                  id={chapter.id}
+                  key={chapter.id}
+                >
+                  <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <h4 className="text-2xl font-semibold tracking-tight text-foreground">{chapter.title}</h4>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <ContentStateBadge state={chapter.state} />
+                      </div>
+                    </div>
+                    {chapter.state?.id ? (
+                      <Button
+                        className="w-fit"
+                        disabled={refiningTarget === `script-section:${chapter.state.id}`}
+                        onClick={() => onRefine(chapter.state?.id ?? "")}
+                        type="button"
+                        variant="secondary"
+                      >
+                        {refiningTarget === `script-section:${chapter.state.id}` ? <Spinner aria-hidden /> : <WandSparkles aria-hidden />}
+                        Mit Codex verbessern
+                      </Button>
+                    ) : null}
+                  </div>
+                  <MarkdownBlock onCitationClick={onCitationClick} text={chapter.bodyMarkdown} />
+                </section>
+              ))}
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContentStateBadge({ state }: { state?: StudyContentState | null }) {
+  const isImproved = state?.status === "codex-improved";
+  return (
+    <span
+      className={cn(
+        "inline-flex min-h-9 items-center gap-2 rounded-full px-3 py-1 text-xs font-medium",
+        isImproved
+          ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25"
+          : "bg-secondary text-muted-foreground",
+      )}
+      title={state?.sourcePath ?? undefined}
+    >
+      {isImproved ? <Sparkles aria-hidden className="size-3.5" /> : <FileText aria-hidden className="size-3.5" />}
+      <span>{state?.statusLabel ?? "Machine extracted"}</span>
+      {isImproved && state?.model ? <span className="opacity-75">{state.model}</span> : null}
+    </span>
+  );
+}
+
+function scriptAggregateState(states: StudyContentState[] | undefined): StudyContentState {
+  const items = asArray(states);
+  const improved = items.filter((item) => item.status === "codex-improved").length;
+  if (improved > 0) {
+    return {
+      id: "script",
+      kind: "script-section",
+      status: improved === items.length ? "codex-improved" : "codex-improved",
+      statusLabel: improved === items.length ? "Codex improved" : `${improved}/${items.length} Codex improved`,
+      title: "Script",
+    };
+  }
+  return {
+    id: "script",
+    kind: "script-section",
+    status: "machine-extracted",
+    statusLabel: items.length > 0 ? "Machine extracted" : "Not generated",
+    title: "Script",
+  };
+}
+
+type ScriptChapter = {
+  bodyMarkdown: string;
+  id: string;
+  state?: StudyContentState;
+  title: string;
+};
+
+export function splitScriptChapters(markdown: string, states: StudyContentState[] | undefined = []): ScriptChapter[] {
+  const blocks = splitMarkdownBlocks(markdown);
+  const stateItems = asArray(states);
+  const chapters: ScriptChapter[] = [];
+  const preface: string[] = [];
+  let current: { blocks: string[]; id: string; state?: StudyContentState; title: string } | null = null;
+  let stateCursor = 0;
+
+  for (const block of blocks) {
+    const heading = block.match(/^(#{1,3})\s+(.+)$/);
+    const headingTitle = heading ? stripMarkdown(heading[2]) : "";
+    const matchedState = heading ? findScriptStateForHeading(stateItems, headingTitle, stateCursor) : null;
+    if (matchedState) {
+      if (current) {
+        chapters.push(scriptChapterFromBlocks(current));
+      } else if (preface.length > 0) {
+        chapters.push(scriptChapterFromBlocks({
+          blocks: preface.splice(0, preface.length),
+          id: "section-introduction",
+          title: "Introduction",
+        }));
+      }
+      stateCursor = Math.max(stateCursor, stateItems.indexOf(matchedState) + 1);
+      current = {
+        blocks: [],
+        id: headingAnchorId(headingTitle),
+        state: matchedState,
+        title: headingTitle,
+      };
+      continue;
+    }
+    if (heading && stateItems.length === 0 && heading[1].length <= 2 && !/^course script$/i.test(headingTitle)) {
+      if (current) {
+        chapters.push(scriptChapterFromBlocks(current));
+      }
+      current = {
+        blocks: [],
+        id: headingAnchorId(headingTitle),
+        title: headingTitle,
+      };
+      continue;
+    }
+    if (current) {
+      current.blocks.push(block);
+    } else {
+      preface.push(block);
+    }
+  }
+  if (current) {
+    chapters.push(scriptChapterFromBlocks(current));
+  }
+  if (chapters.length === 0) {
+    return [scriptChapterFromBlocks({
+      blocks: preface.length > 0 ? preface : blocks,
+      id: "section-script",
+      state: stateItems[0],
+      title: stateItems[0]?.title ?? "Script",
+    })];
+  }
+  return chapters;
+}
+
+function findScriptStateForHeading(states: StudyContentState[], headingTitle: string, cursor: number): StudyContentState | null {
+  const normalizedTitle = normalizeContentTitle(headingTitle);
+  for (let index = cursor; index < states.length; index += 1) {
+    const state = states[index];
+    if (normalizeContentTitle(state.title) === normalizedTitle || headingAnchorId(state.title) === headingAnchorId(headingTitle)) {
+      return state;
+    }
+  }
+  return null;
+}
+
+function scriptChapterFromBlocks(chapter: { blocks: string[]; id: string; state?: StudyContentState; title: string }): ScriptChapter {
+  return {
+    bodyMarkdown: chapter.blocks.join("\n\n").trim() || "No extracted text available for this section yet.",
+    id: chapter.id,
+    state: chapter.state,
+    title: chapter.title,
+  };
+}
+
+function normalizeContentTitle(value: string): string {
+  return stripMarkdown(value).toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 function MarkdownBlock({ onCitationClick, text }: { onCitationClick?: (resourceId: string) => void; text: string }) {
@@ -665,69 +980,16 @@ function MarkdownBlock({ onCitationClick, text }: { onCitationClick?: (resourceI
   );
 }
 
-function ProgressiveMarkdownBlock({
-  onCitationClick,
-  selectedSectionId,
-  text,
-}: {
-  onCitationClick?: (resourceId: string) => void;
-  selectedSectionId: string | null;
-  text: string;
-}) {
-  const blocks = useMemo(() => splitMarkdownBlocks(text), [text]);
-  const sections = useMemo(() => extractScriptSections(text), [text]);
-  const [visibleBlocks, setVisibleBlocks] = useState(SCRIPT_INITIAL_BLOCKS);
-  const displayedBlocks = useMemo(() => renderMarkdownBlocks(blocks.slice(0, visibleBlocks)), [blocks, visibleBlocks]);
-
-  useEffect(() => {
-    setVisibleBlocks(SCRIPT_INITIAL_BLOCKS);
-  }, [text]);
-
-  useEffect(() => {
-    if (!selectedSectionId) {
-      return;
-    }
-    const section = sections.find((item) => item.id === selectedSectionId);
-    if (!section) {
-      return;
-    }
-    setVisibleBlocks((current) => Math.max(current, section.blockIndex + SCRIPT_BLOCK_BATCH));
-    window.setTimeout(() => {
-      document.getElementById(selectedSectionId)?.scrollIntoView({ block: "start", behavior: "smooth" });
-    }, 50);
-  }, [sections, selectedSectionId]);
-
-  const hiddenBlocks = Math.max(0, blocks.length - visibleBlocks);
-
-  return (
-    <div className="paper-markdown mt-7 space-y-4 break-words text-[0.98rem] leading-7 text-foreground" onClick={(event) => handleMarkdownClick(event, onCitationClick)}>
-      {displayedBlocks.map((block, index) => (
-        <div key={index} dangerouslySetInnerHTML={{ __html: block }} />
-      ))}
-      {hiddenBlocks > 0 ? (
-        <div className="sticky bottom-0 -mx-4 border-t border-border bg-card/95 px-4 py-4 backdrop-blur lg:-mx-6 lg:px-6">
-          <Button
-            onClick={() => setVisibleBlocks((current) => Math.min(current + SCRIPT_BLOCK_BATCH, blocks.length))}
-            type="button"
-            variant="secondary"
-          >
-            Weitere Abschnitte laden
-          </Button>
-          <span className="ml-3 align-middle text-xs text-muted-foreground">
-            {Math.min(visibleBlocks, blocks.length)} / {blocks.length}
-          </span>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function splitMarkdownBlocks(text: string): string[] {
-  const normalized = text
+  const normalized = stripMarkdownFrontmatter(text)
     .trim()
     .replace(/([^\n])\n```/g, "$1\n\n```")
     .replace(/```\n([^\n])/g, "```\n\n$1");
   return normalized.split(/\n{2,}/).filter(Boolean);
+}
+
+function stripMarkdownFrontmatter(text: string): string {
+  return text.replace(/^---\n[\s\S]*?\n---\n*/m, "");
 }
 
 function renderMarkdownBlocks(blocks: string[]): string[] {
