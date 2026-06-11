@@ -104,6 +104,7 @@ async function taskViewResponse(request: Request, courseId: string) {
     })),
     progress: {
       open: sheets.length,
+      done: 0,
       checked: 0,
       correct: 0,
       wrong: 0,

@@ -160,6 +160,7 @@ const mockTaskView: TaskViewResponse = {
   ],
   progress: {
     open: 2,
+    done: 0,
     checked: 0,
     correct: 0,
     wrong: 0,
@@ -339,6 +340,7 @@ export function MockDashboardPage() {
             onSelectMaterial={openMaterial}
             onSelectScriptSection={setSelectedScriptSectionId}
             onSelectTask={setSelectedTaskId}
+            onTaskStatusChange={() => undefined}
             onOpenResource={(resourceId) => {
               const material = materials.find((item) => item.id === resourceId);
               if (material) {

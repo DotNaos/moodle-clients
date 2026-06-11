@@ -10,7 +10,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
-import { Filter, Layers, Globe } from "lucide-react";
+import { CheckCircle2, Circle, Filter, Layers, Globe } from "lucide-react";
 import { FileIcon } from "@dotnaos/react-ui/web";
 import type { Material } from "@/lib/dashboard-data";
 import {
@@ -143,10 +143,12 @@ function MaterialTypeFilterSelect({
 }
 
 export function TaskOutline({
+  onTaskStatusChange,
   selectedTaskId,
   tasks,
   onSelectTask,
 }: {
+  onTaskStatusChange: (taskId: string, status: "done" | "open") => void;
   selectedTaskId: string | null;
   tasks: StudyOutline["tasks"];
   onSelectTask: (taskId: string) => void;
@@ -154,32 +156,52 @@ export function TaskOutline({
   if (tasks.length === 0) {
     return <LoadingRows label="Loading tasks" />;
   }
-  const groups = groupStudyTasksBySheet(tasks);
+  const groups = groupStudyTasksBySection(tasks);
   return (
     <div className="flex flex-col gap-4">
       {groups.map((group, index) => (
-        <section className={cn("flex flex-col gap-0.5", index > 0 && "border-t border-border")} key={group.sheetTitle}>
-          <GroupedSectionHeader label={group.sheetTitle} />
-          {group.tasks.map((task) => (
-            <button
-              className={cn(
-                "min-h-11 rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                selectedTaskId === task.id ? "bg-primary text-primary-foreground" : "hover:bg-secondary",
-              )}
-              key={task.id}
-              onClick={() => onSelectTask(task.id)}
-              type="button"
-            >
-              <span className="line-clamp-2 font-medium">{task.title}</span>
-              <span
-                className={cn(
-                  "mt-1 block truncate text-xs",
-                  selectedTaskId === task.id ? "text-primary-foreground/70" : "text-muted-foreground",
-                )}
-              >
-                {task.status.replace("_", " ")}
-              </span>
-            </button>
+        <section className={cn("flex flex-col gap-2", index > 0 && "border-t border-border pt-4")} key={group.title}>
+          <GroupedSectionHeader label={group.title} />
+          {group.sheets.map((sheet) => (
+            <div className="flex flex-col gap-1" key={sheet.title}>
+              <h3 className="px-3 pt-2 text-sm font-semibold text-foreground">{sheet.title}</h3>
+              {sheet.tasks.map((task) => {
+                const done = isDoneTaskStatus(task.status);
+                return (
+                  <div className="flex min-h-11 items-center gap-1" key={task.id}>
+                    <button
+                      className={cn(
+                        "min-h-11 flex-1 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                        selectedTaskId === task.id ? "bg-primary text-primary-foreground" : "hover:bg-secondary",
+                      )}
+                      onClick={() => onSelectTask(task.id)}
+                      type="button"
+                    >
+                      <span className="line-clamp-2 font-medium">{task.title}</span>
+                      <span
+                        className={cn(
+                          "mt-1 block truncate text-xs",
+                          selectedTaskId === task.id ? "text-primary-foreground/70" : "text-muted-foreground",
+                        )}
+                      >
+                        {taskStatusLabel(task.status)}
+                      </span>
+                    </button>
+                    <button
+                      aria-label={done ? `${task.title} als offen markieren` : `${task.title} als erledigt markieren`}
+                      className={cn(
+                        "grid size-9 shrink-0 place-items-center rounded-full transition-colors",
+                        done ? "text-emerald-500 hover:bg-emerald-500/10" : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                      )}
+                      onClick={() => onTaskStatusChange(task.id, done ? "open" : "done")}
+                      type="button"
+                    >
+                      {done ? <CheckCircle2 className="size-5" aria-hidden /> : <Circle className="size-5" aria-hidden />}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           ))}
         </section>
       ))}
@@ -232,6 +254,39 @@ export function groupStudyTasksBySheet(tasks: StudyOutline["tasks"]) {
     }
   }
   return groups;
+}
+
+export function groupStudyTasksBySection(tasks: StudyOutline["tasks"]) {
+  const sections: Array<{ title: string; sheets: Array<{ title: string; tasks: StudyOutline["tasks"] }> }> = [];
+  for (const task of [...tasks].sort(compareStudyTasks)) {
+    const sectionTitle = task.sectionTitle?.trim() || "Aufgaben";
+    let section = sections.find((item) => item.title === sectionTitle);
+    if (!section) {
+      section = { title: sectionTitle, sheets: [] };
+      sections.push(section);
+    }
+    let sheet = section.sheets.find((item) => item.title === task.sheetTitle);
+    if (!sheet) {
+      sheet = { title: task.sheetTitle, tasks: [] };
+      section.sheets.push(sheet);
+    }
+    sheet.tasks.push(task);
+  }
+  return sections;
+}
+
+export function isDoneTaskStatus(status: string): boolean {
+  return status === "done" || status === "correct";
+}
+
+export function taskStatusLabel(status: string): string {
+  if (status === "done") {
+    return "erledigt";
+  }
+  if (status === "needs_review") {
+    return "review";
+  }
+  return status.replace("_", " ");
 }
 
 function compareStudyTasks(left: StudyTaskOutline, right: StudyTaskOutline): number {

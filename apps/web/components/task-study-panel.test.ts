@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { buildExtractedFormulaCollection, buildFormulaSourceExcerpt } from "@/components/formula-collection-panel";
-import { groupScriptSections, groupStudyTasksBySheet } from "@/components/course-study-outline";
+import { groupScriptSections, groupStudyTasksBySection, groupStudyTasksBySheet } from "@/components/course-study-outline";
 import { buildStudyPipelinePreviewSections } from "@/components/study-pipeline-preview";
 import { buildScriptPDFMapping, extractScriptSections, normalizeTaskViewForDisplay, renderScriptMarkdownHTML, splitScriptChapters } from "@/components/task-study-panel";
 import {
@@ -93,6 +93,35 @@ describe("task outline", () => {
       ["Einführung", ["Aufgabenblatt 01", "Aufgabenblatt 02"]],
       ["Netztopologien", ["Aufgabenblatt 03"]],
       ["Ausblick", ["Aufgabenblatt 12"]],
+    ]);
+  });
+
+  test("builds section groups with worksheets and their child tasks", () => {
+    const groups = groupStudyTasksBySection([
+      { id: "sheet-02-task-2", sectionTitle: "Einführung", sheetTitle: "Aufgabenblatt 02", status: "open", title: "Aufgabe 2" },
+      { id: "sheet-01-task-1", sectionTitle: "Einführung", sheetTitle: "Aufgabenblatt 01", status: "done", title: "Aufgabe 1" },
+      { id: "sheet-02-task-1", sectionTitle: "Einführung", sheetTitle: "Aufgabenblatt 02", status: "open", title: "Aufgabe 1" },
+    ]);
+
+    expect(groups).toEqual([
+      {
+        title: "Einführung",
+        sheets: [
+          {
+            title: "Aufgabenblatt 01",
+            tasks: [
+              { id: "sheet-01-task-1", sectionTitle: "Einführung", sheetTitle: "Aufgabenblatt 01", status: "done", title: "Aufgabe 1" },
+            ],
+          },
+          {
+            title: "Aufgabenblatt 02",
+            tasks: [
+              { id: "sheet-02-task-1", sectionTitle: "Einführung", sheetTitle: "Aufgabenblatt 02", status: "open", title: "Aufgabe 1" },
+              { id: "sheet-02-task-2", sectionTitle: "Einführung", sheetTitle: "Aufgabenblatt 02", status: "open", title: "Aufgabe 2" },
+            ],
+          },
+        ],
+      },
     ]);
   });
 });
@@ -389,7 +418,7 @@ describe("task view display normalization", () => {
     const view = normalizeTaskViewForDisplay({
       courseId: "22584",
       generatedAt: "2026-06-08T00:00:00.000Z",
-      progress: { checked: 0, correct: 0, needsReview: 0, open: 3, wrong: 0 },
+      progress: { checked: 0, correct: 0, done: 0, needsReview: 0, open: 3, wrong: 0 },
       resources: [],
       scriptMarkdown: "",
       sheets: [
@@ -425,7 +454,7 @@ describe("task view display normalization", () => {
     const view = normalizeTaskViewForDisplay({
       courseId: "22584",
       generatedAt: "2026-06-08T00:00:00.000Z",
-      progress: { checked: 0, correct: 0, needsReview: 0, open: 1, wrong: 0 },
+      progress: { checked: 0, correct: 0, done: 0, needsReview: 0, open: 1, wrong: 0 },
       resources: [],
       scriptMarkdown: "",
       sheets: [{

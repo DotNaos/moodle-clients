@@ -35,6 +35,7 @@ export function CourseMainPanel({
   onSelectMaterial,
   onSelectScriptSection,
   onSelectTask,
+  onTaskStatusChange,
   onSelectedScriptSectionIdChange,
   onSelectedTaskIdChange,
   onSignInWebexBrowser,
@@ -65,6 +66,7 @@ export function CourseMainPanel({
   onSelectMaterial: (material: Material) => void;
   onSelectScriptSection: (sectionId: string) => void;
   onSelectTask: (taskId: string) => void;
+  onTaskStatusChange: (taskId: string, status: "done" | "open") => void;
   onSelectedScriptSectionIdChange: (sectionId: string | null) => void;
   onSelectedTaskIdChange: (taskId: string | null) => void;
   onSignInWebexBrowser: (credentials: { username: string; password: string }) => Promise<void>;
@@ -168,7 +170,12 @@ export function CourseMainPanel({
   if (studyMode === "tasks" && !selectedTaskId && studyOutline.tasks.length > 0) {
     return (
       <CoursePanelShell course={course}>
-        <TaskOutline selectedTaskId={selectedTaskId} tasks={studyOutline.tasks} onSelectTask={onSelectTask} />
+        <TaskOutline
+          selectedTaskId={selectedTaskId}
+          tasks={studyOutline.tasks}
+          onSelectTask={onSelectTask}
+          onTaskStatusChange={onTaskStatusChange}
+        />
       </CoursePanelShell>
     );
   }

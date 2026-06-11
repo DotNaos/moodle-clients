@@ -2,9 +2,11 @@ export type StudyTaskOutline = {
   id: string;
   sectionTitle?: string;
   sheetTitle: string;
-  status: string;
+  status: TaskProgressStatus;
   title: string;
 };
+
+export type TaskProgressStatus = "open" | "started" | "done" | "checked" | "correct" | "wrong" | "needs_review" | string;
 
 export type ScriptSectionOutline = {
   blockIndex: number;

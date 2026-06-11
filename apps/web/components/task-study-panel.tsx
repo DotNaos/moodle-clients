@@ -40,6 +40,7 @@ export type TaskViewResponse = {
   }>;
   progress: {
     open: number;
+    done: number;
     checked: number;
     correct: number;
     wrong: number;
@@ -63,7 +64,7 @@ type TaskViewTask = {
       suggestedNextStep?: string;
     };
   };
-  status: "open" | "started" | "checked" | "correct" | "wrong" | "needs_review";
+  status: "open" | "started" | "done" | "checked" | "correct" | "wrong" | "needs_review";
 };
 
 export type StudyContentState = {
@@ -148,6 +149,7 @@ export function TaskStudyPanel({
   const [chatMessages, setChatMessages] = useState<TaskChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [updatingTaskStatus, setUpdatingTaskStatus] = useState(false);
   const [chatting, setChatting] = useState(false);
   const [scriptIncluded, setScriptIncluded] = useState(false);
   const [pipelineStatus, setPipelineStatus] = useState<StudyPipelineStatusResponse | null>(null);
@@ -414,6 +416,36 @@ export function TaskStudyPanel({
       setError(getErrorMessage(checkError));
     } finally {
       setChecking(false);
+    }
+  }
+
+  async function updateSelectedTaskStatus(status: "done" | "open") {
+    if (!selectedTask || !courseId || updatingTaskStatus) {
+      return;
+    }
+    setUpdatingTaskStatus(true);
+    setError(null);
+    try {
+      await studyPipelineRequest(
+        `/courses/${encodeURIComponent(courseId)}/study-pipeline/tasks/${encodeURIComponent(selectedTask.taskId)}/status`,
+        {
+          method: "POST",
+          body: JSON.stringify({ status }),
+        },
+      );
+      setView((current) => {
+        if (!current) {
+          return current;
+        }
+        const nextView = updateTaskStatusInView(current, selectedTask.taskId, status);
+        onTaskViewChange?.(nextView);
+        return nextView;
+      });
+      setMessage(status === "done" ? "Aufgabe als erledigt markiert." : "Aufgabe wieder geöffnet.");
+    } catch (statusError) {
+      setError(getErrorMessage(statusError));
+    } finally {
+      setUpdatingTaskStatus(false);
     }
   }
 
@@ -720,6 +752,15 @@ export function TaskStudyPanel({
                   </h3>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <ContentStateBadge state={selectedTask.contentState} />
+                    <Button
+                      disabled={updatingTaskStatus}
+                      onClick={() => void updateSelectedTaskStatus(isDoneTaskStatus(selectedTask.status) ? "open" : "done")}
+                      type="button"
+                      variant={isDoneTaskStatus(selectedTask.status) ? "secondary" : "default"}
+                    >
+                      {updatingTaskStatus ? <Spinner aria-hidden /> : <CheckCircle2 aria-hidden />}
+                      {isDoneTaskStatus(selectedTask.status) ? "Wieder öffnen" : "Erledigt"}
+                    </Button>
                     {selectedTask.contentState?.id ? (
                       <Button
                         disabled={!codexConnected || !selectedRefineModel || refiningTarget === `task:${selectedTask.contentState.id}`}
@@ -1149,6 +1190,63 @@ function buildTaskOutline(
       };
     }),
   );
+}
+
+function updateTaskStatusInView(
+  view: TaskViewResponse,
+  taskId: string,
+  status: TaskViewTask["status"],
+): TaskViewResponse {
+  const sheets = view.sheets.map((sheet) => ({
+    ...sheet,
+    tasks: sheet.tasks.map((task) => task.taskId === taskId ? { ...task, status } : task),
+  }));
+  return {
+    ...view,
+    sheets,
+    progress: summarizeTaskProgress(sheets),
+  };
+}
+
+function summarizeTaskProgress(sheets: TaskViewResponse["sheets"]): TaskViewResponse["progress"] {
+  const progress: TaskViewResponse["progress"] = {
+    checked: 0,
+    correct: 0,
+    done: 0,
+    needsReview: 0,
+    open: 0,
+    wrong: 0,
+  };
+  for (const task of sheets.flatMap((sheet) => sheet.tasks)) {
+    switch (task.status) {
+      case "done":
+        progress.done++;
+        progress.checked++;
+        break;
+      case "checked":
+        progress.checked++;
+        break;
+      case "correct":
+        progress.correct++;
+        progress.checked++;
+        break;
+      case "wrong":
+        progress.wrong++;
+        progress.checked++;
+        break;
+      case "needs_review":
+        progress.needsReview++;
+        progress.checked++;
+        break;
+      default:
+        progress.open++;
+    }
+  }
+  return progress;
+}
+
+function isDoneTaskStatus(status: string): boolean {
+  return status === "done" || status === "correct";
 }
 
 function compareTaskViewSheets(left: TaskViewResponse["sheets"][number], right: TaskViewResponse["sheets"][number]): number {

@@ -558,6 +558,33 @@ export default function Home() {
     await loadRecordings(courseId, options);
   }
 
+  async function updateTaskStatus(taskId: string, status: "done" | "open") {
+    if (!selectedCourseId) {
+      return;
+    }
+    try {
+      const response = await fetch(
+        `/api/study-pipeline/courses/${encodeURIComponent(selectedCourseId)}/study-pipeline/tasks/${encodeURIComponent(taskId)}/status`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status }),
+        },
+      );
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? `Task status failed with ${response.status}.`);
+      }
+      setStudyOutline((current) => ({
+        ...current,
+        tasks: current.tasks.map((task) => task.id === taskId ? { ...task, status } : task),
+      }));
+      setError(null);
+    } catch (statusError) {
+      setError(getErrorMessage(statusError));
+    }
+  }
+
   const applyDashboardRoute = useCallback(
     async (route: DashboardRoute) => {
       if (dashboardRoutesEqual(route, dashboardRouteFromInput(dashboardRouteInputRef.current))) {
@@ -879,6 +906,9 @@ export default function Home() {
                         selectedScriptSectionId: null,
                         studyMode: "tasks",
                       });
+                    }}
+                    onTaskStatusChange={(taskId, status) => {
+                      void updateTaskStatus(taskId, status);
                     }}
                     onOpenResource={(resourceId) => {
                       const material = materials.find((item) => item.id === resourceId);
