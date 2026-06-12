@@ -820,56 +820,687 @@ active text run: run_456
 
 The frontend then compares runs instead of overwriting them.
 
-## 14. Implementation Plan
+## 14. Goal-Based Implementation Plan
 
-The work should be delivered in small, inspectable slices.
+The work should be delivered as separate goals. Each goal should leave the
+system in a useful, shippable state and should be verifiable without relying on
+later phases.
 
 ```text
-Phase 1: Data contracts
-├─ define pipeline source
-├─ define resource classification
-├─ define run model
-├─ define trace edge model
-└─ define permissions/ownership fields
+Goal 0
+└─ Commit and deploy current frontend baseline
 
-Phase 2: Course inventory inspector
-├─ add course pipeline route
-├─ show resources
-├─ show classification buckets
-├─ show pairing status
-├─ show unknown resources
-└─ show simple status chips
+Goal 1
+└─ Define pipeline data contracts
 
-Phase 3: Request task UX
-├─ reduce task page improvement UI
-├─ add Request task action
-├─ enqueue default pipeline run
-├─ show progress indicator to all users
-└─ show View pipeline status action for admin/debug users
+Goal 2
+└─ Expose course inventory and classification
 
-Phase 4: Blueprint graph
-├─ add React Flow
-├─ render course-level graph
-├─ render resource-level graph
-├─ add node detail panel
-├─ show source, process, artifact, review, and publish nodes
-└─ support dropped/unused/missing paths visibly
+Goal 3
+└─ Add course pipeline inspector shell
 
-Phase 5: Rerunnable stages
-├─ store immutable runs
-├─ store active run selection
-├─ compare OCR/text extraction outputs
-├─ allow admin rerun with another engine/config
-└─ mark stale runs when source file hash changes
+Goal 4
+└─ Simplify task page request/progress UX
 
-Phase 6: Promotion and feedback
-├─ user feedback creates review items
-├─ user-owned Codex runs create proposals
-├─ admin can promote proposal to shared output
-└─ published output keeps full trace links
+Goal 5
+└─ Add immutable pipeline run storage
+
+Goal 6
+└─ Render blueprint graph from real trace data
+
+Goal 7
+└─ Add extracted PDF/page/block inspection
+
+Goal 8
+└─ Add OCR/run comparison and active-run selection
+
+Goal 9
+└─ Add user feedback and user-owned Codex proposals
+
+Goal 10
+└─ Add admin promotion and publish controls
 ```
 
-The first implementation goal should be Phase 1 and Phase 2. They create the
-inspection foundation without changing the normal task generation behavior too
-much. The Request task simplification should follow immediately after, because
-the normal user experience should not expose the pipeline internals.
+### Goal 0: Commit and Deploy Current Frontend Baseline
+
+Purpose:
+Make sure the current UI work is safely merged and deployed before changing the
+pipeline internals.
+
+Deliverables:
+
+```text
+frontend branch
+├─ committed
+├─ pushed
+├─ PR opened or updated
+├─ CI green
+├─ merged into main
+└─ Vercel production deployment verified
+```
+
+Verification:
+
+```text
+local checks
+├─ bun run typecheck
+└─ bun run web:build
+
+production checks
+├─ course page opens
+├─ task page opens
+├─ no 500
+├─ no authentication required error
+└─ expected task content loads after async data refresh
+```
+
+Non-goals:
+
+```text
+├─ no new pipeline functionality
+└─ no storage/schema changes
+```
+
+### Goal 1: Define Pipeline Data Contracts
+
+Purpose:
+Create the vocabulary and shared shape for the whole system before building UI.
+The pipeline needs stable contracts for sources, resources, classifications,
+runs, artifacts, and trace edges.
+
+Deliverables:
+
+```text
+contracts
+├─ PipelineSource
+├─ PipelineResource
+├─ ResourceClassification
+├─ PipelineRun
+├─ PipelineArtifact
+├─ TraceNode
+├─ TraceEdge
+├─ ActiveRunSelection
+└─ PipelinePermission / ownership fields
+```
+
+Minimum model:
+
+```text
+PipelineSource
+├─ id
+├─ type: moodle_course | uploaded_pdf_set | future_source
+├─ external_id
+├─ display_name
+└─ status
+
+PipelineResource
+├─ id
+├─ source_id
+├─ external_id
+├─ title
+├─ type
+├─ file_hash
+├─ classification
+├─ classification_reason
+└─ status
+
+PipelineRun
+├─ id
+├─ source_id
+├─ resource_id
+├─ stage
+├─ engine
+├─ config_hash
+├─ ownership: shared | user_owned
+├─ status
+└─ artifacts
+```
+
+Verification:
+
+```text
+├─ typecheck passes
+├─ fixtures can represent High Performance Computing resources
+├─ fixtures can represent missing solutions
+├─ fixtures can represent multiple OCR runs
+└─ fixtures can represent dropped/unused content
+```
+
+Non-goals:
+
+```text
+├─ no React Flow yet
+├─ no real OCR reruns yet
+└─ no admin mutation controls yet
+```
+
+### Goal 2: Expose Course Inventory and Classification
+
+Purpose:
+Make State 1 inspectable. Before extracted blocks or Codex output can be
+debugged, we must see what Moodle provided and how each resource was grouped.
+
+Deliverables:
+
+```text
+course inventory API/view model
+├─ resources
+├─ classification buckets
+├─ assignment-sheet to solution pairing
+├─ unknown resources
+├─ ignored_allowed resources
+└─ classification reasons
+```
+
+UI shape:
+
+```text
+Course Pipeline
+└─ Resources
+   ├─ 947711 · Aufgabenblatt 01
+   │  ├─ assignment_sheet
+   │  ├─ paired
+   │  └─ reason visible
+   │
+   ├─ 947712 · Aufgabenblatt 01 Lösung
+   │  ├─ solution_pdf
+   │  ├─ paired_with: 947711
+   │  └─ reason visible
+   │
+   └─ unknown / ignored items remain visible
+```
+
+Verification:
+
+```text
+High Performance Computing
+├─ assignment sheets are visible
+├─ solution PDFs are visible
+├─ known missing solution cases are visible
+├─ unknown resources are not hidden
+└─ classification reasons are visible for each resource
+```
+
+Non-goals:
+
+```text
+├─ no PDF block extraction UI
+├─ no OCR comparison
+└─ no graph layout
+```
+
+### Goal 3: Add Course Pipeline Inspector Shell
+
+Purpose:
+Create the navigation and inspection surface where future pipeline details will
+live. This is the course-level entry into the broader admin pipeline system.
+
+Routes:
+
+```text
+/admin/pipeline
+  global admin overview, may start simple or hidden
+
+/courses/:courseId/pipeline
+  pipeline inspector filtered to one course
+```
+
+Course-level UI shell:
+
+```text
+Pipeline / High Performance Computing
+
+[Resources] [Buckets] [Runs] [Blueprint] [Review]
+
+left:   resource list / bucket list
+middle: selected resource or selected stage
+right:  details, status, reasons, diagnostics
+```
+
+Deliverables:
+
+```text
+├─ course pipeline route
+├─ entry point from course UI for admin/debug users
+├─ resource list tab
+├─ bucket tab
+├─ placeholder blueprint tab
+└─ route works with real course id
+```
+
+Verification:
+
+```text
+├─ course pipeline route opens directly
+├─ browser refresh preserves route
+├─ no normal user task flow regression
+├─ mobile route does not break bottom navigation
+└─ inspector can be hidden later behind permissions
+```
+
+Non-goals:
+
+```text
+├─ no real React Flow graph yet
+├─ no mutation actions yet
+└─ no scheduler integration yet
+```
+
+### Goal 4: Simplify Task Page Request and Progress UX
+
+Purpose:
+Remove heavy pipeline/improvement controls from the normal learning UI. The
+task page should let users request missing work and see progress without
+understanding OCR engines, extraction, or Codex internals.
+
+Normal user UI:
+
+```text
+Task missing
+├─ Request task
+└─ Problem melden
+
+Task generating
+├─ progress bar
+├─ current step label
+└─ passive status text
+
+Task ready
+├─ Start
+└─ Problem melden
+```
+
+Admin/debug addition:
+
+```text
+Task generating
+├─ progress bar
+├─ current step label
+└─ View pipeline status
+```
+
+Deliverables:
+
+```text
+├─ reduce current "improve" UI
+├─ add Request task action
+├─ add progress indicator surface
+├─ add View pipeline status action for admin/debug users
+└─ connect button to placeholder/default request endpoint if scheduler is not ready
+```
+
+Verification:
+
+```text
+├─ missing task state has one primary action
+├─ progress is visible to all users
+├─ admin/debug can jump to course pipeline inspector
+├─ existing ready tasks still work
+└─ no pipeline internals shown in normal task content
+```
+
+Non-goals:
+
+```text
+├─ no custom OCR selection from task page
+├─ no direct shared overwrite by normal users
+└─ no final proposal/promotion system yet
+```
+
+### Goal 5: Add Immutable Pipeline Run Storage
+
+Purpose:
+Make stages rerunnable without losing old results. This is required before OCR
+comparison or admin run selection can be reliable.
+
+Storage:
+
+```text
+pipeline_runs
+├─ id
+├─ source_id
+├─ resource_id
+├─ file_hash
+├─ stage
+├─ engine
+├─ config_hash
+├─ ownership
+├─ status
+├─ created_by
+├─ started_at
+├─ finished_at
+└─ artifact_refs
+
+active_run_selections
+├─ source_id
+├─ resource_id
+├─ stage
+├─ active_run_id
+├─ selected_by
+├─ selected_at
+└─ reason
+```
+
+Deliverables:
+
+```text
+├─ database schema / persistence layer
+├─ run creation API
+├─ run listing API
+├─ active run selection API
+├─ status updates
+└─ basic scheduler-compatible state machine
+```
+
+Verification:
+
+```text
+├─ rerunning same stage creates a new run
+├─ old run remains accessible
+├─ active run can point to either run
+├─ failed run is visible
+├─ stale file hash can be represented
+└─ user-owned and shared runs are distinguishable
+```
+
+Non-goals:
+
+```text
+├─ no full OCR engine matrix yet
+└─ no final graph UI yet
+```
+
+### Goal 6: Render Blueprint Graph From Real Trace Data
+
+Purpose:
+Turn the pipeline from a list of statuses into a graph that explains content
+flow. This should use React Flow or an equivalent node-based library.
+
+Graph levels:
+
+```text
+course graph
+├─ Moodle course
+├─ inventory
+├─ classification
+├─ buckets
+├─ extraction
+├─ curation
+└─ outputs
+
+resource graph
+├─ PDF
+├─ pages
+├─ OCR/text runs
+├─ image extraction
+├─ blocks
+├─ Codex curation
+└─ final task/script nodes
+```
+
+Deliverables:
+
+```text
+├─ React Flow dependency
+├─ custom node types
+├─ custom edge status styles
+├─ graph data adapter from trace model
+├─ node detail side panel
+└─ warning/review nodes
+```
+
+Verification:
+
+```text
+├─ graph renders for a course
+├─ graph renders for one assignment sheet
+├─ clicking node opens details
+├─ dropped/unused content is visible
+├─ weak/failing stage is visible
+└─ graph handles empty/missing data without crashing
+```
+
+Non-goals:
+
+```text
+├─ no manual graph editing yet
+├─ no drag-to-change-pipeline semantics
+└─ no admin promotion yet
+```
+
+### Goal 7: Add Extracted PDF/Page/Block Inspection
+
+Purpose:
+Make State 2 inspectable. The extracted state must be renderable like a
+website, but still close enough to the source PDF that missing text/images are
+obvious.
+
+UI shape:
+
+```text
+Extracted Inspector
+├─ left: original PDF/page preview
+├─ middle: recognized page structure
+└─ right: diagnostics and selected block details
+```
+
+Block view:
+
+```text
+Page 1
+├─ block_001 heading / sheet_title
+├─ block_002 image / logo
+├─ block_003 paragraph / task_intro
+├─ block_004 code / pseudo_code
+└─ block_005 image / diagram
+```
+
+Deliverables:
+
+```text
+├─ page preview source
+├─ extracted block renderer
+├─ block labels and types
+├─ image asset references
+├─ diagnostics panel
+└─ "unused/missing" warnings
+```
+
+Verification:
+
+```text
+├─ extracted text is visible
+├─ extracted images are visible
+├─ page with weak OCR is marked
+├─ page with no text is marked
+├─ selected block can be traced to source page
+└─ image asset missing from output becomes obvious
+```
+
+Non-goals:
+
+```text
+├─ no Codex rewrite UI
+└─ no OCR engine comparison controls yet
+```
+
+### Goal 8: Add OCR/Run Comparison and Active-Run Selection
+
+Purpose:
+Allow admins to compare extraction engines and choose which output feeds the
+next pipeline stage.
+
+UI shape:
+
+```text
+Page 4 OCR Runs
+├─ pdftotext
+│  ├─ status: weak
+│  ├─ chars: 0
+│  └─ preview
+│
+├─ docling
+│  ├─ status: ok
+│  ├─ chars: 540
+│  └─ preview
+│
+└─ marker
+   ├─ status: ok
+   ├─ chars: 522
+   └─ preview
+
+active: docling
+```
+
+Deliverables:
+
+```text
+├─ run comparison view
+├─ per-engine status summaries
+├─ diff or side-by-side preview
+├─ active run selector
+├─ rerun with selected engine/config
+└─ trace update when active run changes
+```
+
+Verification:
+
+```text
+├─ multiple OCR runs can coexist
+├─ selected run feeds block detection
+├─ changing active run does not delete old runs
+├─ weak OCR is visible
+└─ source hash changes mark old run stale
+```
+
+Non-goals:
+
+```text
+├─ no normal-user OCR controls
+└─ no shared publish overwrite without admin action
+```
+
+### Goal 9: Add User Feedback and User-Owned Codex Proposals
+
+Purpose:
+Let users report missing or wrong content and create personal Codex
+improvements without overwriting shared course output.
+
+Feedback types:
+
+```text
+feedback
+├─ task missing
+├─ image missing
+├─ solution wrong
+├─ OCR bad
+├─ task confusing
+└─ other
+```
+
+User-owned proposal:
+
+```text
+user Codex run
+├─ user_id
+├─ source task/output id
+├─ generated proposal
+├─ source trace links
+├─ status: private | submitted_for_review
+└─ never overwrites shared output directly
+```
+
+Deliverables:
+
+```text
+├─ feedback action from task page
+├─ feedback review item
+├─ personal Codex improvement run
+├─ proposal storage
+└─ submit-for-review flow
+```
+
+Verification:
+
+```text
+├─ feedback appears in review queue
+├─ user proposal is private by default
+├─ shared task remains unchanged
+├─ proposal keeps source trace links
+└─ admin can see submitted proposal
+```
+
+Non-goals:
+
+```text
+├─ no automatic shared publishing
+└─ no unrestricted user overwrite
+```
+
+### Goal 10: Add Admin Promotion and Publish Controls
+
+Purpose:
+Give admins control over what becomes shared/published while keeping trace
+links and review history intact.
+
+Admin actions:
+
+```text
+admin
+├─ approve dropped block reason
+├─ select active extraction run
+├─ promote user proposal
+├─ publish task/script output
+├─ unpublish broken output
+└─ mark review item resolved
+```
+
+Deliverables:
+
+```text
+├─ promotion API
+├─ publish state model
+├─ admin review queue
+├─ audit trail
+├─ trace-preserving publish operation
+└─ rollback/unpublish path
+```
+
+Verification:
+
+```text
+├─ published output is visible to normal users
+├─ unpublished output is hidden from normal users
+├─ promotion keeps derived_from links
+├─ audit trail shows who promoted it
+└─ rollback does not delete source artifacts
+```
+
+Non-goals:
+
+```text
+└─ no destructive deletion of old pipeline artifacts
+```
+
+## 15. Suggested Goal Order
+
+The practical order should be:
+
+```text
+1. Goal 0: Commit/deploy baseline
+2. Goal 1: Data contracts
+3. Goal 2: Inventory/classification
+4. Goal 3: Inspector shell
+5. Goal 4: Request/progress UX
+6. Goal 5: Immutable run storage
+7. Goal 6: Blueprint graph
+8. Goal 7: Extracted block inspector
+9. Goal 8: OCR/run comparison
+10. Goal 9: Feedback/user proposals
+11. Goal 10: Admin promotion/publish
+```
+
+The first real implementation goal after the current frontend baseline should
+be Goal 1. Without stable contracts, the graph, storage, and UI will drift. The
+first visible product goal should be Goal 2, because inventory/classification
+is the earliest stage where missing resources become visible.
