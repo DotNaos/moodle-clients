@@ -21,7 +21,7 @@ function redirectOrigin(request: Request): string {
 
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
   if (!host || host.startsWith("0.0.0.0")) {
-    return "http://moodle-clients-mock.localhost:1355";
+    return "http://moodle.localhost:1355";
   }
 
   const protocol = request.headers.get("x-forwarded-proto") ?? "http";
@@ -69,7 +69,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     });
     response.cookies.set(name, "", {
       path: "/",
-      domain: "moodle-clients-mock.localhost",
+      domain: "moodle.localhost",
       maxAge: 0,
       expires: new Date(0),
     });

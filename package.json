@@ -13,7 +13,7 @@
     "typecheck": "turbo run typecheck",
     "proxy:dev": "node ./scripts/moodle-proxy-dev.cjs",
     "web:dev": "bun run --filter @moodle-clients/web dev",
-    "web:dev:portless": "portless moodle-clients-mock sh -lc 'unset CLERK_SECRET_KEY CLERK_PUBLISHABLE_KEY; cd apps/web && bun next dev --hostname 0.0.0.0 --port \"$PORT\"'",
+    "web:dev:portless": "portless moodle sh -lc 'unset CLERK_SECRET_KEY CLERK_PUBLISHABLE_KEY; cd apps/web && bun next dev --hostname 0.0.0.0 --port \"$PORT\"'",
     "services:dev:docker": "bash ./scripts/start-local-moodle-services.sh",
     "services:dev:docker:stop": "bash ./scripts/stop-local-moodle-services.sh",
     "web:dev:expo": "bun run --filter @moodle-clients/web dev:expo",

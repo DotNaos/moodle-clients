@@ -1,10 +1,12 @@
 "use client";
 
-import { BookOpenText, CheckCircle2, ChevronDown, FileText, Layers, Loader2, Sparkles } from "lucide-react";
+import { AlertCircle, BookOpenText, CheckCircle2, ChevronDown, FileQuestion, FileText, Layers, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
+import { ExtractedDocumentInspector, type ExtractedDocumentsResponse } from "@/components/extracted-document-inspector";
 import type { Course } from "@/lib/dashboard-data";
 import { courseTitle } from "@/lib/dashboard-data";
 import { cn } from "@/lib/utils";
@@ -47,31 +49,96 @@ type StudyPipelineTaskLink = {
   status: string;
 };
 
+export type CourseInventoryResponse = {
+  courseId: string;
+  generatedAt: string;
+  artifactRoot?: string;
+  summary: {
+    totalResources: number;
+    lectureMaterial: number;
+    taskGroups: number;
+    pairedTaskGroups: number;
+    missingSolutionGroups: number;
+    ambiguousTaskGroups: number;
+    references: number;
+    interactions: number;
+    unknown: number;
+  };
+  lectureMaterial: CourseInventoryNode[];
+  taskGroups: CourseInventoryTaskGroup[];
+  references: CourseInventoryNode[];
+  interactions: CourseInventoryNode[];
+  unknown: CourseInventoryNode[];
+};
+
+export type CourseInventoryNode = {
+  id: string;
+  name: string;
+  url?: string;
+  type: string;
+  resourceType?: string;
+  fileType?: string;
+  sectionId?: string;
+  sectionName?: string;
+  bucket: string;
+  role: string;
+  reason: string;
+  confidence: string;
+};
+
+export type CourseInventoryTaskGroup = {
+  id: string;
+  title: string;
+  sheet: CourseInventoryNode;
+  solution?: CourseInventoryNode;
+  solutionCandidates?: CourseInventoryNode[];
+  pairingStatus: "paired" | "missing_solution" | "ambiguous_solution" | string;
+  pairingReason: string;
+  pairingConfidence: string;
+};
+
 type StudyPipelinePreviewProps = {
   course: Course;
+  extractedDocuments: ExtractedDocumentsResponse | null;
+  extractedError: string | null;
+  extractedLoading: boolean;
+  inventory: CourseInventoryResponse | null;
+  inventoryError: string | null;
+  inventoryLoading: boolean;
   loading: boolean;
   mode: "tasks" | "script";
   runningStage: StudyPipelineStage | null;
   status: StudyPipelineStatusResponse | null;
+  onLoadExtractedDocuments: () => void;
+  onRefreshInventory: () => void;
   onRunStage: (stage: StudyPipelineStage) => void;
 };
 
 export function StudyPipelinePreview({
   course,
+  extractedDocuments,
+  extractedError,
+  extractedLoading,
+  inventory,
+  inventoryError,
+  inventoryLoading,
   loading,
   mode,
+  onLoadExtractedDocuments,
+  onRefreshInventory,
   runningStage,
   status,
   onRunStage,
 }: StudyPipelinePreviewProps) {
   const sections = useMemo(() => buildStudyPipelinePreviewSections(status), [status]);
+  const groupedInventory = useMemo(() => buildInventorySections(inventory), [inventory]);
   const summary = status?.summary;
   const resourceCount = sections.reduce((total, section) => total + section.items.length, 0);
   const busy = loading || Boolean(runningStage);
 
   return (
     <div className="min-h-0 flex-1 overflow-auto bg-background">
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-10 md:px-6 md:py-14">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-10 md:px-6 md:py-14">
         <header className="flex flex-col items-center text-center">
           <span className="grid size-14 place-items-center rounded-full bg-secondary text-muted-foreground">
             {mode === "script" ? (
@@ -115,6 +182,90 @@ export function StudyPipelinePreview({
             <StatChip label="Lösungen verknüpft" value={summary.linkedSolutions} />
           </div>
         ) : null}
+
+        <section className="rounded-3xl bg-secondary/40 px-5 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <FileQuestion aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                Kurs-Mapping
+              </p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Erste Zuordnung der Moodle-Ressourcen, bevor Extracted oder Codex daraus Aufgaben baut.
+              </p>
+            </div>
+            <Button
+              className="w-fit"
+              disabled={busy || inventoryLoading}
+              onClick={onRefreshInventory}
+              type="button"
+              variant="secondary"
+            >
+              {inventoryLoading ? <Spinner aria-hidden /> : <RefreshCw aria-hidden />}
+              Aktualisieren
+            </Button>
+          </div>
+
+          {inventoryLoading && !inventory ? (
+            <p className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+              <Spinner aria-hidden className="size-4" />
+              Inventory wird geladen…
+            </p>
+          ) : null}
+
+          {inventoryError ? (
+            <p className="mt-4 flex items-start gap-2 rounded-2xl bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+              <AlertCircle aria-hidden className="mt-0.5 size-4 shrink-0" />
+              <span>{inventoryError}</span>
+            </p>
+          ) : null}
+
+          {inventory ? (
+            <div className="mt-4 flex flex-col gap-4">
+              <div className="flex flex-wrap gap-2">
+                <StatChip label="Vorlesung" value={inventory.summary.lectureMaterial} />
+                <StatChip label="Aufgabengruppen" value={inventory.summary.taskGroups} />
+                <StatChip label="mit Lösung" value={inventory.summary.pairedTaskGroups} />
+                <StatChip label="ohne Lösung" value={inventory.summary.missingSolutionGroups} />
+                <StatChip label="unklar" value={inventory.summary.ambiguousTaskGroups + inventory.summary.unknown} />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                {inventory.taskGroups.slice(0, 10).map((group) => (
+                  <TaskGroupRow group={group} key={group.id} />
+                ))}
+                {inventory.taskGroups.length > 10 ? (
+                  <p className="px-1 text-xs text-muted-foreground">
+                    +{inventory.taskGroups.length - 10} weitere Aufgabengruppen
+                  </p>
+                ) : null}
+              </div>
+
+              {groupedInventory.length > 0 ? (
+                <details className="group rounded-2xl bg-background/60 px-4 py-3">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-foreground [&::-webkit-details-marker]:hidden">
+                    <Layers aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">Weitere Buckets</span>
+                    <ChevronDown aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="mt-3 flex flex-col gap-3">
+                    {groupedInventory.map((section) => (
+                      <InventoryBucket key={section.id} section={section} />
+                    ))}
+                  </div>
+                </details>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+
+        <ExtractedDocumentInspector
+          courseId={String(course.id)}
+          documents={extractedDocuments}
+          error={extractedError}
+          loading={extractedLoading}
+          onLoad={onLoadExtractedDocuments}
+        />
 
         {sections.length > 0 ? (
           <details className="group rounded-3xl bg-secondary/40 px-5 py-4">
@@ -190,6 +341,53 @@ export function StudyPipelinePreview({
   );
 }
 
+function TaskGroupRow({ group }: { group: CourseInventoryTaskGroup }) {
+  const missing = group.pairingStatus === "missing_solution";
+  const ambiguous = group.pairingStatus === "ambiguous_solution";
+  return (
+    <div className="rounded-2xl bg-background/70 px-3 py-2.5">
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-foreground">{group.title}</p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{group.sheet.name}</p>
+        </div>
+        <Badge variant={missing || ambiguous ? "destructive" : "secondary"}>
+          {missing ? "Lösung fehlt" : ambiguous ? "Mehrdeutig" : "Lösung verknüpft"}
+        </Badge>
+      </div>
+      {group.solution ? (
+        <p className="mt-2 truncate text-xs text-muted-foreground">Lösung: {group.solution.name}</p>
+      ) : null}
+      {missing || ambiguous ? (
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">{group.pairingReason}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function InventoryBucket({ section }: { section: { id: string; label: string; items: CourseInventoryNode[] } }) {
+  return (
+    <div>
+      <p className="mb-1.5 line-clamp-1 text-xs font-medium text-muted-foreground">
+        {section.label} · {section.items.length}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {section.items.slice(0, 10).map((item) => (
+          <span className="inline-flex max-w-64 items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground" key={item.id}>
+            <FileText aria-hidden className="size-3 shrink-0" />
+            <span className="truncate">{item.name}</span>
+          </span>
+        ))}
+        {section.items.length > 10 ? (
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+            +{section.items.length - 10}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function StatChip({ label, value }: { label: string; value: number }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3.5 py-1.5 text-xs">
@@ -249,6 +447,18 @@ export function buildStudyPipelinePreviewSections(status: StudyPipelineStatusRes
   return [...sections.values()];
 }
 
+export function buildInventorySections(inventory: CourseInventoryResponse | null) {
+  if (!inventory) {
+    return [];
+  }
+  return [
+    { id: "lecture", label: "Vorlesungsmaterial", items: inventory.lectureMaterial },
+    { id: "references", label: "Referenzen", items: inventory.references },
+    { id: "interactions", label: "Interaktionen", items: inventory.interactions },
+    { id: "unknown", label: "Unbekannt", items: inventory.unknown },
+  ].filter((section) => section.items.length > 0);
+}
+
 function markKind(
   sections: Map<string, { id: string; name: string; items: Array<{ id: string; kind: string; name: string }> }>,
   id: string,
@@ -262,4 +472,3 @@ function markKind(
     }
   }
 }
-

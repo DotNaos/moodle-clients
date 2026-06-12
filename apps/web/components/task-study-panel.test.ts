@@ -3,7 +3,8 @@ import { describe, expect, test } from "bun:test";
 
 import { buildExtractedFormulaCollection, buildFormulaSourceExcerpt } from "@/components/formula-collection-panel";
 import { groupScriptSections, groupStudyTasksBySection, groupStudyTasksBySheet } from "@/components/course-study-outline";
-import { buildStudyPipelinePreviewSections } from "@/components/study-pipeline-preview";
+import { buildBlockTypeSummary, documentDiagnosticCounts } from "@/components/extracted-document-inspector";
+import { buildInventorySections, buildStudyPipelinePreviewSections } from "@/components/study-pipeline-preview";
 import { buildScriptPDFMapping, extractScriptSections, normalizeTaskViewForDisplay, renderScriptMarkdownHTML, splitScriptChapters } from "@/components/task-study-panel";
 import {
   buildDashboardRouteURL,
@@ -165,6 +166,94 @@ describe("study pipeline preview", () => {
       ["Aufgabenblatt 01", "task"],
       ["Aufgabenblatt 01 Lösung", "solution"],
     ]);
+  });
+
+  test("builds inventory bucket sections without task groups", () => {
+    const sections = buildInventorySections({
+      courseId: "22584",
+      generatedAt: "2026-06-12T08:00:00.000Z",
+      summary: {
+        ambiguousTaskGroups: 0,
+        interactions: 1,
+        lectureMaterial: 1,
+        missingSolutionGroups: 1,
+        pairedTaskGroups: 1,
+        references: 1,
+        taskGroups: 2,
+        totalResources: 5,
+        unknown: 1,
+      },
+      lectureMaterial: [{ id: "teil-01", name: "Teil 01", bucket: "lecture_material", confidence: "high", reason: "", role: "lecture_source", type: "slide" }],
+      taskGroups: [],
+      references: [{ id: "modul", name: "Modulbeschreibung", bucket: "reference", confidence: "medium", reason: "", role: "course_reference", type: "other" }],
+      interactions: [{ id: "forum", name: "Forum", bucket: "interaction", confidence: "medium", reason: "", role: "course_interaction", type: "other" }],
+      unknown: [{ id: "unknown", name: "Extern", bucket: "unknown", confidence: "low", reason: "", role: "unknown", type: "other" }],
+    });
+
+    expect(sections.map((section) => [section.id, section.items.map((item) => item.name)])).toEqual([
+      ["lecture", ["Teil 01"]],
+      ["references", ["Modulbeschreibung"]],
+      ["interactions", ["Forum"]],
+      ["unknown", ["Extern"]],
+    ]);
+  });
+});
+
+describe("extracted document inspector", () => {
+  test("summarizes recognized block types and diagnostic counts", () => {
+    const document = {
+      id: "doc-task-01",
+      engine: "docling",
+      runId: "run-01",
+      status: "extracted",
+      resource: { id: "task-01", name: "Aufgabenblatt 01", type: "task" },
+      assets: [
+        { id: "img-1", kind: "image", pageNumber: 1, path: "/artifacts/img-1.png" },
+        { id: "img-2", kind: "image", pageNumber: 2, path: "/artifacts/img-2.png" },
+      ],
+      diagnostics: {
+        extractedImageAssets: ["img-1", "img-2"],
+        pagesMissingText: [2],
+        unknownBlocks: ["b-4"],
+        unusedImageAssets: ["img-2"],
+        visualOnlyPages: [2],
+        warnings: ["Page 2 only has visual content."],
+      },
+      pages: [
+        {
+          id: "page-1",
+          pageNumber: 1,
+          blocks: [
+            { id: "b-1", pageNumber: 1, text: "Aufgabe 1", type: "heading" },
+            { id: "b-2", pageNumber: 1, text: "Berechnen Sie ...", type: "paragraph" },
+            { id: "b-3", assetId: "img-1", pageNumber: 1, type: "image" },
+          ],
+        },
+        {
+          id: "page-2",
+          pageNumber: 2,
+          blocks: [
+            { id: "b-4", pageNumber: 2, text: "???", type: "unknown" },
+            { id: "b-5", pageNumber: 2, text: "Hinweis", type: "paragraph" },
+          ],
+        },
+      ],
+    };
+
+    expect(buildBlockTypeSummary([document])).toEqual([
+      { type: "paragraph", count: 2 },
+      { type: "heading", count: 1 },
+      { type: "image", count: 1 },
+      { type: "unknown", count: 1 },
+    ]);
+    expect(documentDiagnosticCounts(document)).toEqual({
+      extractedImages: 2,
+      missingPages: 1,
+      unknownBlocks: 1,
+      unusedImages: 1,
+      visualOnlyPages: 1,
+      warnings: 1,
+    });
   });
 });
 

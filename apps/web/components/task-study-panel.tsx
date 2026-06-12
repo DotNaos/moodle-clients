@@ -20,8 +20,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import type { ExtractedDocumentsResponse } from "@/components/extracted-document-inspector";
 import {
   StudyPipelinePreview,
+  type CourseInventoryResponse,
   type StudyPipelineStage,
   type StudyPipelineStatusResponse,
 } from "@/components/study-pipeline-preview";
@@ -160,6 +162,12 @@ export function TaskStudyPanel({
   const [scriptIncluded, setScriptIncluded] = useState(false);
   const [pipelineStatus, setPipelineStatus] = useState<StudyPipelineStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [courseInventory, setCourseInventory] = useState<CourseInventoryResponse | null>(null);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
+  const [extractedDocuments, setExtractedDocuments] = useState<ExtractedDocumentsResponse | null>(null);
+  const [extractedLoading, setExtractedLoading] = useState(false);
+  const [extractedError, setExtractedError] = useState<string | null>(null);
   const [runningStage, setRunningStage] = useState<StudyPipelineStage | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -263,6 +271,12 @@ export function TaskStudyPanel({
     onTaskViewChange?.(null);
     setMessage(null);
     setError(null);
+    setCourseInventory(null);
+    setInventoryError(null);
+    setInventoryLoading(false);
+    setExtractedDocuments(null);
+    setExtractedError(null);
+    setExtractedLoading(false);
     if (taskViewOverride && (mode !== "script" || taskViewOverride.scriptMarkdown.trim())) {
       applyView(taskViewOverride, Boolean(taskViewOverride.scriptMarkdown));
       setLoading(false);
@@ -335,17 +349,36 @@ export function TaskStudyPanel({
     request?: { requestId: number; signal: AbortSignal },
   ) {
     setStatusLoading(true);
+    setInventoryLoading(true);
     setLoading(false);
     setError(null);
+    setInventoryError(null);
     setMessage(null);
     try {
-      const status = await studyPipelineRequest<StudyPipelineStatusResponse>(
-        `/courses/${encodeURIComponent(id)}/study-pipeline`,
-        request?.signal ? { signal: request.signal } : undefined,
-      );
+      const requestInit = request?.signal ? { signal: request.signal } : undefined;
+      const [statusResult, inventoryResult] = await Promise.allSettled([
+        studyPipelineRequest<StudyPipelineStatusResponse>(
+          `/courses/${encodeURIComponent(id)}/study-pipeline`,
+          requestInit,
+        ),
+        studyPipelineRequest<CourseInventoryResponse>(
+          `/courses/${encodeURIComponent(id)}/study-pipeline/inventory`,
+          requestInit,
+        ),
+      ]);
       if (request && (request.signal.aborted || request.requestId !== loadRequestId.current)) {
         return;
       }
+      if (inventoryResult.status === "fulfilled") {
+        setCourseInventory(inventoryResult.value);
+      } else if (!isAbortError(inventoryResult.reason)) {
+        setCourseInventory(null);
+        setInventoryError(formatStudyPipelineError(inventoryResult.reason));
+      }
+      if (statusResult.status === "rejected") {
+        throw statusResult.reason;
+      }
+      const status = statusResult.value;
       setPipelineStatus(status);
       if (status.stage === "curated") {
         await loadView(id, includeScript, request);
@@ -357,7 +390,46 @@ export function TaskStudyPanel({
     } finally {
       if (!request || (!request.signal.aborted && request.requestId === loadRequestId.current)) {
         setStatusLoading(false);
+        setInventoryLoading(false);
       }
+    }
+  }
+
+  async function refreshInventory() {
+    if (!courseId || inventoryLoading) {
+      return;
+    }
+    setInventoryLoading(true);
+    setInventoryError(null);
+    try {
+      const inventory = await studyPipelineRequest<CourseInventoryResponse>(
+        `/courses/${encodeURIComponent(courseId)}/study-pipeline/inventory`,
+      );
+      setCourseInventory(inventory);
+    } catch (loadError) {
+      setCourseInventory(null);
+      setInventoryError(formatStudyPipelineError(loadError));
+    } finally {
+      setInventoryLoading(false);
+    }
+  }
+
+  async function loadExtractedDocuments() {
+    if (!courseId || extractedLoading) {
+      return;
+    }
+    setExtractedLoading(true);
+    setExtractedError(null);
+    try {
+      const documents = await studyPipelineRequest<ExtractedDocumentsResponse>(
+        `/courses/${encodeURIComponent(courseId)}/study-pipeline/extracted-documents`,
+      );
+      setExtractedDocuments(documents);
+    } catch (loadError) {
+      setExtractedDocuments(null);
+      setExtractedError(formatStudyPipelineError(loadError));
+    } finally {
+      setExtractedLoading(false);
     }
   }
 
@@ -874,8 +946,16 @@ export function TaskStudyPanel({
       {!view && !loading ? (
         <StudyPipelinePreview
           course={course}
+          extractedDocuments={extractedDocuments}
+          extractedError={extractedError}
+          extractedLoading={extractedLoading}
+          inventory={courseInventory}
+          inventoryError={inventoryError}
+          inventoryLoading={inventoryLoading}
           loading={statusLoading}
           mode={mode}
+          onLoadExtractedDocuments={() => void loadExtractedDocuments()}
+          onRefreshInventory={() => void refreshInventory()}
           onRunStage={(stage) => void runPipelineStage(stage)}
           runningStage={runningStage}
           status={pipelineStatus}
