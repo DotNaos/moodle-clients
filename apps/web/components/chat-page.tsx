@@ -42,7 +42,7 @@ import {
   type CodexAttachment,
 } from "@/lib/codex-files";
 import type { Course, Material, User } from "@/lib/dashboard-data";
-import { courseTitle } from "@/lib/dashboard-data";
+import { courseImageUrl, courseTitle } from "@/lib/dashboard-data";
 import type { PDFViewState } from "@/lib/pdf-context";
 import { upsertRecentChat } from "@/lib/recent-chat-storage";
 import { cn } from "@/lib/utils";
@@ -309,6 +309,15 @@ export function ChatPage({
     }
   }
 
+  // Touch devices have no wheel event, so without this the follow loop fights
+  // every upward swipe while a response streams in.
+  function handleFeedTouchMove() {
+    if (stickRef.current) {
+      setStick(false);
+      stopFollow();
+    }
+  }
+
   function scrollToBottom() {
     setStick(true);
     ensureFollow();
@@ -360,18 +369,15 @@ export function ChatPage({
     <div className="flex flex-col">
       {studyContext ? <StudyContextChip context={studyContext} /> : null}
       <ChatComposer
-        courses={courses}
         loadMaterials={loadMaterials}
         modelsHook={modelsHook}
         pending={pending}
         prompt={prompt}
         running={chat.running}
         selectedCourse={selectedCourse}
-        selectedCourseId={selectedCourseId}
         uploading={uploading}
         onAddFiles={addFiles}
         onAddResources={addResources}
-        onCourseChange={handleCourseChange}
         onPromptChange={setPrompt}
         onRemove={removePending}
         onSend={handleSend}
@@ -386,11 +392,26 @@ export function ChatPage({
   const mainContent =
     !hasMessages && !isSidebar ? (
       <div className="flex h-full min-h-0 flex-1 flex-col items-center justify-center bg-background px-4 py-8">
-        <h1 className="mb-8 text-center text-[1.75rem] font-semibold tracking-tight sm:mb-10 sm:text-[2rem]">
+        <h1 className="mb-4 text-center text-[1.75rem] font-semibold tracking-tight sm:text-[2rem]">
           What do you want to Learn?
         </h1>
+        <div className="mb-8 flex justify-center sm:mb-10">
+          <div className="rounded-full bg-secondary px-3 py-1.5">
+            <CourseSelector
+              courses={courses}
+              selectedCourse={selectedCourse}
+              selectedCourseId={selectedCourseId}
+              onCourseChange={handleCourseChange}
+            />
+          </div>
+        </div>
         <div className="w-full max-w-3xl">
           {chat.error ? <ChatError message={chat.error} /> : null}
+          <div className="mb-3 flex justify-center sm:hidden">
+            <div className="rounded-full bg-secondary/70 px-1.5 py-0.5">
+              <ComposerModelSelector modelsHook={modelsHook} />
+            </div>
+          </div>
           {composer}
         </div>
       </div>
@@ -401,17 +422,29 @@ export function ChatPage({
             ref={scrollRef}
             className={cn("h-full overflow-auto", isSidebar ? "p-3" : "p-4 md:p-8")}
             onScroll={handleFeedScroll}
+            onTouchMove={handleFeedTouchMove}
           >
             <div className={cn("mx-auto flex w-full flex-col gap-4", contentWidth)}>
               {chat.messages.length === 0 ? (
-                <p className="px-1 py-8 text-center text-sm text-muted-foreground">
-                  Frag mich etwas zu diesem Kurs.
-                </p>
+                isSidebar && selectedCourse ? (
+                  <SidebarCourseHero course={selectedCourse} />
+                ) : (
+                  <p className="px-1 py-8 text-center text-sm text-muted-foreground">
+                    Frag mich etwas zu diesem Kurs.
+                  </p>
+                )
               ) : (
                 chat.messages.map((message) => <ChatMessageBubble key={message.id} message={message} />)
               )}
             </div>
           </div>
+          {!isSidebar && hasMessages ? (
+            <div className="pointer-events-none absolute left-3 top-2 z-10 sm:hidden">
+              <div className="pointer-events-auto rounded-full bg-background/90 px-1.5 py-0.5 shadow-md ring-1 ring-border/60 backdrop-blur-md">
+                <ComposerModelSelector modelsHook={modelsHook} />
+              </div>
+            </div>
+          ) : null}
           {!stickToBottom && chat.messages.length > 0 ? (
             <button
               aria-label="Nach unten scrollen"
@@ -426,6 +459,16 @@ export function ChatPage({
         <div className={cn("shrink-0", isSidebar ? "p-3" : "p-4 md:p-6")}>
           <div className={cn("mx-auto w-full", contentWidth)}>
             {chat.error ? <ChatError message={chat.error} /> : null}
+            {!isSidebar ? (
+              <div className="mb-2 flex justify-start px-1">
+                <CourseSelector
+                  courses={courses}
+                  selectedCourse={selectedCourse}
+                  selectedCourseId={selectedCourseId}
+                  onCourseChange={handleCourseChange}
+                />
+              </div>
+            ) : null}
             {composer}
           </div>
         </div>
@@ -436,8 +479,17 @@ export function ChatPage({
     return (
       <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden border-l border-border/50 bg-background">
         <div className="flex shrink-0 items-center gap-2 border-b border-border/50 px-3 py-2.5">
-          <MessageSquare aria-hidden className="size-4 text-muted-foreground" />
-          <h2 className="flex-1 text-sm font-semibold">Chat</h2>
+          {hasMessages && selectedCourse ? (
+            <>
+              <CourseThumbnail circle course={selectedCourse} size="compact" />
+              <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{courseTitle(selectedCourse)}</h2>
+            </>
+          ) : (
+            <>
+              <MessageSquare aria-hidden className="size-4 text-muted-foreground" />
+              <h2 className="flex-1 text-sm font-semibold">Chat</h2>
+            </>
+          )}
           {onClose ? (
             <button
               aria-label="Chat schließen"
@@ -458,6 +510,48 @@ export function ChatPage({
     <div className="flex h-full min-h-0">
       <div className="flex min-h-0 flex-1 flex-col">{mainContent}</div>
       <WorkspaceFilePanel className="hidden lg:flex" reloadKey={filesReloadKey} />
+    </div>
+  );
+}
+
+// Matches Tailwind's `sm` breakpoint so JSX structure can follow the layout.
+function useIsCompactViewport(): boolean {
+  const [compact, setCompact] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 639px)");
+    const update = () => setCompact(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  return compact;
+}
+
+// Empty state of the sidebar chat: the course is given by context, so it gets
+// a big visual hero instead of a picker.
+function SidebarCourseHero({ course }: { course: Course }) {
+  const imageUrl = courseImageUrl(course);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  return (
+    <div className="flex flex-col items-center gap-3 px-4 py-14 text-center">
+      <span className="grid size-24 shrink-0 place-items-center overflow-hidden rounded-full bg-secondary shadow-sm">
+        {imageUrl && !imageFailed ? (
+          <img
+            alt=""
+            className="h-full w-full object-cover"
+            referrerPolicy="no-referrer"
+            src={imageUrl}
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <GraduationCap aria-hidden className="size-8 text-muted-foreground" />
+        )}
+      </span>
+      <p className="max-w-full text-base font-semibold leading-snug">{courseTitle(course)}</p>
+      <p className="text-sm text-muted-foreground">Frag mich etwas zu diesem Kurs.</p>
     </div>
   );
 }
@@ -679,36 +773,28 @@ function StudyContextChip({ context }: { context: NonNullable<StudyChatContext> 
 }
 
 function ChatComposer({
-  courses,
   loadMaterials,
   modelsHook,
   pending,
   prompt,
   running,
   selectedCourse,
-  selectedCourseId,
-  showCoursePicker = true,
   uploading,
   onAddFiles,
   onAddResources,
-  onCourseChange,
   onPromptChange,
   onRemove,
   onSend,
 }: {
-  courses: Course[];
   loadMaterials: (courseId: string) => Promise<Material[]>;
   modelsHook: ReturnType<typeof useCodexModels>;
   pending: PendingItem[];
   prompt: string;
   running: boolean;
   selectedCourse: Course | null;
-  selectedCourseId: string | null;
-  showCoursePicker?: boolean;
   uploading: boolean;
   onAddFiles: (files: File[]) => void;
   onAddResources: (materials: Material[]) => void;
-  onCourseChange: (courseId: string) => void;
   onPromptChange: (value: string) => void;
   onRemove: (id: string) => void;
   onSend: () => void;
@@ -717,6 +803,7 @@ function ChatComposer({
   const filesInputRef = useRef<HTMLInputElement>(null);
   const photosInputRef = useRef<HTMLInputElement>(null);
   const [resourceModalOpen, setResourceModalOpen] = useState(false);
+  const compact = useIsCompactViewport();
   const busy = running || uploading;
   const canSend = (prompt.trim().length > 0 || pending.length > 0) && !busy;
 
@@ -726,8 +813,9 @@ function ChatComposer({
       return;
     }
     textarea.style.height = "0px";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
-  }, [prompt]);
+    // Compact (mobile): one line that grows to at most three lines.
+    textarea.style.height = `${Math.min(textarea.scrollHeight, compact ? 76 : 180)}px`;
+  }, [compact, prompt]);
 
   const addOptions: AddMenuOption[] = [
     { id: "files", label: "Dateien", icon: Paperclip, onSelect: () => filesInputRef.current?.click() },
@@ -735,102 +823,121 @@ function ChatComposer({
     { id: "resources", label: "Kursressourcen", icon: GraduationCap, onSelect: () => setResourceModalOpen(true) },
   ];
 
+  const pendingChips =
+    pending.length > 0 ? (
+      <div className={cn("flex flex-wrap gap-2", compact ? "mb-2 px-1" : "mb-2")}>
+        {pending.map((item) => (
+          <AttachmentChip
+            key={item.id}
+            kind={item.kind === "resource" ? "resource" : item.file.type.startsWith("image/") ? "image" : "file"}
+            name={item.kind === "resource" ? item.name : item.file.name}
+            previewUrl={item.kind === "file" ? item.previewUrl : undefined}
+            size={item.kind === "file" ? item.file.size : undefined}
+            onRemove={() => onRemove(item.id)}
+          />
+        ))}
+      </div>
+    ) : null;
+
+  const micButton = (
+    <button
+      aria-label="Spracheingabe"
+      className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+      type="button"
+    >
+      <Mic className="size-4" />
+    </button>
+  );
+
+  const sendButton = (
+    <button
+      aria-label="Senden"
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors",
+        canSend ? "bg-neutral-500 text-white hover:bg-neutral-600" : "bg-secondary text-muted-foreground",
+      )}
+      disabled={!canSend}
+      type="button"
+      onClick={onSend}
+    >
+      {busy ? <Spinner aria-hidden className="size-4" /> : <ArrowUp className="size-4" />}
+    </button>
+  );
+
+  const handleTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      onSend();
+    }
+  };
+
   return (
     <div className="flex flex-col">
-      {/* Composer card */}
-      <div className="relative z-10 flex min-h-[8.5rem] flex-col rounded-3xl border border-border/50 bg-background px-4 pb-3 pt-4 shadow-[0_6px_20px_rgba(0,0,0,0.06)]">
-        {pending.length > 0 ? (
-          <div className="mb-2 flex flex-wrap gap-2">
-            {pending.map((item) => (
-              <AttachmentChip
-                key={item.id}
-                kind={item.kind === "resource" ? "resource" : item.file.type.startsWith("image/") ? "image" : "file"}
-                name={item.kind === "resource" ? item.name : item.file.name}
-                previewUrl={item.kind === "file" ? item.previewUrl : undefined}
-                size={item.kind === "file" ? item.file.size : undefined}
-                onRemove={() => onRemove(item.id)}
-              />
-            ))}
+      <input
+        ref={filesInputRef}
+        multiple
+        className="hidden"
+        type="file"
+        onChange={(event) => handleFileInput(event, onAddFiles)}
+      />
+      <input
+        ref={photosInputRef}
+        multiple
+        accept="image/*"
+        className="hidden"
+        type="file"
+        onChange={(event) => handleFileInput(event, onAddFiles)}
+      />
+
+      {compact ? (
+        <>
+          {pendingChips}
+          {/* Compact composer: a single row that grows to at most three lines. */}
+          <div className="relative z-10 flex items-end gap-1 rounded-[1.6rem] border border-border/50 bg-background p-1.5 shadow-[0_6px_20px_rgba(0,0,0,0.06)]">
+            <ComposerAddMenu options={addOptions} />
+            <textarea
+              ref={textareaRef}
+              className="min-w-0 flex-1 resize-none bg-transparent px-1 py-1.5 text-base leading-6 outline-none placeholder:text-muted-foreground/45"
+              placeholder={`Ask about ${selectedCourse ? courseTitle(selectedCourse) : "anything"}`}
+              rows={1}
+              value={prompt}
+              onChange={(event) => onPromptChange(event.target.value)}
+              onKeyDown={handleTextareaKeyDown}
+            />
+            {micButton}
+            {sendButton}
           </div>
-        ) : null}
-        <div className="relative min-h-[4.75rem] flex-1">
-          {!prompt.trim() ? (
-            <p className="pointer-events-none absolute inset-x-0 top-0 text-base leading-relaxed text-muted-foreground/45">
-              Ask about{" "}
-              <span className="italic text-muted-foreground/60">{selectedCourse ? courseTitle(selectedCourse) : "anything"}</span>
-            </p>
-          ) : null}
-          <textarea
-            ref={textareaRef}
-            className="min-h-[4.75rem] w-full resize-none bg-transparent text-base leading-relaxed outline-none"
-            rows={1}
-            value={prompt}
-            onChange={(event) => onPromptChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                onSend();
-              }
-            }}
-          />
-        </div>
+        </>
+      ) : (
+        <div className="relative z-10 flex min-h-[8.5rem] flex-col rounded-3xl border border-border/50 bg-background px-4 pb-3 pt-4 shadow-[0_6px_20px_rgba(0,0,0,0.06)]">
+          {pendingChips}
+          <div className="relative min-h-[4.75rem] flex-1">
+            {!prompt.trim() ? (
+              <p className="pointer-events-none absolute inset-x-0 top-0 text-base leading-relaxed text-muted-foreground/45">
+                Ask about{" "}
+                <span className="italic text-muted-foreground/60">{selectedCourse ? courseTitle(selectedCourse) : "anything"}</span>
+              </p>
+            ) : null}
+            <textarea
+              ref={textareaRef}
+              className="min-h-[4.75rem] w-full resize-none bg-transparent text-base leading-relaxed outline-none"
+              rows={1}
+              value={prompt}
+              onChange={(event) => onPromptChange(event.target.value)}
+              onKeyDown={handleTextareaKeyDown}
+            />
+          </div>
 
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <input
-            ref={filesInputRef}
-            multiple
-            className="hidden"
-            type="file"
-            onChange={(event) => handleFileInput(event, onAddFiles)}
-          />
-          <input
-            ref={photosInputRef}
-            multiple
-            accept="image/*"
-            className="hidden"
-            type="file"
-            onChange={(event) => handleFileInput(event, onAddFiles)}
-          />
-          <ComposerAddMenu options={addOptions} />
-
-          <div className="flex shrink-0 items-center gap-1">
-            <ComposerModelSelector modelsHook={modelsHook} />
-            <button
-              aria-label="Spracheingabe"
-              className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-              type="button"
-            >
-              <Mic className="size-4" />
-            </button>
-            <button
-              aria-label="Senden"
-              className={cn(
-                "flex size-8 items-center justify-center rounded-full transition-colors",
-                canSend ? "bg-neutral-500 text-white hover:bg-neutral-600" : "bg-secondary text-muted-foreground",
-              )}
-              disabled={!canSend}
-              type="button"
-              onClick={onSend}
-            >
-              {busy ? <Spinner aria-hidden className="size-4" /> : <ArrowUp className="size-4" />}
-            </button>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <ComposerAddMenu options={addOptions} />
+            <div className="flex shrink-0 items-center gap-1">
+              <ComposerModelSelector modelsHook={modelsHook} />
+              {micButton}
+              {sendButton}
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* Podest: a narrower rounded surface tucked behind the card, peeking out below
-          so the course selector reads as a pedestal the composer rests on. Hidden in
-          the sidebar once a course is given by context. */}
-      {showCoursePicker ? (
-        <div className="relative z-0 mx-4 -mt-6 rounded-3xl border border-border/50 bg-secondary px-4 pb-2.5 pt-9">
-          <CourseSelector
-            courses={courses}
-            selectedCourse={selectedCourse}
-            selectedCourseId={selectedCourseId}
-            onCourseChange={onCourseChange}
-          />
-        </div>
-      ) : null}
+      )}
 
       <CourseResourcePickerModal
         course={selectedCourse}
