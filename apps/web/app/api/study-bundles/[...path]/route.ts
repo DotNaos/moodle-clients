@@ -130,7 +130,7 @@ async function assetResponse(request: Request, courseId: string) {
   if (!info?.isFile()) {
     return Response.json({ error: "Asset not found" }, { status: 404 });
   }
-  const stream = Readable.toWeb(createReadStream(assetPath)) as ReadableStream;
+  const stream = Readable.toWeb(createReadStream(assetPath)) as unknown as ReadableStream;
   return new Response(stream, {
     headers: {
       "cache-control": "private, max-age=3600",
