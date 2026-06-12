@@ -176,17 +176,21 @@ export function TaskOutline({
   return (
     <div className="flex flex-col gap-5">
       <header className="rounded-3xl bg-secondary/60 px-5 py-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Dein Fortschritt</p>
-            <p className="mt-1 text-2xl font-semibold tracking-tight">
+            <p className="text-2xl font-semibold tracking-tight">
               {doneCount}
               <span className="text-muted-foreground">/{orderedTasks.length} erledigt</span>
+            </p>
+            <p className="mt-0.5 truncate text-sm text-muted-foreground">
+              {nextTask
+                ? `Als Nächstes: ${taskDisplayTitle(nextTask.sheetTitle, nextTask.title)}`
+                : "Du hast alle Aufgaben abgeschlossen."}
             </p>
           </div>
           {nextTask ? (
             <button
-              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+              className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
               onClick={() => onSelectTask(nextTask.id)}
               type="button"
             >
@@ -194,20 +198,18 @@ export function TaskOutline({
               <ArrowRight aria-hidden className="size-4" />
             </button>
           ) : (
-            <span className="inline-flex min-h-11 items-center gap-2 rounded-full bg-emerald-500/15 px-5 py-2 text-sm font-semibold text-emerald-600">
+            <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full bg-emerald-500/15 px-5 py-2 text-sm font-semibold text-emerald-600">
               <CheckCircle2 aria-hidden className="size-4" />
               Alles erledigt
             </span>
           )}
         </div>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-background">
-          <div className="h-full rounded-full bg-emerald-500 transition-[width]" style={{ width: `${progress}%` }} />
+        <div className="mt-3 flex items-center gap-2.5">
+          <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-background">
+            <div className="h-full rounded-full bg-emerald-500 transition-[width]" style={{ width: `${progress}%` }} />
+          </div>
+          <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">{progress}%</span>
         </div>
-        <p className="mt-2 truncate text-xs text-muted-foreground">
-          {nextTask
-            ? `${progress}% · Als Nächstes: ${taskDisplayTitle(nextTask.sheetTitle, nextTask.title)}`
-            : "Du hast alle Aufgaben abgeschlossen."}
-        </p>
       </header>
 
       {groups.map((group) => {
