@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, ChevronRight, Menu } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronRight, Home, Menu } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { NavigatorBreadcrumb, NavigatorState } from "@/lib/navigator";
@@ -65,9 +65,18 @@ export function TopBar({
         </button>
       </div>
 
+      <button
+        aria-label="Home"
+        className={ICON_BUTTON_CLASS}
+        onClick={() => onNavigate(breadcrumbs[0]?.target ?? { path: { kind: "home" }, document: null })}
+        type="button"
+      >
+        <Home aria-hidden className="size-4" />
+      </button>
+
       <nav aria-label="Navigationspfad" className="ml-1 flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden">
-        {breadcrumbs.map((crumb, index) => {
-          const isCurrent = index === breadcrumbs.length - 1;
+        {breadcrumbs.slice(1).map((crumb, index) => {
+          const isCurrent = index === breadcrumbs.length - 2;
           return (
             <span className={cn("flex items-center gap-0.5", isCurrent ? "min-w-0" : "shrink-0")} key={crumb.id}>
               {index > 0 ? (

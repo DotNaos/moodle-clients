@@ -160,16 +160,12 @@ export function MoodleConnectCard({ onConnected, reason }: MoodleConnectCardProp
   const bridgeMessage = bridgeError ? getBridgeErrorMessage(bridgeError) : null;
 
   return (
-    <section className="mx-auto grid w-full max-w-6xl gap-7 px-4 py-6 sm:px-6 sm:py-8 lg:grid-cols-[minmax(320px,440px)_1px_minmax(280px,1fr)] lg:items-start lg:px-8 lg:py-12">
-      <div className="space-y-7">
+    <section className="mx-auto grid w-full max-w-5xl gap-10 px-4 py-6 sm:px-6 sm:py-8 md:grid-cols-2 md:items-start md:px-8 md:py-10">
+      <div className="space-y-6">
         <div className="space-y-3">
-          <p className="text-sm font-medium uppercase tracking-[0.22em] text-muted-foreground">One-time setup</p>
-          <h2 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl lg:text-5xl">Connect Moodle</h2>
-          <p className="max-w-md text-sm leading-6 text-muted-foreground sm:text-base sm:leading-7">
-            Use your FHGR Moodle login once. The app stores the Moodle token, not your password.
-          </p>
+          <h2 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Connect Moodle</h2>
           {reason ? (
-            <p className="max-w-md border-l-2 border-red-500/50 pl-3 text-sm font-medium leading-6 text-red-700">
+            <p className="max-w-md rounded-2xl bg-destructive/10 px-4 py-3 text-sm font-medium leading-6 text-destructive">
               {reason}
             </p>
           ) : null}
@@ -183,7 +179,7 @@ export function MoodleConnectCard({ onConnected, reason }: MoodleConnectCardProp
               onChange={(event) => setUsername(event.target.value)}
               placeholder="username"
               autoComplete="username"
-              className="h-12 border border-border/70 bg-white/80 px-5 shadow-sm focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/25 sm:h-13"
+              className="h-12 px-5 focus-visible:ring-2 focus-visible:ring-primary/25"
             />
           </label>
           <label className="block space-y-2">
@@ -194,10 +190,10 @@ export function MoodleConnectCard({ onConnected, reason }: MoodleConnectCardProp
               placeholder="Moodle password"
               type="password"
               autoComplete="current-password"
-              className="h-12 border border-border/70 bg-white/80 px-5 shadow-sm focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/25 sm:h-13"
+              className="h-12 px-5 focus-visible:ring-2 focus-visible:ring-primary/25"
             />
           </label>
-          <Button className="h-12 w-full rounded-full text-base sm:h-13" type="submit" disabled={credentialLoading || !username.trim() || !password}>
+          <Button className="h-12 w-full rounded-full text-base" type="submit" disabled={credentialLoading || !username.trim() || !password}>
             {credentialLoading ? <Loader2 className="animate-spin" aria-hidden /> : null}
             Connect
           </Button>
@@ -206,18 +202,13 @@ export function MoodleConnectCard({ onConnected, reason }: MoodleConnectCardProp
         {connectError ? <Alert className="bg-red-500/10 text-red-700">{connectError}</Alert> : null}
       </div>
 
-      <div className="hidden h-full min-h-[360px] bg-border/70 lg:block" />
-
-      <div className="space-y-7">
-        <div className="space-y-2">
+      <div className="space-y-6 md:pt-2">
+        <div>
           <h3 className="text-lg font-semibold tracking-tight sm:text-xl">iPhone bridge</h3>
-          <p className="max-w-lg text-sm leading-6 text-muted-foreground">
-            Already using the mobile app? Scan or copy this bridge link instead of typing your password.
-          </p>
         </div>
 
         <div className="grid gap-5 sm:grid-cols-[180px_minmax(0,1fr)] sm:items-center">
-          <div className="grid aspect-square w-36 max-w-full place-items-center rounded-[1.25rem] border border-border/70 bg-white/85 p-4 shadow-sm sm:w-44">
+          <div className="grid aspect-square w-36 max-w-full place-items-center rounded-[1.25rem] bg-secondary p-4 sm:w-44">
             {state === "starting" ? (
               <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
             ) : bridgeUrl ? (

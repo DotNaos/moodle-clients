@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSquare } from "lucide-react";
+import { AlertCircle, MessageSquare, X } from "lucide-react";
 import { Show, useAuth } from "@clerk/nextjs";
 import {
   useCallback,
@@ -13,8 +13,14 @@ import {
   type ReactNode,
 } from "react";
 
-import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { FullPageLoading, SignedOutHome } from "@/components/home-states";
 import { HeaderActionsMenu } from "@/components/header-actions-menu";
 import { CalendarPanel } from "@/components/course-calendar-panel";
@@ -878,7 +884,7 @@ export default function Home() {
             showSidebarToggle={Boolean(activeDocument)}
           />
 
-          {error ? <DashboardNotice message={error} /> : null}
+          {error ? <DashboardToast message={error} onDismiss={() => setError(null)} /> : null}
 
           {needsConnection ? (
             <section className="min-h-0 flex-1 overflow-auto px-4 py-4">
@@ -1056,12 +1062,49 @@ function taskTitleForId(taskId: string, studyOutline: StudyOutline, taskView: Ta
   );
 }
 
-function DashboardNotice({ message }: { message: string }) {
+function DashboardToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
   return (
-    <div className="min-w-0 px-3 py-2">
-      <Alert className="inline-flex max-w-3xl items-start rounded-2xl px-4 py-3 text-sm font-medium leading-6">
-        {message}
-      </Alert>
-    </div>
+    <>
+      <div className="pointer-events-none fixed inset-x-3 bottom-4 z-40 flex justify-center md:inset-x-auto md:right-4 md:justify-end">
+        <div
+          role="status"
+          className="pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-full bg-foreground px-3 py-2 text-background shadow-xl"
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-background/15">
+            <AlertCircle aria-hidden className="size-4" />
+          </span>
+          <p className="min-w-0 flex-1 truncate text-sm font-medium">{message}</p>
+          <Button
+            className="h-8 rounded-full bg-background/15 px-3 text-background hover:bg-background/25"
+            onClick={() => setDetailsOpen(true)}
+            type="button"
+            variant="ghost"
+          >
+            Details
+          </Button>
+          <button
+            aria-label="Meldung schließen"
+            className="grid size-8 shrink-0 place-items-center rounded-full text-background/80 transition-colors hover:bg-background/15 hover:text-background"
+            onClick={onDismiss}
+            type="button"
+          >
+            <X aria-hidden className="size-4" />
+          </button>
+        </div>
+      </div>
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent className="rounded-3xl border-0 p-5 shadow-2xl ring-0 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Fehlerdetails</DialogTitle>
+            <DialogDescription>Die vollständige Meldung aus der letzten Anfrage.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-64 overflow-auto rounded-2xl bg-secondary px-4 py-3 text-sm leading-6 text-foreground">
+            {message}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
