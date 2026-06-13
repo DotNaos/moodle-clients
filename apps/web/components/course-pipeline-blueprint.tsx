@@ -20,19 +20,27 @@ import {
   type PipelineRunRecord,
   type PipelineRunsResponse,
 } from "@/components/course-pipeline-blueprint-model";
+import type { ExtractedDocumentsResponse } from "@/components/extracted-document-inspector";
 import type {
   CourseInventoryResponse,
   StudyPipelineStatusResponse,
 } from "@/components/study-pipeline-preview";
+import type { TaskViewResponse } from "@/components/task-study-panel";
 import { cn } from "@/lib/utils";
 
 export { buildBlueprintGraph };
 export type { PipelineRunRecord, PipelineRunsResponse };
 
 type CoursePipelineBlueprintProps = {
+  extractedDocuments: ExtractedDocumentsResponse | null;
   inventory: CourseInventoryResponse | null;
   runs: PipelineRunsResponse | null;
   status: StudyPipelineStatusResponse | null;
+  taskView: TaskViewResponse | null;
+  unavailable?: {
+    extractedDocuments?: string;
+    taskView?: string;
+  };
 };
 
 const nodeTypes = {
@@ -40,8 +48,18 @@ const nodeTypes = {
   frame: BlueprintGroupFrame,
 };
 
-export function CoursePipelineBlueprint({ inventory, runs, status }: CoursePipelineBlueprintProps) {
-  const graph = useMemo(() => buildBlueprintGraph({ inventory, runs, status }), [inventory, runs, status]);
+export function CoursePipelineBlueprint({
+  extractedDocuments,
+  inventory,
+  runs,
+  status,
+  taskView,
+  unavailable,
+}: CoursePipelineBlueprintProps) {
+  const graph = useMemo(
+    () => buildBlueprintGraph({ extractedDocuments, inventory, runs, status, taskView, unavailable }),
+    [extractedDocuments, inventory, runs, status, taskView, unavailable],
+  );
   const selectableNodes = useMemo(() => graph.nodes.filter(isBlueprintNode), [graph.nodes]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(selectableNodes[0]?.id ?? null);
   const selectedNode = selectableNodes.find((node) => node.id === selectedNodeId) ?? selectableNodes[0];

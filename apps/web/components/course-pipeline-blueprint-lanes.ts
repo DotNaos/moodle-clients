@@ -4,12 +4,25 @@ import type { CourseInventoryNode, CourseInventoryResponse, CourseInventoryTaskG
 import {
   codexNodeData,
   collectProblems,
+  extractedDocumentProblems,
   extractionNodeData,
-  finalOutputNodeData,
   materializedStepNode,
   missingSolutionNode,
 } from "@/components/course-pipeline-blueprint-node-data";
-import type { BlueprintGraphNode, BlueprintNode, BlueprintNodeData, PipelineRunRecord, PipelineRunsResponse } from "@/components/course-pipeline-blueprint-model";
+import {
+  finalScriptOutputNodeData,
+  finalTaskOutputNodeData,
+} from "@/components/course-pipeline-blueprint-output-data";
+import type {
+  BlueprintGraphNode,
+  BlueprintNode,
+  BlueprintNodeData,
+  ExtractedLookup,
+  OutputLookup,
+  PipelineRunRecord,
+  PipelineRunsResponse,
+} from "@/components/course-pipeline-blueprint-model";
+import { resourceKeys } from "@/components/course-pipeline-blueprint-model";
 import {
   formatDateTime,
   runArtifactSummary,
@@ -21,21 +34,26 @@ import {
 } from "@/components/course-pipeline-blueprint-run-utils";
 
 type BlueprintNodeInput = Omit<BlueprintNode, "type"> & { type?: "blueprint" };
+type ExtractedDocumentRecord = NonNullable<ExtractedLookup["response"]>["documents"][number];
 
 export function addTaskGroupLane({
   activeRunIds,
   edges,
+  extractedLookup,
   group,
   index,
   nodes,
+  outputLookup,
   runLookup,
   y,
 }: {
   activeRunIds: Set<string>;
   edges: Edge[];
+  extractedLookup: ExtractedLookup;
   group: CourseInventoryTaskGroup;
   index: number;
   nodes: BlueprintGraphNode[];
+  outputLookup: OutputLookup;
   runLookup: RunLookup;
   y: number;
 }) {
@@ -56,6 +74,7 @@ export function addTaskGroupLane({
   const sheetRun = findLatestRun(runLookup, group.sheet.id, ["extracted", "extract_text", "extract_pages"]);
   const solutionRun = group.solution ? findLatestRun(runLookup, group.solution.id, ["extracted", "extract_text", "extract_pages"]) : null;
   const codexRun = findLatestRun(runLookup, group.sheet.id, ["curated", "codex_curate"]);
+  const taskOutputs = findTaskOutputs(outputLookup, group.sheet.id);
 
   addNode(nodes, {
     id: groupId,
@@ -96,6 +115,7 @@ export function addTaskGroupLane({
     edges,
     extractionId: sheetExtractionId,
     extractionRun: sheetRun,
+    extractedDocument: findExtractedDocument(extractedLookup, group.sheet.id),
     nodes,
     pagesId: sheetPagesId,
     pdfId: sheetPdfId,
@@ -114,6 +134,7 @@ export function addTaskGroupLane({
       edges,
       extractionId: solutionExtractionId,
       extractionRun: solutionRun,
+      extractedDocument: findExtractedDocument(extractedLookup, group.solution.id),
       nodes,
       pagesId: solutionPagesId,
       pdfId: solutionPdfId,
@@ -175,6 +196,9 @@ export function addTaskGroupLane({
       activeRunIds,
       inputLabel: group.title,
       outputLabel: "task draft[]",
+      outputPreview: taskOutputs.length > 0
+        ? taskOutputs.map((task) => `${task.title}\n${task.promptMarkdown.slice(0, 400)}`).join("\n\n")
+        : undefined,
       run: codexRun,
       subtitle: "task transform",
     }),
@@ -184,13 +208,7 @@ export function addTaskGroupLane({
   addNode(nodes, {
     id: outputId,
     position: { x: PIPELINE_X.output, y },
-    data: finalOutputNodeData({
-      sourceLabel: group.title,
-      status: codexRun?.status ?? "pending",
-      title: `Output ${index + 1}`,
-      type: "task",
-      upstreamProblems: collectProblems(group, sheetRun, solutionRun),
-    }),
+    data: finalTaskOutputNodeData({ group, index, outputs: taskOutputs, upstreamProblems: collectProblems(group, sheetRun, solutionRun) }),
   });
   addEdge(edges, codexId, outputId, "publish", { edgeType: "straight", sourceHandle: "out-2", targetHandle: "in-2" });
 }
@@ -198,16 +216,20 @@ export function addTaskGroupLane({
 export function addScriptLane({
   activeRunIds,
   edges,
+  extractedLookup,
   index,
   nodes,
+  outputLookup,
   resource,
   runLookup,
   y,
 }: {
   activeRunIds: Set<string>;
   edges: Edge[];
+  extractedLookup: ExtractedLookup;
   index: number;
   nodes: BlueprintGraphNode[];
+  outputLookup: OutputLookup;
   resource: CourseInventoryNode;
   runLookup: RunLookup;
   y: number;
@@ -222,6 +244,7 @@ export function addScriptLane({
   const outputId = `${baseId}-output`;
   const extractionRun = findLatestRun(runLookup, resource.id, ["extracted", "extract_text", "extract_pages"]);
   const codexRun = findLatestRun(runLookup, resource.id, ["curated", "codex_curate"]);
+  const scriptOutputs = findScriptOutputs(outputLookup, resource.id);
 
   addNode(nodes, {
     id: baseId,
@@ -253,6 +276,7 @@ export function addScriptLane({
     edges,
     extractionId,
     extractionRun,
+    extractedDocument: findExtractedDocument(extractedLookup, resource.id),
     nodes,
     pagesId,
     pdfId,
@@ -295,6 +319,9 @@ export function addScriptLane({
       activeRunIds,
       inputLabel: resource.name,
       outputLabel: "script section[]",
+      outputPreview: scriptOutputs.length > 0
+        ? scriptOutputs.map((section) => `${section.title}\n${section.statusLabel}`).join("\n\n")
+        : undefined,
       run: codexRun,
       subtitle: "script transform",
     }),
@@ -304,13 +331,7 @@ export function addScriptLane({
   addNode(nodes, {
     id: outputId,
     position: { x: PIPELINE_X.output, y },
-    data: finalOutputNodeData({
-      sourceLabel: resource.name,
-      status: codexRun?.status ?? "pending",
-      title: `Script Section ${index + 1}`,
-      type: "script",
-      upstreamProblems: extractionRun ? [] : [{ label: "Extraction missing", detail: "No extraction is available for this script resource.", severity: "warning" }],
-    }),
+    data: finalScriptOutputNodeData({ index, outputs: scriptOutputs, resource, upstreamProblems: extractionRun ? [] : [{ label: "Extraction missing", detail: "No extraction is available for this script resource.", severity: "warning" }] }),
   });
   addEdge(edges, codexId, outputId, "publish", { edgeType: "straight", sourceHandle: "out-2", targetHandle: "in-2" });
 }
@@ -320,6 +341,7 @@ function addPdfPath({
   edges,
   extractionId,
   extractionRun,
+  extractedDocument,
   nodes,
   pagesId,
   pdfId,
@@ -336,6 +358,7 @@ function addPdfPath({
   edges: Edge[];
   extractionId: string;
   extractionRun: PipelineRunRecord | null;
+  extractedDocument: ExtractedDocumentRecord | null;
   nodes: BlueprintGraphNode[];
   pagesId: string;
   pdfId: string;
@@ -378,11 +401,14 @@ function addPdfPath({
     id: pagesId,
     position: { x: PIPELINE_X.pages, y: y + yOffset },
     data: materializedStepNode({
-      detail: "Splits a PDF file into pages. Real page count and page images should be attached here once the backend exposes them.",
+      count: extractedDocument?.pages.length,
+      detail: extractedDocument
+        ? `Stored ${extractedDocument.pages.length} extracted page${extractedDocument.pages.length === 1 ? "" : "s"} for this PDF.`
+        : "Splits a PDF file into pages. Real page count and page images should be attached here once the backend exposes them.",
       input: "pdf file",
       output: "pages[]",
       resource,
-      status: extractionRun ? "materialized" : "pending",
+      status: extractedDocument ? extractedDocument.status : "missing",
       stepKind: "split",
       title: "Pages",
     }),
@@ -393,11 +419,14 @@ function addPdfPath({
     id: sectionsId,
     position: { x: PIPELINE_X.sections, y: y + yOffset },
     data: materializedStepNode({
-      detail: "Detects semantic sections such as paragraphs, task statements, formulas, images, tables, and captions.",
+      count: extractedDocument?.pages.reduce((sum, page) => sum + page.blocks.length, 0),
+      detail: extractedDocument
+        ? `Stored ${extractedDocument.pages.reduce((sum, page) => sum + page.blocks.length, 0)} detected block${extractedDocument.pages.reduce((sum, page) => sum + page.blocks.length, 0) === 1 ? "" : "s"} across ${extractedDocument.pages.length} page${extractedDocument.pages.length === 1 ? "" : "s"}.`
+        : "Detects semantic sections such as paragraphs, task statements, formulas, images, tables, and captions.",
       input: "pages[]",
       output: "sections[]",
       resource,
-      status: extractionRun ? "materialized" : "pending",
+      status: extractedDocument ? extractedDocument.status : "missing",
       stepKind: "split",
       title: "Sections",
     }),
@@ -407,7 +436,7 @@ function addPdfPath({
   addNode(nodes, {
     id: extractionId,
     position: { x: PIPELINE_X.extraction, y: y + yOffset },
-    data: extractionNodeData({ activeRunIds, resource, run: extractionRun }),
+    data: extractionNodeData({ activeRunIds, document: extractedDocument, resource, run: extractionRun }),
   });
   addEdge(edges, sectionsId, extractionId, "extract", { edgeType: "straight", sourceHandle: "out-2", targetHandle: "in-2" });
 }
@@ -459,42 +488,71 @@ export function addReviewLane({
 
 export type RunLookup = {
   byResourceStage: Map<string, PipelineRunRecord[]>;
-  byStage: Map<string, PipelineRunRecord[]>;
 };
 
 export function buildRunLookup(runs: PipelineRunRecord[]): RunLookup {
   const byResourceStage = new Map<string, PipelineRunRecord[]>();
-  const byStage = new Map<string, PipelineRunRecord[]>();
   for (const run of runs) {
-    const stageRuns = byStage.get(run.stage) ?? [];
-    stageRuns.push(run);
-    byStage.set(run.stage, stageRuns);
     if (!run.resourceId) continue;
-    const resourceKey = runKey(run.resourceId, run.stage);
-    const resourceRuns = byResourceStage.get(resourceKey) ?? [];
-    resourceRuns.push(run);
-    byResourceStage.set(resourceKey, resourceRuns);
+    for (const key of resourceKeys(run.resourceId)) {
+      const resourceKey = runKey(key, run.stage);
+      const resourceRuns = byResourceStage.get(resourceKey) ?? [];
+      resourceRuns.push(run);
+      byResourceStage.set(resourceKey, resourceRuns);
+    }
   }
-  for (const records of [...byResourceStage.values(), ...byStage.values()]) {
+  for (const records of byResourceStage.values()) {
     records.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
-  return { byResourceStage, byStage };
+  return { byResourceStage };
 }
 
 function findLatestRun(runLookup: RunLookup, resourceId: string, stages: string[]): PipelineRunRecord | null {
   for (const stage of stages) {
-    const resourceRun = runLookup.byResourceStage.get(runKey(resourceId, stage))?.[0];
-    if (resourceRun) return resourceRun;
-  }
-  for (const stage of stages) {
-    const stageRun = runLookup.byStage.get(stage)?.[0];
-    if (stageRun) return stageRun;
+    for (const key of resourceKeys(resourceId)) {
+      const resourceRun = runLookup.byResourceStage.get(runKey(key, stage))?.[0];
+      if (resourceRun) return resourceRun;
+    }
   }
   return null;
 }
 
 function runKey(resourceId: string, stage: string): string {
   return `${resourceId}:${stage}`;
+}
+
+function findExtractedDocument(extractedLookup: ExtractedLookup, resourceId: string) {
+  for (const key of resourceKeys(resourceId)) {
+    const document = extractedLookup.byResourceId.get(key);
+    if (document) return document;
+  }
+  return null;
+}
+
+function findTaskOutputs(outputLookup: OutputLookup, resourceId: string) {
+  const seen = new Set<string>();
+  const outputs = [];
+  for (const key of resourceKeys(resourceId)) {
+    for (const output of outputLookup.byResourceId.get(key) ?? []) {
+      if (seen.has(output.taskId)) continue;
+      seen.add(output.taskId);
+      outputs.push(output);
+    }
+  }
+  return outputs;
+}
+
+function findScriptOutputs(outputLookup: OutputLookup, resourceId: string) {
+  const seen = new Set<string>();
+  const outputs = [];
+  for (const key of resourceKeys(resourceId)) {
+    for (const output of outputLookup.scriptSectionsByResourceId.get(key) ?? []) {
+      if (seen.has(output.id)) continue;
+      seen.add(output.id);
+      outputs.push(output);
+    }
+  }
+  return outputs;
 }
 
 export function buildWarnings(

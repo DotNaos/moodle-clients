@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
 import { buildBlueprintGraph, type PipelineRunsResponse } from "@/components/course-pipeline-blueprint";
+import type { ExtractedDocumentsResponse } from "@/components/extracted-document-inspector";
 import type { CourseInventoryResponse, StudyPipelineStatusResponse } from "@/components/study-pipeline-preview";
+import type { TaskViewResponse } from "@/components/task-study-panel";
 
 const inventory: CourseInventoryResponse = {
   artifactRoot: "study-pipeline/course-22584",
@@ -165,9 +167,151 @@ const runs: PipelineRunsResponse = {
   ],
 };
 
+const resourceRuns: PipelineRunsResponse = {
+  activeSelections: [
+    {
+      activeRunId: "run-extracted-sheet-01",
+      reason: "selected in course pipeline inspector",
+      resourceId: "resource:moodle:947711",
+      selectedAt: "2026-06-13T07:05:00Z",
+      sourceId: "source:moodle-course:22584",
+      stage: "extracted",
+    },
+  ],
+  courseId: "22584",
+  runs: [
+    {
+      artifactRefs: [{ id: "ocr-1", kind: "ocr_text", metadata: { chars: 240, preview: "Extracted task text." } }],
+      artifactRoot: "study-pipeline/course-22584/run-extracted-sheet-01",
+      configHash: "config:extracted:docling:default",
+      courseId: "22584",
+      createdAt: "2026-06-13T07:03:00Z",
+      engine: "docling",
+      id: "run-extracted-sheet-01",
+      ownership: "shared",
+      resourceId: "resource:moodle:947711",
+      sourceId: "source:moodle-course:22584",
+      stage: "extracted",
+      status: "succeeded",
+    },
+    {
+      artifactRefs: [{ id: "ocr-solution-1", kind: "ocr_text", metadata: { chars: 140, preview: "Extracted solution text." } }],
+      artifactRoot: "study-pipeline/course-22584/run-extracted-solution-01",
+      configHash: "config:extracted:docling:default",
+      courseId: "22584",
+      createdAt: "2026-06-13T07:03:30Z",
+      engine: "docling",
+      id: "run-extracted-solution-01",
+      ownership: "shared",
+      resourceId: "resource:moodle:947712",
+      sourceId: "source:moodle-course:22584",
+      stage: "extracted",
+      status: "succeeded",
+    },
+  ],
+};
+
+const extractedDocuments: ExtractedDocumentsResponse = {
+  courseId: "22584",
+  engine: "docling",
+  generatedAt: "2026-06-13T07:04:00Z",
+  runId: "run-extracted-sheet-01",
+  summary: {
+    embeddedImageAssets: 1,
+    pagePreviewAssets: 1,
+    totalBlocks: 2,
+    totalDocuments: 1,
+    totalPages: 1,
+    unknownBlocks: 0,
+  },
+  documents: [
+    {
+      assets: [{ id: "img-1", kind: "image", mimeType: "image/png", pageNumber: 1, path: "/assets/img-1.png" }],
+      diagnostics: {},
+      engine: "docling",
+      id: "document-947711",
+      pages: [
+        {
+          blocks: [
+            { id: "block-title", pageNumber: 1, text: "Aufgabe 1", type: "heading" },
+            { assetId: "img-1", id: "block-image", pageNumber: 1, type: "image" },
+          ],
+          id: "page-1",
+          pageNumber: 1,
+          previewAssetId: "img-1",
+        },
+      ],
+      resource: {
+        id: "resource:moodle:947711",
+        name: "Aufgabenblatt 01",
+        type: "pdf",
+      },
+      runId: "run-extracted-sheet-01",
+      status: "succeeded",
+    },
+    {
+      assets: [],
+      diagnostics: {},
+      engine: "docling",
+      id: "document-947712",
+      pages: [
+        {
+          blocks: [
+            { id: "solution-block-title", pageNumber: 1, text: "Lösung Aufgabe 1", type: "heading" },
+          ],
+          id: "solution-page-1",
+          pageNumber: 1,
+        },
+      ],
+      resource: {
+        id: "resource:moodle:947712",
+        name: "Aufgabenblatt 01 Lösung",
+        type: "pdf",
+      },
+      runId: "run-extracted-solution-01",
+      status: "succeeded",
+    },
+  ],
+};
+
+const taskView: TaskViewResponse = {
+  courseId: "22584",
+  generatedAt: "2026-06-13T07:06:00Z",
+  progress: {
+    checked: 0,
+    correct: 0,
+    done: 0,
+    needsReview: 0,
+    open: 1,
+    wrong: 0,
+  },
+  resources: [{ kind: "PDF", resourceId: "947711", title: "Aufgabenblatt 01" }],
+  scriptMarkdown: "",
+  sheets: [
+    {
+      kind: "pipeline-task",
+      resourceId: "947711",
+      solutionResourceId: "947712",
+      solutionTitle: "Aufgabenblatt 01 Lösung",
+      tasks: [
+        {
+          parts: [],
+          promptMarkdown: "Berechne die parallele Laufzeit mit \\(p\\) Prozessoren.",
+          sourceResourceId: "947711",
+          status: "open",
+          taskId: "task-947711-1",
+          title: "Aufgabe 1",
+        },
+      ],
+      title: "Aufgabenblatt 01",
+    },
+  ],
+  source: "moodle-services",
+};
+
 describe("course pipeline blueprint graph", () => {
   test("builds a blackbox conveyor graph from trace data", () => {
-    const graph = buildBlueprintGraph({ inventory, runs, status });
+    const graph = buildBlueprintGraph({ extractedDocuments: null, inventory, runs, status, taskView: null });
     const titles = graph.nodes.map((node) => node.data.title);
 
     expect(titles).toContain("Course");
@@ -196,7 +340,7 @@ describe("course pipeline blueprint graph", () => {
   });
 
   test("handles empty pipeline data without crashing", () => {
-    const graph = buildBlueprintGraph({ inventory: null, runs: null, status: null });
+    const graph = buildBlueprintGraph({ extractedDocuments: null, inventory: null, runs: null, status: null, taskView: null });
 
     expect(graph.nodes.length).toBeGreaterThan(0);
     expect(graph.nodes.find((node) => node.id === "course")?.data.subtitle).toBe("0 resources");
@@ -240,7 +384,7 @@ describe("course pipeline blueprint graph", () => {
       }).reverse(),
     };
 
-    const graph = buildBlueprintGraph({ inventory: manyTaskGroups, runs: null, status });
+    const graph = buildBlueprintGraph({ extractedDocuments: null, inventory: manyTaskGroups, runs: null, status, taskView: null });
     const titles = graph.nodes.map((node) => node.data.title);
 
     expect(titles).toContain("Aufgabenblatt 1");
@@ -248,5 +392,35 @@ describe("course pipeline blueprint graph", () => {
     expect(titles).not.toContain("Aufgabenblatt 10");
     expect(titles).toContain("2 ... 11 collapsed");
     expect(titles.indexOf("Aufgabenblatt 1")).toBeLessThan(titles.indexOf("Aufgabenblatt 12"));
+  });
+
+  test("does not project global runs onto resource-specific extraction nodes", () => {
+    const graph = buildBlueprintGraph({ extractedDocuments: null, inventory, runs, status, taskView: null });
+    const sheetExtraction = graph.nodes.find((node) =>
+      node.data.title === "Extraction Variants"
+      && node.data.meta.some((item) => item.label === "Resource" && item.value === "Aufgabenblatt 01")
+    );
+
+    expect(sheetExtraction?.data.status).toBe("missing");
+    expect(sheetExtraction?.data.problems?.map((problem) => problem.label)).toContain("No extraction run");
+  });
+
+  test("uses real extracted documents and task-view outputs when available", () => {
+    const graph = buildBlueprintGraph({ extractedDocuments, inventory, runs: resourceRuns, status, taskView });
+    const pageNode = graph.nodes.find((node) =>
+      node.data.title === "Pages"
+      && node.data.meta.some((item) => item.label === "Resource" && item.value === "Aufgabenblatt 01")
+    );
+    const sectionNode = graph.nodes.find((node) =>
+      node.data.title === "Sections"
+      && node.data.meta.some((item) => item.label === "Resource" && item.value === "Aufgabenblatt 01")
+    );
+    const outputNode = graph.nodes.find((node) => node.data.title === "Aufgabe 1");
+
+    expect(pageNode?.data.status).toBe("succeeded");
+    expect(pageNode?.data.meta.find((item) => item.label === "Stored count")?.value).toBe("1");
+    expect(sectionNode?.data.meta.find((item) => item.label === "Stored count")?.value).toBe("2");
+    expect(outputNode?.data.status).toBe("ready");
+    expect(outputNode?.data.outputPreview).toContain("parallele Laufzeit");
   });
 });

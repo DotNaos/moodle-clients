@@ -5,6 +5,8 @@ import type {
   CourseInventoryResponse,
   StudyPipelineStatusResponse,
 } from "@/components/study-pipeline-preview";
+import type { ExtractedDocumentsResponse } from "@/components/extracted-document-inspector";
+import type { TaskViewResponse } from "@/components/task-study-panel";
 import {
   addReviewLane,
   addScriptLane,
@@ -103,10 +105,38 @@ export type BlueprintGraphNode = BlueprintNode | BlueprintFrameNode;
 type BlueprintNodeInput = Omit<BlueprintNode, "type"> & { type?: "blueprint" };
 type BlueprintFrameInput = Omit<BlueprintFrameNode, "type"> & { type?: "frame" };
 
+export type ExtractedLookup = {
+  byResourceId: Map<string, ExtractedDocumentsResponse["documents"][number]>;
+  response: ExtractedDocumentsResponse | null;
+};
+
+export type TaskOutputRecord = TaskViewResponse["sheets"][number]["tasks"][number] & {
+  sheetTitle: string;
+  solutionResourceId?: string;
+  solutionTitle?: string;
+};
+
+export type ScriptOutputRecord = NonNullable<TaskViewResponse["scriptSections"]>[number];
+
+export type OutputLookup = {
+  byResourceId: Map<string, TaskOutputRecord[]>;
+  scriptSectionsByResourceId: Map<string, ScriptOutputRecord[]>;
+  taskView: TaskViewResponse | null;
+  totalOutputs: number;
+  totalScriptSections: number;
+  totalTasks: number;
+};
+
 type CoursePipelineBlueprintModelInput = {
+  extractedDocuments: ExtractedDocumentsResponse | null;
   inventory: CourseInventoryResponse | null;
   runs: PipelineRunsResponse | null;
   status: StudyPipelineStatusResponse | null;
+  taskView: TaskViewResponse | null;
+  unavailable?: {
+    extractedDocuments?: string;
+    taskView?: string;
+  };
 };
 
 const MAX_TASK_GROUPS = 4;
@@ -122,14 +152,19 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 export function buildBlueprintGraph({
+  extractedDocuments,
   inventory,
   runs,
   status,
+  taskView,
+  unavailable,
 }: CoursePipelineBlueprintModelInput): { nodes: BlueprintGraphNode[]; edges: Edge[] } {
   const nodes: BlueprintGraphNode[] = [];
   const edges: Edge[] = [];
   const activeRunIds = new Set((runs?.activeSelections ?? []).map((selection) => selection.activeRunId));
   const runLookup = buildRunLookup(runs?.runs ?? []);
+  const extractedLookup = buildExtractedLookup(extractedDocuments);
+  const outputLookup = buildOutputLookup(taskView);
   const derivedInventory = inventory ?? inventoryFromStatus(status);
   const usingDerivedInventory = !inventory && Boolean(derivedInventory);
   const taskGroups = sortTaskGroups(derivedInventory?.taskGroups ?? []);
@@ -149,9 +184,15 @@ export function buildBlueprintGraph({
       title: "Course",
       subtitle: `${totalResources} resources`,
       detail: "The Moodle course is the only initial input. Every generated task or script section must trace back to this source.",
-      evidence: ["Initial input: Moodle course id", `${totalResources} Moodle resources reported`],
+      evidence: [
+        "Initial input: Moodle course id",
+        `${totalResources} Moodle resources reported`,
+        runs ? `${runs.runs.length} immutable runs loaded` : "Run history missing",
+        extractedDocuments ? `${extractedDocuments.summary.totalDocuments} extracted documents loaded` : `Extracted documents missing${unavailable?.extractedDocuments ? `: ${unavailable.extractedDocuments}` : ""}`,
+        taskView ? `${outputLookup.totalTasks} task outputs and ${outputLookup.totalScriptSections} script sections loaded` : `Task view missing${unavailable?.taskView ? `: ${unavailable.taskView}` : ""}`,
+      ],
       inputs: [{ label: "course_id", detail: status?.courseId ?? inventory?.courseId ?? "unknown" }],
-      outputPreview: `${status?.summary.tasks ?? 0} tasks · ${status?.summary.scripts ?? 0} scripts currently visible downstream`,
+      outputPreview: `${status?.summary.tasks ?? 0} tasks · ${status?.summary.scripts ?? 0} scripts currently visible downstream\n${outputLookup.totalTasks} validated task output(s) loaded\n${outputLookup.totalScriptSections} script section output(s) loaded`,
       outputs: [{ label: "course source", detail: `${totalResources} resources` }],
       stepKind: "transform",
       tone: "source",
@@ -159,6 +200,9 @@ export function buildBlueprintGraph({
       meta: [
         { label: "Course ID", value: status?.courseId ?? derivedInventory?.courseId ?? "unknown" },
         { label: "Current stage", value: status?.stage || "not started" },
+        { label: "Runs", value: runs ? String(runs.runs.length) : "missing" },
+        { label: "Extracted docs", value: extractedDocuments ? String(extractedDocuments.summary.totalDocuments) : "missing" },
+        { label: "Outputs", value: taskView ? String(outputLookup.totalOutputs) : "missing" },
       ],
     },
   });
@@ -221,7 +265,17 @@ export function buildBlueprintGraph({
   });
 
   visibleTaskGroups.forEach((group, index) => {
-    addTaskGroupLane({ activeRunIds, edges, group, index, nodes, runLookup, y: taskLaneStartY + index * taskLaneGap });
+    addTaskGroupLane({
+      activeRunIds,
+      edges,
+      extractedLookup,
+      group,
+      index,
+      nodes,
+      outputLookup,
+      runLookup,
+      y: taskLaneStartY + index * taskLaneGap,
+    });
   });
 
   if (taskGroups.length > visibleTaskGroups.length) {
@@ -270,6 +324,8 @@ export function buildBlueprintGraph({
       nodes,
       resource,
       runLookup,
+      extractedLookup,
+      outputLookup,
       y: scriptLaneY + index * 320,
     });
   });
@@ -396,6 +452,68 @@ function normalizedText(value: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+}
+
+function buildExtractedLookup(extractedDocuments: ExtractedDocumentsResponse | null): ExtractedLookup {
+  const byResourceId = new Map<string, ExtractedDocumentsResponse["documents"][number]>();
+  for (const document of extractedDocuments?.documents ?? []) {
+    for (const key of resourceKeys(document.resource.id)) {
+      byResourceId.set(key, document);
+    }
+  }
+  return { byResourceId, response: extractedDocuments };
+}
+
+function buildOutputLookup(taskView: TaskViewResponse | null): OutputLookup {
+  const byResourceId = new Map<string, TaskOutputRecord[]>();
+  const scriptSectionsByResourceId = new Map<string, ScriptOutputRecord[]>();
+  for (const sheet of taskView?.sheets ?? []) {
+    for (const task of sheet.tasks) {
+      const output = {
+        ...task,
+        sheetTitle: sheet.title,
+        solutionResourceId: sheet.solutionResourceId,
+        solutionTitle: sheet.solutionTitle,
+      };
+      for (const key of resourceKeys(task.sourceResourceId || sheet.resourceId)) {
+        byResourceId.set(key, [...(byResourceId.get(key) ?? []), output]);
+      }
+      for (const key of resourceKeys(sheet.resourceId)) {
+        byResourceId.set(key, [...(byResourceId.get(key) ?? []), output]);
+      }
+    }
+  }
+  for (const section of taskView?.scriptSections ?? []) {
+    if (!section.sourcePath) continue;
+    for (const resource of taskView?.resources ?? []) {
+      if (!section.sourcePath.includes(resource.resourceId) && !section.sourcePath.includes(resource.title)) continue;
+      for (const key of resourceKeys(resource.resourceId)) {
+        scriptSectionsByResourceId.set(key, [...(scriptSectionsByResourceId.get(key) ?? []), section]);
+      }
+    }
+  }
+  const totalTasks = (taskView?.sheets ?? []).reduce((sum, sheet) => sum + sheet.tasks.length, 0);
+  const totalScriptSections = taskView?.scriptSections?.length ?? 0;
+  return {
+    byResourceId,
+    scriptSectionsByResourceId,
+    taskView,
+    totalOutputs: totalTasks + totalScriptSections,
+    totalScriptSections,
+    totalTasks,
+  };
+}
+
+export function resourceKeys(resourceId: string | undefined): string[] {
+  if (!resourceId) return [];
+  const trimmed = resourceId.trim();
+  const numeric = trimmed.match(/(\d+)(?!.*\d)/)?.[1];
+  return [...new Set([
+    trimmed,
+    trimmed.replace(/^resource:moodle:/, ""),
+    numeric ?? "",
+    numeric ? `resource:moodle:${numeric}` : "",
+  ].filter(Boolean))];
 }
 
 function sortTaskGroups(groups: CourseInventoryResponse["taskGroups"]): CourseInventoryResponse["taskGroups"] {

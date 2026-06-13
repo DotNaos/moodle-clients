@@ -1,5 +1,6 @@
 import type { CourseInventoryNode, CourseInventoryTaskGroup } from "@/components/study-pipeline-preview";
 import type { BlueprintNodeData, BlueprintProblem, BlueprintStepKind, PipelineRunRecord } from "@/components/course-pipeline-blueprint-model";
+import type { PDFDocumentStructure } from "@/components/extracted-document-inspector";
 import {
   runArtifactSummary,
   runConfig,
@@ -8,6 +9,7 @@ import {
 } from "@/components/course-pipeline-blueprint-run-utils";
 
 export function materializedStepNode({
+  count,
   detail,
   input,
   output,
@@ -16,6 +18,7 @@ export function materializedStepNode({
   stepKind,
   title,
 }: {
+  count?: number;
   detail: string;
   input: string;
   output: string;
@@ -24,36 +27,39 @@ export function materializedStepNode({
   stepKind: BlueprintStepKind;
   title: string;
 }): BlueprintNodeData {
-  const pending = status === "pending";
+  const missing = status === "missing" || status === "pending";
   return {
     title,
     subtitle: resource.name,
     detail,
-    evidence: pending ? ["Backend has not exposed this materialized artifact yet."] : [`Materialized from ${resource.name}`],
+    evidence: missing ? ["Backend has not exposed this materialized artifact yet."] : [`Materialized from ${resource.name}`],
     inputs: [{ label: input, detail: resource.name }],
-    outputs: [{ label: output, detail: pending ? "not stored yet" : "available" }],
-    outputPreview: pending ? "No page/section artifact is stored for this resource yet." : `${output} available for ${resource.name}`,
-    problems: pending ? [{ label: `${title} missing`, detail: `The ${output} artifact is not available yet.`, severity: "warning" }] : undefined,
+    outputs: [{ label: output, detail: missing ? "not stored yet" : `${count ?? "unknown"} stored` }],
+    outputPreview: missing ? "No page/section artifact is stored for this resource yet." : `${output} available for ${resource.name}${count === undefined ? "" : `\nCount: ${count}`}`,
+    problems: missing ? [{ label: `${title} missing`, detail: `The ${output} artifact is not available yet.`, severity: "warning" }] : undefined,
     stepKind,
-    tone: pending ? "warning" : "process",
+    tone: missing ? "warning" : "process",
     status,
     meta: [
       { label: "Resource", value: resource.name },
       { label: "Artifact", value: output },
+      { label: "Stored count", value: count === undefined ? "unknown" : String(count) },
     ],
   };
 }
 
 export function extractionNodeData({
   activeRunIds,
+  document,
   resource,
   run,
 }: {
   activeRunIds: Set<string>;
+  document: PDFDocumentStructure | null;
   resource: CourseInventoryNode;
   run: PipelineRunRecord | null;
 }): BlueprintNodeData {
-  if (!run) {
+  if (!run && !document) {
     return {
       title: "Extraction Variants",
       subtitle: "missing",
@@ -69,17 +75,58 @@ export function extractionNodeData({
       meta: [{ label: "Resource", value: resource.name }],
     };
   }
+  if (!run && document) {
+    const problems = extractedDocumentProblems(document);
+    return {
+      title: "Extraction Variants",
+      subtitle: `${document.engine} · document only`,
+      detail: "Extracted document data exists, but no immutable run record was exposed for this resource.",
+      artifacts: extractedDocumentArtifacts(document),
+      evidence: [
+        `Document ${document.id}`,
+        `Run ${document.runId}`,
+        `Pages ${document.pages.length}`,
+        `Assets ${document.assets.length}`,
+      ],
+      inputs: [{ label: "sections[]", detail: resource.name }],
+      outputs: [{ label: "extracted document", detail: document.engine, state: document.status }],
+      outputPreview: extractedDocumentPreview(document),
+      problems: [
+        { label: "Run record missing", detail: "The extracted document is available, but /runs did not include the matching immutable run.", severity: "warning" },
+        ...problems,
+      ],
+      stepKind: "split",
+      tone: problems.length > 0 ? "warning" : "run",
+      status: document.status,
+      meta: [
+        { label: "Resource", value: resource.name },
+        { label: "Run ID", value: document.runId },
+        { label: "Engine", value: document.engine },
+        { label: "Pages", value: String(document.pages.length) },
+        { label: "Blocks", value: String(document.pages.reduce((sum, page) => sum + page.blocks.length, 0)) },
+      ],
+    };
+  }
+  if (!run) {
+    throw new Error("Unreachable extraction node state.");
+  }
+  const documentProblems = document ? extractedDocumentProblems(document) : [];
   return {
     title: "Extraction Variants",
     subtitle: `${run.engine} · ${run.configHash}`,
     detail: "Stores OCR/extraction output for this resource. Multiple engine variants should be comparable here.",
-    artifacts: runArtifactSummary(run),
+    artifacts: [...runArtifactSummary(run), ...(document ? extractedDocumentArtifacts(document) : [])],
     config: runConfig(run),
-    evidence: [`Run ${run.id}`, `Engine ${run.engine}`, `${run.artifactRefs?.length ?? 0} artifact refs`],
+    evidence: [
+      `Run ${run.id}`,
+      `Engine ${run.engine}`,
+      `${run.artifactRefs?.length ?? 0} artifact refs`,
+      ...(document ? [`Extracted document ${document.id}`, `${document.pages.length} pages`, `${document.assets.length} assets`] : ["No extracted document payload loaded"]),
+    ],
     inputs: [{ label: "sections[]", detail: resource.name }],
     outputs: [{ label: "extracted document", detail: run.engine, state: run.status }],
-    outputPreview: runPreview(run),
-    problems: runProblems(run),
+    outputPreview: document ? extractedDocumentPreview(document) : runPreview(run),
+    problems: mergeProblems(runProblems(run), documentProblems),
     stepKind: "split",
     tone: run.status === "failed" ? "warning" : "run",
     status: run.status,
@@ -92,12 +139,14 @@ export function codexNodeData({
   activeRunIds,
   inputLabel,
   outputLabel,
+  outputPreview,
   run,
   subtitle,
 }: {
   activeRunIds: Set<string>;
   inputLabel: string;
   outputLabel: string;
+  outputPreview?: string;
   run: PipelineRunRecord | null;
   subtitle: string;
 }): BlueprintNodeData {
@@ -109,7 +158,7 @@ export function codexNodeData({
       evidence: ["No Codex run has been recorded for this input yet."],
       inputs: [{ label: "active input bundle", detail: inputLabel }],
       outputs: [{ label: outputLabel, state: "missing" }],
-      outputPreview: "Codex has not produced a draft for this lane yet.",
+      outputPreview: outputPreview ?? "Codex has not produced a draft for this lane yet.",
       problems: [{ label: "No Codex output", detail: "There is no final draft to validate or publish.", severity: "warning" }],
       stepKind: "transform",
       tone: "warning",
@@ -126,7 +175,7 @@ export function codexNodeData({
     evidence: [`Run ${run.id}`, `Engine ${run.engine}`, `${run.artifactRefs?.length ?? 0} artifact refs`],
     inputs: [{ label: "active input bundle", detail: inputLabel }],
     outputs: [{ label: outputLabel, state: run.status }],
-    outputPreview: runPreview(run),
+    outputPreview: outputPreview ?? runPreview(run),
     problems: runProblems(run),
     stepKind: "transform",
     tone: run.status === "failed" ? "warning" : "run",
@@ -217,5 +266,56 @@ function runProblems(run: PipelineRunRecord): BlueprintProblem[] | undefined {
   if ((run.artifactRefs?.length ?? 0) === 0) {
     problems.push({ label: "No artifacts", detail: "The run did not store any artifact references.", severity: "warning" });
   }
+  return problems.length > 0 ? problems : undefined;
+}
+
+export function extractedDocumentProblems(document: PDFDocumentStructure): BlueprintProblem[] {
+  const problems: BlueprintProblem[] = [];
+  if (document.status === "failed") {
+    problems.push({ label: "Extraction failed", detail: "The extracted document is marked as failed.", severity: "error" });
+  }
+  if (document.pages.length === 0) {
+    problems.push({ label: "No pages", detail: "The extracted document contains no pages.", severity: "warning" });
+  }
+  if (document.pages.some((page) => page.blocks.length === 0)) {
+    problems.push({ label: "Empty page structure", detail: "At least one extracted page has no detected blocks.", severity: "warning" });
+  }
+  if ((document.diagnostics.pagesMissingText?.length ?? 0) > 0) {
+    problems.push({ label: "Pages missing text", detail: `Pages: ${document.diagnostics.pagesMissingText?.join(", ")}`, severity: "warning" });
+  }
+  if ((document.diagnostics.visualOnlyPages?.length ?? 0) > 0) {
+    problems.push({ label: "Visual-only pages", detail: `Pages: ${document.diagnostics.visualOnlyPages?.join(", ")}`, severity: "warning" });
+  }
+  if ((document.diagnostics.unusedImageAssets?.length ?? 0) > 0) {
+    problems.push({ label: "Unused images", detail: `${document.diagnostics.unusedImageAssets?.length} extracted image asset(s) are not referenced.`, severity: "warning" });
+  }
+  if ((document.diagnostics.unknownBlocks?.length ?? 0) > 0) {
+    problems.push({ label: "Unknown blocks", detail: `${document.diagnostics.unknownBlocks?.length} block(s) need review.`, severity: "warning" });
+  }
+  for (const warning of document.diagnostics.warnings ?? []) {
+    problems.push({ label: "Extraction warning", detail: warning, severity: "warning" });
+  }
+  return problems;
+}
+
+function extractedDocumentPreview(document: PDFDocumentStructure): string {
+  const blocks = document.pages.flatMap((page) => page.blocks);
+  const text = blocks
+    .map((block) => block.markdown || block.text || (block.assetId ? `[${block.type}: ${block.assetId}]` : ""))
+    .filter(Boolean)
+    .slice(0, 8)
+    .join("\n\n");
+  return text || `${document.resource.name}\n${document.pages.length} page(s), ${blocks.length} block(s), ${document.assets.length} asset(s).`;
+}
+
+function extractedDocumentArtifacts(document: PDFDocumentStructure): string[] {
+  return [
+    `document:${document.id} · run ${document.runId}`,
+    ...document.assets.slice(0, 8).map((asset) => `${asset.id}: ${asset.kind}${asset.pageNumber ? ` · page ${asset.pageNumber}` : ""} · ${asset.path}`),
+  ];
+}
+
+function mergeProblems(...groups: Array<BlueprintProblem[] | undefined>): BlueprintProblem[] | undefined {
+  const problems = groups.flatMap((group) => group ?? []);
   return problems.length > 0 ? problems : undefined;
 }

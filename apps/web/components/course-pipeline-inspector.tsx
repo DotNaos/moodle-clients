@@ -23,12 +23,14 @@ import {
   type PipelineRunsResponse,
 } from "@/components/course-pipeline-blueprint";
 import { CoursePipelineRunComparison } from "@/components/course-pipeline-run-comparison";
+import type { ExtractedDocumentsResponse } from "@/components/extracted-document-inspector";
 import { Spinner } from "@/components/ui/spinner";
 import {
   buildInventorySections,
   type CourseInventoryResponse,
   type StudyPipelineStatusResponse,
 } from "@/components/study-pipeline-preview";
+import type { TaskViewResponse } from "@/components/task-study-panel";
 import type { Course, Material } from "@/lib/dashboard-data";
 import { courseTitle } from "@/lib/dashboard-data";
 import { cn } from "@/lib/utils";
@@ -94,7 +96,7 @@ type PipelineReviewResponse = {
   audit?: PipelineAuditRecord[];
 };
 
-type OptionalInspectorData = "inventory" | "runs" | "review";
+type OptionalInspectorData = "extractedDocuments" | "inventory" | "review" | "runs" | "taskView";
 
 const INSPECTOR_TABS: Array<{ id: InspectorTab; label: string }> = [
   { id: "resources", label: "Resources" },
@@ -116,6 +118,8 @@ export function CoursePipelineInspector({
   const [status, setStatus] = useState<StudyPipelineStatusResponse | null>(null);
   const [runs, setRuns] = useState<PipelineRunsResponse | null>(null);
   const [review, setReview] = useState<PipelineReviewResponse | null>(null);
+  const [extractedDocuments, setExtractedDocuments] = useState<ExtractedDocumentsResponse | null>(null);
+  const [taskView, setTaskView] = useState<TaskViewResponse | null>(null);
   const [unavailable, setUnavailable] = useState<Partial<Record<OptionalInspectorData, string>>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -142,6 +146,10 @@ export function CoursePipelineInspector({
         studyPipelineRequest<PipelineRunsResponse>(courseId, "/runs"),
         studyPipelineRequest<PipelineReviewResponse>(courseId, "/review"),
       ]);
+      const [extractedDocumentsResult, taskViewResult] = await Promise.allSettled([
+        studyPipelineRequest<ExtractedDocumentsResponse>(courseId, "/extracted-documents"),
+        loadTaskViewForInspector(courseId),
+      ]);
       if (statusResult.status === "fulfilled") {
         setStatus(statusResult.value);
       }
@@ -167,6 +175,18 @@ export function CoursePipelineInspector({
       } else {
         setReview(null);
         nextUnavailable.review = formatStudyPipelineError(reviewResult.reason);
+      }
+      if (extractedDocumentsResult.status === "fulfilled") {
+        setExtractedDocuments(extractedDocumentsResult.value);
+      } else {
+        setExtractedDocuments(null);
+        nextUnavailable.extractedDocuments = formatStudyPipelineError(extractedDocumentsResult.reason);
+      }
+      if (taskViewResult.status === "fulfilled") {
+        setTaskView(taskViewResult.value);
+      } else {
+        setTaskView(null);
+        nextUnavailable.taskView = formatStudyPipelineError(taskViewResult.reason);
       }
       setUnavailable(nextUnavailable);
     } catch (loadError) {
@@ -377,7 +397,17 @@ export function CoursePipelineInspector({
               selectingRunId={selectingRunId}
             />
           ) : activeTab === "blueprint" ? (
-            <CoursePipelineBlueprint inventory={inventory} runs={runs} status={status} />
+            <CoursePipelineBlueprint
+              extractedDocuments={extractedDocuments}
+              inventory={inventory}
+              runs={runs}
+              status={status}
+              taskView={taskView}
+              unavailable={{
+                extractedDocuments: unavailable.extractedDocuments,
+                taskView: unavailable.taskView,
+              }}
+            />
           ) : (
             <ReviewTab
               inventory={inventory}
@@ -1002,6 +1032,25 @@ async function studyPipelinePost<T>(courseId: string, suffix: string, body: unkn
     throw new Error(payload.error ?? `Moodle study pipeline failed with ${response.status}.`);
   }
   return payload as T;
+}
+
+async function loadTaskViewForInspector(courseId: string): Promise<TaskViewResponse> {
+  const query = "includeScript=1";
+  const bundleResponse = await fetch(`/api/study-bundles/courses/${encodeURIComponent(courseId)}/task-view?${query}`, {
+    cache: "no-store",
+  });
+  if (bundleResponse.ok) {
+    return await bundleResponse.json() as TaskViewResponse;
+  }
+  try {
+    return await studyPipelineRequest<TaskViewResponse>(courseId, `/task-view?${query}`);
+  } catch (pipelineError) {
+    if (![400, 404].includes(bundleResponse.status)) {
+      const payload = await bundleResponse.json().catch(() => null) as { error?: string } | null;
+      throw new Error(payload?.error ?? formatStudyPipelineError(pipelineError));
+    }
+    throw pipelineError;
+  }
 }
 
 function formatStudyPipelineError(error: unknown): string {
