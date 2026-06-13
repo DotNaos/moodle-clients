@@ -56,6 +56,8 @@ import {
   PipelineStatusBadge,
   liveNodeClass,
 } from "@/components/course-pipeline-live-ui";
+import { buildUpstreamTrace, type BlueprintTraceStep } from "@/components/course-pipeline-trace";
+import { SourceTracePanel } from "@/components/course-pipeline-trace-panel";
 
 export { buildBlueprintGraph };
 export type { PipelineRunRecord, PipelineRunsResponse };
@@ -100,6 +102,10 @@ export function CoursePipelineBlueprint({
   const selectableNodes = useMemo(() => graph.nodes.filter(isBlueprintNode), [graph.nodes]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(selectableNodes[0]?.id ?? null);
   const selectedNode = selectableNodes.find((node) => node.id === selectedNodeId) ?? selectableNodes[0];
+  const selectedTrace = useMemo(
+    () => buildUpstreamTrace({ edges: graph.edges, nodes: graph.nodes, selectedNodeId: selectedNode?.id }),
+    [graph.edges, graph.nodes, selectedNode?.id],
+  );
   const interactiveNodes = useMemo(
     () => graph.nodes.map((node) => ({
       ...node,
@@ -143,8 +149,10 @@ export function CoursePipelineBlueprint({
             node={selectedNode}
             onRerunExtraction={onRerunExtraction}
             onSelectRun={onSelectRun}
+            onSelectTraceNode={setSelectedNodeId}
             rerunningEngine={rerunningEngine}
             selectingRunId={selectingRunId}
+            trace={selectedTrace}
           />
         ) : (
           <p className="text-sm text-muted-foreground">Select a node to inspect its pipeline evidence.</p>
@@ -158,14 +166,18 @@ function NodeInspector({
   node,
   onRerunExtraction,
   onSelectRun,
+  onSelectTraceNode,
   rerunningEngine,
   selectingRunId,
+  trace,
 }: {
   node: BlueprintNode;
   onRerunExtraction?: (engine: string) => void;
   onSelectRun?: (runId: string) => void;
+  onSelectTraceNode: (nodeId: string) => void;
   rerunningEngine?: string | null;
   selectingRunId?: string | null;
+  trace: BlueprintTraceStep[];
 }) {
   const data = node.data;
   const problems = data.problems ?? [];
@@ -196,6 +208,10 @@ function NodeInspector({
           <PortPanel items={data.inputs} title="Input" />
           <PortPanel items={data.outputs} title="Output" />
         </div>
+      </InspectorSection>
+
+      <InspectorSection icon={GitBranch} title="Source trace">
+        <SourceTracePanel onSelectNode={onSelectTraceNode} steps={trace} />
       </InspectorSection>
 
       {data.live ? (

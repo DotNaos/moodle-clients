@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { buildBlueprintGraph, type PipelineRunsResponse } from "@/components/course-pipeline-blueprint";
+import { buildUpstreamTrace } from "@/components/course-pipeline-trace";
 import type { ExtractedDocumentsResponse } from "@/components/extracted-document-inspector";
 import type { CourseInventoryResponse, StudyPipelineStatusResponse } from "@/components/study-pipeline-preview";
 import type { TaskViewResponse } from "@/components/task-study-panel";
@@ -550,6 +551,33 @@ describe("course pipeline blueprint graph", () => {
     expect(sectionNode?.data.meta.find((item) => item.label === "Stored count")?.value).toBe("2");
     expect(outputNode?.data.status).toBe("ready");
     expect(outputNode?.data.outputPreview).toContain("parallele Laufzeit");
+  });
+
+  test("traces a final task output back to its source documents", () => {
+    const graph = buildBlueprintGraph({ extractedDocuments, inventory, runs: resourceRuns, status, taskView });
+    const outputNode = graph.nodes.find((node) => node.data.title === "Aufgabe 1");
+    const trace = buildUpstreamTrace({ edges: graph.edges, nodes: graph.nodes, selectedNodeId: outputNode?.id });
+    const titles = trace.map((step) => step.title);
+
+    expect(trace[0]?.title).toBe("Aufgabe 1");
+    expect(new Set(trace.map((step) => step.id)).size).toBe(trace.length);
+    for (const title of [
+      "Aufgabe 1",
+      "Codex Transform",
+      "Collect Pair",
+      "Extraction Variants",
+      "Sections",
+      "Pages",
+      "Sheet PDF",
+      "Solution PDF",
+      "Aufgabenblatt 01",
+      "Resource Set",
+      "Course",
+    ]) {
+      expect(titles).toContain(title);
+    }
+    expect(trace.filter((step) => step.title === "Extraction Variants")).toHaveLength(2);
+    expect(trace.at(-1)?.title).toBe("Course");
   });
 
   test("marks final outputs with website rendering problems as needs review", () => {
