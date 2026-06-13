@@ -22,6 +22,7 @@ import {
   GitBranch,
   ImageOff,
   Layers,
+  Maximize2,
   RotateCw,
   Search,
   type LucideIcon,
@@ -31,6 +32,12 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -441,6 +448,7 @@ function ExtractionActionButtons({
 function BlueprintNodeCard({ data, id, selected }: NodeProps<BlueprintNode>) {
   const Icon = nodeIcon(data.tone);
   const preview = nodeBodyPreviewMarkdown(data.outputPreview);
+  const [previewOpen, setPreviewOpen] = useState(false);
   return (
     <div
       className={cn(
@@ -481,17 +489,36 @@ function BlueprintNodeCard({ data, id, selected }: NodeProps<BlueprintNode>) {
         </div>
         <ChannelRows inputs={data.inputs} outputs={data.outputs} />
 
-        <div className="mt-3 min-h-[112px] rounded-2xl bg-secondary/45 px-3 py-2">
+        <div className="mt-3 rounded-2xl bg-secondary/45 px-3 py-2">
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className="text-[10px] font-semibold uppercase tracking-normal text-muted-foreground">Output</span>
-            {data.problems?.length ? (
-              <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
-              {data.problems.length}
-            </span>
-          ) : null}
+            <div className="flex items-center gap-1">
+              {data.problems?.length ? (
+                <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                  {data.problems.length}
+                </span>
+              ) : null}
+              {preview ? (
+                <button
+                  aria-label="Open output preview"
+                  className="grid size-6 place-items-center rounded-full bg-background/80 text-muted-foreground shadow-sm shadow-black/10 transition hover:text-foreground"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setPreviewOpen(true);
+                  }}
+                  type="button"
+                >
+                  <Maximize2 aria-hidden className="size-3.5" />
+                </button>
+              ) : null}
+            </div>
           </div>
           {preview ? (
-            <div className="line-clamp-5 max-h-[6.5rem] overflow-hidden">
+            <div
+              className="max-h-[8.5rem] overflow-auto pr-1"
+              onClick={(event) => event.stopPropagation()}
+            >
               <MarkdownRenderer
                 className="space-y-1 break-words text-[11px] leading-4 text-foreground/80 [&_.katex-display]:my-1 [&_code]:text-[10px] [&_h3]:!mt-0 [&_h3]:text-[12px] [&_h4]:!mt-0 [&_h4]:text-[11px] [&_ol]:ml-4 [&_pre]:rounded-xl [&_pre]:p-2 [&_pre]:text-[10px] [&_ul]:ml-4"
                 text={preview}
@@ -505,7 +532,44 @@ function BlueprintNodeCard({ data, id, selected }: NodeProps<BlueprintNode>) {
         </div>
         {data.hiddenItems?.length ? <HiddenItemsDisclosure items={data.hiddenItems} /> : null}
       </div>
+      <NodePreviewDialog
+        markdown={preview}
+        onOpenChange={setPreviewOpen}
+        open={previewOpen}
+        title={data.title}
+      />
     </div>
+  );
+}
+
+function NodePreviewDialog({
+  markdown,
+  onOpenChange,
+  open,
+  title,
+}: {
+  markdown: string;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  title: string;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="flex max-h-[88dvh] max-w-[min(96vw,980px)] flex-col gap-0 overflow-hidden rounded-[1.75rem] border-0 p-0 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <DialogHeader className="border-b border-border/50 px-5 py-4 pr-14">
+          <DialogTitle className="truncate text-base">{title}</DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-auto px-5 py-5">
+          <MarkdownRenderer
+            className="space-y-4 break-words text-sm leading-6 text-foreground [&_.katex-display]:overflow-auto [&_pre]:rounded-2xl [&_pre]:p-3"
+            text={markdown}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -553,7 +617,7 @@ function ChannelRows({ inputs, outputs }: { inputs: BlueprintPort[]; outputs: Bl
         const output = outputPorts[rowIndex];
         return (
           <div
-            className="relative grid min-h-6 grid-cols-2 items-center gap-2 px-4 text-[10px] font-semibold leading-4 text-foreground/70"
+            className="relative grid min-h-6 grid-cols-2 items-center gap-3 px-6 text-[10px] font-semibold leading-4 text-foreground/70"
             key={`channel-row-${rowIndex}`}
           >
             {input ? <ChannelLabel direction="input" port={input[1]} slot={input[0]} /> : <span aria-hidden />}
