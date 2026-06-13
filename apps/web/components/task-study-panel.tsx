@@ -2949,14 +2949,18 @@ async function loadTaskViewResponse(courseId: string, includeScript: boolean, si
   if (bundleResponse.ok) {
     return await bundleResponse.json() as TaskViewResponse;
   }
-  if (![404, 400].includes(bundleResponse.status)) {
-    const payload = await bundleResponse.json().catch(() => null) as { error?: string } | null;
-    throw new Error(payload?.error ?? `Study bundle failed with ${bundleResponse.status}.`);
+  try {
+    return await studyPipelineRequest<TaskViewResponse>(
+      `/courses/${encodeURIComponent(courseId)}/study-pipeline/task-view?${query}`,
+      signal ? { signal } : undefined,
+    );
+  } catch (pipelineError) {
+    if (![404, 400].includes(bundleResponse.status)) {
+      const payload = await bundleResponse.json().catch(() => null) as { error?: string } | null;
+      throw new Error(payload?.error ?? getErrorMessage(pipelineError));
+    }
+    throw pipelineError;
   }
-  return await studyPipelineRequest<TaskViewResponse>(
-    `/courses/${encodeURIComponent(courseId)}/study-pipeline/task-view?${query}`,
-    signal ? { signal } : undefined,
-  );
 }
 
 async function runCodex(prompt: string): Promise<{ finalResponse: string }> {

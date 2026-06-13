@@ -62,6 +62,18 @@ async function proxyStudyPipeline(request: Request, context: RouteContext) {
     return proxyServiceResponse(upstreamResponse);
   }
 
+  if (allowLocalAnonymousStudyPipeline()) {
+    const retryResponse = await fetch(upstreamUrl, {
+      method: request.method,
+      cache: "no-store",
+      headers: studyPipelineHeaders(userId, ""),
+      body,
+    });
+    if (retryResponse.status !== 401) {
+      return proxyServiceResponse(retryResponse);
+    }
+  }
+
   const restored = await restoreMoodleSession(userId);
   if (!restored.ok) {
     return proxyServiceResponse(upstreamResponse);
@@ -89,11 +101,23 @@ function isStudyPipelinePath(path: string): boolean {
 }
 
 function studyPipelineHeaders(userId: string, apiKey: string): Headers {
-  return new Headers({
+  const headers = new Headers({
     "Content-Type": "application/json",
     "X-Clerk-User-Id": userId,
-    "X-Moodle-App-Key": apiKey,
   });
+  if (apiKey) {
+    headers.set("X-Moodle-App-Key", apiKey);
+  }
+  return headers;
+}
+
+function allowLocalAnonymousStudyPipeline(): boolean {
+  try {
+    const serviceURL = new URL(MOODLE_SERVICES_URL);
+    return ["127.0.0.1", "localhost", "::1"].includes(serviceURL.hostname);
+  } catch {
+    return false;
+  }
 }
 
 type SessionRestorePayload = {
