@@ -28,7 +28,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,7 @@ import {
   type BlueprintExtractionVariant,
   type BlueprintGraphNode,
   type BlueprintNode,
+  type BlueprintRunScope,
   type BlueprintNodeTone,
   type BlueprintPort,
   type BlueprintRenderedField,
@@ -83,6 +84,7 @@ type CoursePipelineBlueprintProps = {
   status: StudyPipelineStatusResponse | null;
   taskView: TaskViewResponse | null;
   onRerunExtraction?: (engine: string) => void;
+  onSelectedScopeChange?: (scope: BlueprintRunScope | null) => void;
   onSelectRun?: (runId: string) => void;
   rerunningEngine?: string | null;
   selectingRunId?: string | null;
@@ -110,6 +112,7 @@ export function CoursePipelineBlueprint({
   status,
   taskView,
   onRerunExtraction,
+  onSelectedScopeChange,
   onSelectRun,
   rerunningEngine,
   selectingRunId,
@@ -147,6 +150,14 @@ export function CoursePipelineBlueprint({
     () => buildUpstreamTrace({ edges: graph.edges, nodes: graph.nodes, selectedNodeId: selectedNode?.id }),
     [graph.edges, graph.nodes, selectedNode?.id],
   );
+  const selectedRunScope = selectedNode?.data.runScope ?? null;
+  const selectedRunScopeKey = selectedRunScope
+    ? `${selectedRunScope.kind}:${selectedRunScope.label}:${selectedRunScope.resourceIds.join(",")}`
+    : "none";
+  useEffect(() => {
+    onSelectedScopeChange?.(selectedRunScope);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onSelectedScopeChange, selectedRunScopeKey]);
   const interactiveNodes = useMemo(
     () => graph.nodes.map((node) => ({
       ...node,
@@ -660,6 +671,7 @@ function JsonPreviewText({
   size: "inspector" | "modal" | "node";
   text: string;
 }) {
+  const displayText = size === "node" ? compactNodeJsonPreview(text) : text;
   return (
     <pre
       className={cn(
@@ -667,9 +679,24 @@ function JsonPreviewText({
         size === "node" ? "text-[10px] leading-4" : "text-xs leading-5",
       )}
     >
-      {text}
+      {displayText}
     </pre>
   );
+}
+
+function compactNodeJsonPreview(text: string): string {
+  const lines = text.split("\n");
+  const maxLines = 14;
+  const maxChars = 900;
+  let compact = lines.slice(0, maxLines).join("\n");
+  if (compact.length > maxChars) {
+    compact = `${compact.slice(0, maxChars).trimEnd()}\n...`;
+  }
+  const hiddenLines = lines.length - maxLines;
+  if (hiddenLines > 0) {
+    compact = `${compact}\n... ${hiddenLines} more line${hiddenLines === 1 ? "" : "s"}`;
+  }
+  return compact;
 }
 
 function HiddenItemsDisclosure({ items }: { items: string[] }) {

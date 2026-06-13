@@ -1,12 +1,13 @@
 "use client";
 
-import { AlertCircle, GitBranch, Loader2, RefreshCw } from "lucide-react";
+import { AlertCircle, CheckCircle2, Circle, GitBranch, Loader2, Play, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
   CoursePipelineBlueprint,
   type PipelineRunsResponse,
 } from "@/components/course-pipeline-blueprint";
+import type { BlueprintRunScope } from "@/components/course-pipeline-blueprint-model";
 import { hasPipelineLiveWork } from "@/components/course-pipeline-progress";
 import type { ExtractedDocumentsResponse } from "@/components/extracted-document-inspector";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,25 @@ type CoursePipelineInspectorProps = {
 };
 
 type OptionalInspectorData = "extractedDocuments" | "inventory" | "runs" | "taskView";
+type PipelineStageId = "inventory" | "raw" | "extracted" | "curated";
+type PipelineRunMode = "single" | "from";
+type PipelineScopeMode = "course" | "selected";
+type PipelineStepState = "failed" | "queued" | "running" | "succeeded";
+
+type PipelinePlanStep = {
+  detail?: string;
+  id: string;
+  label: string;
+  state: PipelineStepState;
+  stage: PipelineStageId;
+};
+
+const PIPELINE_STAGES: Array<{ id: PipelineStageId; label: string }> = [
+  { id: "inventory", label: "Inventory" },
+  { id: "raw", label: "Raw import" },
+  { id: "extracted", label: "Extraction" },
+  { id: "curated", label: "Codex" },
+];
 
 export function CoursePipelineInspector({
   course,
@@ -41,14 +61,20 @@ export function CoursePipelineInspector({
   const [loading, setLoading] = useState(false);
   const [selectingRunId, setSelectingRunId] = useState<string | null>(null);
   const [rerunningEngine, setRerunningEngine] = useState<string | null>(null);
+  const [selectedScope, setSelectedScope] = useState<BlueprintRunScope | null>(null);
+  const [runMode, setRunMode] = useState<PipelineRunMode>("from");
+  const [runScopeMode, setRunScopeMode] = useState<PipelineScopeMode>("selected");
+  const [runStartStage, setRunStartStage] = useState<PipelineStageId>("extracted");
+  const [runPlan, setRunPlan] = useState<PipelinePlanStep[]>([]);
+  const [runningPlanId, setRunningPlanId] = useState<string | null>(null);
 
   const liveWork = useMemo(
     () => hasPipelineLiveWork({
-      actionIds: [selectingRunId, rerunningEngine],
+      actionIds: [selectingRunId, rerunningEngine, runningPlanId],
       runs,
       status,
     }),
-    [rerunningEngine, runs, selectingRunId, status],
+    [rerunningEngine, runningPlanId, runs, selectingRunId, status],
   );
 
   useEffect(() => {
@@ -167,6 +193,40 @@ export function CoursePipelineInspector({
     }
   }
 
+  async function runPipelinePlan() {
+    const runId = makeClientRunId();
+    const scope = resolveRunScope({ mode: runScopeMode, selectedScope });
+    const stages = stagesForPlan(runMode, runStartStage);
+    setRunningPlanId(runId);
+    setError(null);
+    setRunPlan(stages.map((stage) => ({
+      id: `${runId}:${stage.id}`,
+      label: stage.label,
+      state: "queued",
+      stage: stage.id,
+    })));
+
+    try {
+      for (const stage of stages) {
+        setRunPlan((current) => markPlanStep(current, stage.id, "running"));
+        const response = await studyPipelinePost<StudyPipelineStatusResponse>(
+          courseId,
+          `/${stage.id}`,
+          stageRequestBody(stage.id, scope),
+        );
+        setStatus(response);
+        setRunPlan((current) => markPlanStep(current, stage.id, "succeeded"));
+        await loadInspectorData({ silent: true });
+      }
+    } catch (runError) {
+      setRunPlan((current) => markRunningPlanStepFailed(current, formatStudyPipelineError(runError)));
+      setError(formatStudyPipelineError(runError));
+    } finally {
+      setRunningPlanId(null);
+      await loadInspectorData({ silent: true });
+    }
+  }
+
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background md:h-full">
       <div className="min-h-0 flex-1 overflow-auto">
@@ -195,10 +255,24 @@ export function CoursePipelineInspector({
             </div>
           ) : null}
 
+          <PipelineRunControl
+            disabled={Boolean(runningPlanId) || loading}
+            mode={runMode}
+            onModeChange={setRunMode}
+            onRun={() => void runPipelinePlan()}
+            onScopeModeChange={setRunScopeMode}
+            onStartStageChange={setRunStartStage}
+            plan={runPlan}
+            scopeMode={runScopeMode}
+            selectedScope={selectedScope}
+            startStage={runStartStage}
+          />
+
           <CoursePipelineBlueprint
             extractedDocuments={extractedDocuments}
             inventory={inventory}
             onRerunExtraction={(engine) => void rerunExtracted(engine)}
+            onSelectedScopeChange={setSelectedScope}
             onSelectRun={(runId) => void selectActiveRun(runId)}
             rerunningEngine={rerunningEngine}
             runs={runs}
@@ -215,6 +289,143 @@ export function CoursePipelineInspector({
         </div>
       </div>
     </section>
+  );
+}
+
+function PipelineRunControl({
+  disabled,
+  mode,
+  onModeChange,
+  onRun,
+  onScopeModeChange,
+  onStartStageChange,
+  plan,
+  scopeMode,
+  selectedScope,
+  startStage,
+}: {
+  disabled: boolean;
+  mode: PipelineRunMode;
+  onModeChange: (mode: PipelineRunMode) => void;
+  onRun: () => void;
+  onScopeModeChange: (mode: PipelineScopeMode) => void;
+  onStartStageChange: (stage: PipelineStageId) => void;
+  plan: PipelinePlanStep[];
+  scopeMode: PipelineScopeMode;
+  selectedScope: BlueprintRunScope | null;
+  startStage: PipelineStageId;
+}) {
+  const effectiveScope = resolveRunScope({ mode: scopeMode, selectedScope });
+  const running = plan.some((step) => step.state === "running");
+  const completed = plan.filter((step) => step.state === "succeeded").length;
+  const percent = plan.length === 0 ? 0 : Math.round((completed / plan.length) * 100);
+  const selectedDisabled = !selectedScope;
+
+  return (
+    <section className="rounded-3xl bg-secondary/45 px-4 py-4">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <ModeButton active={mode === "from"} disabled={disabled} label="Ab Schritt" onClick={() => onModeChange("from")} />
+            <ModeButton active={mode === "single"} disabled={disabled} label="Nur Schritt" onClick={() => onModeChange("single")} />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {PIPELINE_STAGES.map((stage) => (
+              <ModeButton
+                active={startStage === stage.id}
+                disabled={disabled}
+                key={stage.id}
+                label={stage.label}
+                onClick={() => onStartStageChange(stage.id)}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-3 xl:items-end">
+          <div className="flex flex-wrap gap-2">
+            <ModeButton active={scopeMode === "course"} disabled={disabled} label="Ganzer Kurs" onClick={() => onScopeModeChange("course")} />
+            <ModeButton
+              active={scopeMode === "selected"}
+              disabled={disabled || selectedDisabled}
+              label="Auswahl"
+              onClick={() => onScopeModeChange("selected")}
+            />
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <p className="min-w-0 truncate text-sm text-muted-foreground">
+              Scope: <span className="font-medium text-foreground">{effectiveScope.label}</span>
+              {effectiveScope.resourceIds.length > 0 ? ` · ${effectiveScope.resourceIds.length} resource${effectiveScope.resourceIds.length === 1 ? "" : "s"}` : ""}
+            </p>
+            <Button className="w-fit rounded-full" disabled={disabled} onClick={onRun} type="button">
+              {running ? <Spinner aria-hidden /> : <Play aria-hidden />}
+              {mode === "single" ? "Schritt starten" : "Ab hier starten"}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {plan.length > 0 ? (
+        <div className="mt-4">
+          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span>{running ? "Pipeline läuft" : percent === 100 ? "Pipeline fertig" : "Pipeline bereit"}</span>
+            <span className="tabular-nums">{percent}%</span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-background">
+            <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${percent}%` }} />
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {plan.map((step) => (
+              <PipelinePlanStepTile key={step.id} step={step} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ModeButton({
+  active,
+  disabled,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  disabled: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+        active ? "bg-foreground text-background" : "bg-background/70 text-muted-foreground hover:text-foreground"
+      } disabled:cursor-not-allowed disabled:opacity-45`}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
+
+function PipelinePlanStepTile({ step }: { step: PipelinePlanStep }) {
+  const Icon = step.state === "succeeded"
+    ? CheckCircle2
+    : step.state === "failed"
+      ? XCircle
+      : step.state === "running"
+        ? Loader2
+        : Circle;
+  return (
+    <div className="rounded-2xl bg-background/70 px-3 py-2">
+      <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+        <Icon aria-hidden className={`size-4 ${step.state === "running" ? "animate-spin" : ""}`} />
+        {step.label}
+      </p>
+      <p className="mt-1 truncate text-xs text-muted-foreground">{step.detail ?? stepStateLabel(step.state)}</p>
+    </div>
   );
 }
 
@@ -237,6 +448,65 @@ function StatusBadge({
   }
   if (!status) return null;
   return <Badge className="rounded-full" variant="outline">{status}</Badge>;
+}
+
+function resolveRunScope({
+  mode,
+  selectedScope,
+}: {
+  mode: PipelineScopeMode;
+  selectedScope: BlueprintRunScope | null;
+}): BlueprintRunScope {
+  if (mode === "selected" && selectedScope) return selectedScope;
+  return { kind: "course", label: "Whole course", resourceIds: [] };
+}
+
+function stagesForPlan(mode: PipelineRunMode, startStage: PipelineStageId) {
+  const startIndex = PIPELINE_STAGES.findIndex((stage) => stage.id === startStage);
+  if (mode === "single") return PIPELINE_STAGES.filter((stage) => stage.id === startStage);
+  return PIPELINE_STAGES.slice(Math.max(0, startIndex));
+}
+
+function stageRequestBody(stage: PipelineStageId, scope: BlueprintRunScope) {
+  return {
+    ...(stage === "extracted" ? { configHash: "config:extracted:pdftotext:default", engine: "pdftotext" } : {}),
+    ...(scope.resourceIds.length > 0 ? { resourceIds: scope.resourceIds } : {}),
+  };
+}
+
+function markPlanStep(plan: PipelinePlanStep[], stage: PipelineStageId, state: PipelineStepState): PipelinePlanStep[] {
+  return plan.map((step) => step.stage === stage ? { ...step, detail: undefined, state } : step);
+}
+
+function markRunningPlanStepFailed(plan: PipelinePlanStep[], detail: string): PipelinePlanStep[] {
+  let marked = false;
+  return plan.map((step) => {
+    if (!marked && step.state === "running") {
+      marked = true;
+      return { ...step, detail, state: "failed" };
+    }
+    return step;
+  });
+}
+
+function stepStateLabel(state: PipelineStepState): string {
+  switch (state) {
+    case "failed":
+      return "failed";
+    case "queued":
+      return "queued";
+    case "running":
+      return "running";
+    case "succeeded":
+      return "done";
+  }
+}
+
+function makeClientRunId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}`;
 }
 
 async function studyPipelineRequest<T>(courseId: string, suffix: string): Promise<T> {

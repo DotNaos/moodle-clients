@@ -4,6 +4,7 @@ import type {
   BlueprintNodeData,
   BlueprintProblem,
   BlueprintRenderedField,
+  BlueprintRunScope,
   BlueprintStepKind,
   PipelineRunRecord,
 } from "@/components/course-pipeline-blueprint-model";
@@ -28,6 +29,7 @@ export function materializedStepNode({
   input,
   output,
   resource,
+  runScope,
   status,
   stepKind,
   title,
@@ -37,6 +39,7 @@ export function materializedStepNode({
   input: string;
   output: string;
   resource: CourseInventoryNode;
+  runScope?: BlueprintRunScope;
   status: string;
   stepKind: BlueprintStepKind;
   title: string;
@@ -51,6 +54,7 @@ export function materializedStepNode({
     outputs: [{ label: output, detail: missing ? "not stored yet" : `${count ?? "unknown"} stored` }],
     outputPreview: missing ? "No page/section artifact is stored for this resource yet." : `${output} available for ${resource.name}${count === undefined ? "" : `\nCount: ${count}`}`,
     problems: missing ? [{ label: `${title} missing`, detail: `The ${output} artifact is not available yet.`, severity: "warning" }] : undefined,
+    runScope,
     stepKind,
     tone: missing ? "warning" : "process",
     status,
@@ -67,6 +71,7 @@ export function extractionNodeData({
   courseId,
   document,
   resource,
+  runScope,
   run,
   variants = [],
 }: {
@@ -74,6 +79,7 @@ export function extractionNodeData({
   courseId?: string;
   document: PDFDocumentStructure | null;
   resource: CourseInventoryNode;
+  runScope?: BlueprintRunScope;
   run: PipelineRunRecord | null;
   variants?: BlueprintExtractionVariant[];
 }): BlueprintNodeData {
@@ -88,6 +94,7 @@ export function extractionNodeData({
       outputs: [{ label: "extracted document", state: "missing" }],
       outputPreview: "Run pdftotext, docling, or marker to create inspectable extraction output.",
       problems: [{ label: "No extraction run", detail: "There is no extraction output to compare or select.", severity: "warning" }],
+      runScope,
       stepKind: "split",
       tone: "warning",
       status: "missing",
@@ -116,6 +123,7 @@ export function extractionNodeData({
         { label: "Run record missing", detail: "The extracted document is available, but /runs did not include the matching immutable run.", severity: "warning" },
         ...problems,
       ],
+      runScope,
       stepKind: "split",
       tone: problems.length > 0 ? "warning" : "run",
       status: document.status,
@@ -151,6 +159,7 @@ export function extractionNodeData({
     outputs: [{ label: "extracted document", detail: run.engine, state: run.status }],
     outputPreview: document ? extractedDocumentMarkdown(document, courseId) : runPreview(run),
     problems: mergeProblems(runProblems(run), runDiagnosticProblems(run), documentProblems),
+    runScope,
     stepKind: "split",
     tone: run.status === "failed" || run.status === "warning" ? "warning" : "run",
     status: run.status,
@@ -167,6 +176,7 @@ export function codexNodeData({
   outputLabel,
   outputPreview,
   run,
+  runScope,
   subtitle,
 }: {
   activeRunIds: Set<string>;
@@ -175,6 +185,7 @@ export function codexNodeData({
   outputLabel: string;
   outputPreview?: string;
   run: PipelineRunRecord | null;
+  runScope?: BlueprintRunScope;
   subtitle: string;
 }): BlueprintNodeData {
   const checklistProblems = codexCurationChecklistProblems(run, hasMaterializedOutput);
@@ -195,6 +206,7 @@ export function codexNodeData({
         outputPreview: outputPreview ?? "A website-ready draft is available downstream.",
         renderedFields: codexRenderedFields({ outputLabel, outputPreview }),
         problems: checklistProblems,
+        runScope,
         stepKind: "transform",
         tone: "warning",
         status: "needs_review",
@@ -219,6 +231,7 @@ export function codexNodeData({
         { label: "No Codex output", detail: "There is no final draft to validate or publish.", severity: "warning" },
         ...checklistProblems,
       ],
+      runScope,
       stepKind: "transform",
       tone: "warning",
       status: "missing",
@@ -248,6 +261,7 @@ export function codexNodeData({
     outputPreview: outputPreview ?? runPreview(run),
     renderedFields: codexRenderedFields({ outputLabel, outputPreview }),
     problems,
+    runScope,
     stepKind: "transform",
     tone: run.status === "failed" || run.status === "warning" || hasBlockingChecklistProblem ? "warning" : "run",
     status: hasBlockingChecklistProblem && (run.status === "ok" || run.status === "succeeded") ? "needs_review" : run.status,
@@ -412,12 +426,14 @@ function codexRenderedFields({
 }
 
 export function finalOutputNodeData({
+  runScope,
   sourceLabel,
   status,
   title,
   type,
   upstreamProblems,
 }: {
+  runScope?: BlueprintRunScope;
   sourceLabel: string;
   status: string;
   title: string;
@@ -440,6 +456,7 @@ export function finalOutputNodeData({
       ? `${title} is ready to render in the course UI.`
       : `${title} is not ready. Inspect upstream nodes before trusting the website output.`,
     problems: problems.length > 0 ? problems : undefined,
+    runScope,
     stepKind: "transform",
     tone: ready ? "output" : "warning",
     status: ready ? "ready" : "needs_review",

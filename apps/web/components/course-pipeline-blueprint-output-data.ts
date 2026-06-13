@@ -5,6 +5,7 @@ import type {
   BlueprintNodeData,
   BlueprintProblem,
   BlueprintRenderedField,
+  BlueprintRunScope,
   ScriptOutputRecord,
   TaskOutputRecord,
 } from "@/components/course-pipeline-blueprint-model";
@@ -15,6 +16,7 @@ export function finalTaskOutputNodeData({
   group,
   index,
   outputs,
+  runScope,
   sourceDocuments,
   upstreamProblems,
 }: {
@@ -22,6 +24,7 @@ export function finalTaskOutputNodeData({
   group: CourseInventoryTaskGroup;
   index: number;
   outputs: TaskOutputRecord[];
+  runScope?: BlueprintRunScope;
   sourceDocuments?: Array<PDFDocumentStructure | null>;
   upstreamProblems: BlueprintProblem[];
 }): BlueprintNodeData {
@@ -32,6 +35,7 @@ export function finalTaskOutputNodeData({
       title: `Output ${index + 1}`,
       type: "task",
       upstreamProblems,
+      runScope,
     });
   }
   const validationProblems = outputs.flatMap((output) => validateWebsiteReadyMarkdown(output.promptMarkdown, output.title));
@@ -65,6 +69,7 @@ export function finalTaskOutputNodeData({
             .map((output) => ({ label: "Output needs review", detail: `${output.title} is marked needs_review.`, severity: "warning" as const })),
         ]
       : undefined,
+    runScope,
     stepKind: "transform",
     tone: needsReview ? "warning" : "output",
     status: needsReview ? "needs_review" : "ready",
@@ -83,11 +88,13 @@ export function finalScriptOutputNodeData({
   index,
   outputs,
   resource,
+  runScope,
   upstreamProblems,
 }: {
   index: number;
   outputs: ScriptOutputRecord[];
   resource: CourseInventoryNode;
+  runScope?: BlueprintRunScope;
   upstreamProblems: BlueprintProblem[];
 }): BlueprintNodeData {
   if (outputs.length === 0) {
@@ -97,6 +104,7 @@ export function finalScriptOutputNodeData({
       title: `Script Section ${index + 1}`,
       type: "script",
       upstreamProblems,
+      runScope,
     });
   }
   const validationProblems = outputs.flatMap((output) => validateWebsiteReadyMarkdown(`${output.title}\n${output.statusLabel}${output.sourcePath ? `\n${output.sourcePath}` : ""}`, output.title));
@@ -116,6 +124,7 @@ export function finalScriptOutputNodeData({
     outputs: outputs.map((output) => ({ label: output.title, detail: output.id, state: outputState(output.status, validationProblems.length) })),
     outputPreview: outputs.map((output) => `${output.title}\n${output.statusLabel}${output.sourcePath ? `\n${output.sourcePath}` : ""}`).join("\n\n---\n\n"),
     problems: needsReview ? [...upstreamProblems, ...validationProblems] : undefined,
+    runScope,
     stepKind: "transform",
     tone: needsReview ? "warning" : "output",
     status: needsReview ? "needs_review" : "ready",

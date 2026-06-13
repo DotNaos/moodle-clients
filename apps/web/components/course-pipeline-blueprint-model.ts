@@ -146,6 +146,12 @@ export type BlueprintLiveState = {
   current?: boolean;
 };
 
+export type BlueprintRunScope = {
+  kind: "course" | "resource" | "task_group";
+  label: string;
+  resourceIds: string[];
+};
+
 export type BlueprintNodeData = {
   title: string;
   subtitle: string;
@@ -167,6 +173,7 @@ export type BlueprintNodeData = {
   outputs: BlueprintPort[];
   problems?: BlueprintProblem[];
   renderedFields?: BlueprintRenderedField[];
+  runScope?: BlueprintRunScope;
   extractionVariants?: BlueprintExtractionVariant[];
   frame?: {
     height: number;
@@ -303,6 +310,7 @@ export function buildBlueprintGraph({
         { label: "Outputs", value: taskView ? String(outputLookup.totalOutputs) : "missing" },
       ],
       problems: buildRootProblems({ extractedDocuments, runs, taskView, unavailable }),
+      runScope: { kind: "course", label: "Whole course", resourceIds: [] },
     },
   });
 
@@ -364,6 +372,7 @@ export function buildBlueprintGraph({
             { label: "Source", value: usingDerivedInventory ? "status fallback" : "inventory" },
           ]
         : [{ label: "State", value: "No inventory response loaded yet." }],
+      runScope: { kind: "course", label: "Whole course", resourceIds: [] },
     },
   });
   addEdge(edges, "course", "resource-set", "1 -> 1", { edgeType: "straight" });

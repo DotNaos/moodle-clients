@@ -18,6 +18,7 @@ import type {
   BlueprintGraphNode,
   BlueprintNode,
   BlueprintNodeData,
+  BlueprintRunScope,
   ExtractedLookup,
   OutputLookup,
   PipelineRunRecord,
@@ -102,6 +103,7 @@ export function addTaskGroupLane({
       ],
       outputPreview: `${group.sheet.name}${group.solution ? `\n${group.solution.name}` : "\nMissing solution"}`,
       problems: paired ? undefined : [{ label: "Solution missing", detail: "Codex can still build a task, but solution checks cannot be trusted.", severity: "warning" }],
+      runScope: taskGroupRunScope(group),
       stepKind: "split",
       tone: paired ? "resource" : "warning",
       status: group.pairingStatus,
@@ -161,7 +163,7 @@ export function addTaskGroupLane({
     addNode(nodes, {
       id: solutionPdfId,
       position: { x: PIPELINE_X.pdf, y: y + PDF_PAIR_OFFSET },
-      data: missingSolutionNode(group),
+      data: { ...missingSolutionNode(group), runScope: taskGroupRunScope(group) },
     });
     addEdge(edges, groupId, solutionPdfId, "missing", { muted: true, sourceHandle: "out-4", targetHandle: "in-2" });
   }
@@ -184,6 +186,7 @@ export function addTaskGroupLane({
       outputPreview: `Codex input bundle\nSheet: ${group.sheet.name}\nSolution: ${group.solution?.name ?? "missing"}`,
       outputs: [{ label: "task input bundle", detail: group.title }],
       problems: collectIssues,
+      runScope: taskGroupRunScope(group),
       stepKind: "collect",
       tone: collectIssues.length > 0 ? "warning" : "process",
       status: collectIssues.length > 0 ? "needs_review" : "ready",
@@ -212,6 +215,7 @@ export function addTaskGroupLane({
         : undefined,
       hasMaterializedOutput: taskOutputs.length > 0,
       run: codexRun,
+      runScope: taskGroupRunScope(group),
       subtitle: "task transform",
     }),
   });
@@ -225,6 +229,7 @@ export function addTaskGroupLane({
       group,
       index,
       outputs: taskOutputs,
+      runScope: taskGroupRunScope(group),
       sourceDocuments: [sheetDocument, solutionDocument],
       upstreamProblems: collectIssues,
     }),
@@ -278,6 +283,7 @@ export function addScriptLane({
       inputs: [{ label: "script group", detail: "classified Moodle resource" }],
       outputs: [{ label: "script pdf", detail: resource.name }],
       outputPreview: resource.name,
+      runScope: resourceRunScope(resource),
       stepKind: "transform",
       tone: "resource",
       status: resource.confidence ? `${resource.confidence} confidence` : "classified",
@@ -334,6 +340,7 @@ export function addScriptLane({
           ? `${resource.name}\n${extractedDocument.pages.length} page(s), ${extractedDocument.pages.reduce((sum, page) => sum + page.blocks.length, 0)} block(s).`
         : `No active extraction is selected for ${resource.name}.\nRun an extraction engine before Codex can build script sections.`,
       problems: selectedExtractionReady ? undefined : [{ label: "No active extraction", detail: "The script source has not produced a selected extraction.", severity: "warning" }],
+      runScope: resourceRunScope(resource),
       stepKind: "transform",
       tone: selectedExtractionReady ? "run" : "warning",
       status: extractionRun?.status ?? extractedDocument?.status ?? "missing",
@@ -358,6 +365,7 @@ export function addScriptLane({
         : undefined,
       hasMaterializedOutput: scriptOutputs.length > 0,
       run: codexRun,
+      runScope: resourceRunScope(resource),
       subtitle: "script transform",
     }),
   });
@@ -370,6 +378,7 @@ export function addScriptLane({
       index,
       outputs: scriptOutputs,
       resource,
+      runScope: resourceRunScope(resource),
       upstreamProblems: selectedExtractionReady ? [] : [{ label: "Extraction missing", detail: "No extraction is available for this script resource.", severity: "warning" }],
     }),
   });
@@ -426,6 +435,7 @@ function addPdfPath({
       inputs: [{ label: "moodle resource", detail: resource.name }],
       outputs: [{ label: "pdf file", detail: resource.fileType || resource.type }],
       outputPreview: resource.name,
+      runScope: resourceRunScope(resource),
       stepKind: "transform",
       tone: "resource",
       status: resource.confidence ? `${resource.confidence} confidence` : "classified",
@@ -452,6 +462,7 @@ function addPdfPath({
       input: "pdf file",
       output: "pages[]",
       resource,
+      runScope: resourceRunScope(resource),
       status: extractedDocument ? extractedDocument.status : "missing",
       stepKind: "split",
       title: "Pages",
@@ -470,6 +481,7 @@ function addPdfPath({
       input: "pages[]",
       output: "sections[]",
       resource,
+      runScope: resourceRunScope(resource),
       status: extractedDocument ? extractedDocument.status : "missing",
       stepKind: "split",
       title: "Sections",
@@ -485,6 +497,7 @@ function addPdfPath({
       courseId,
       document: extractedDocument,
       resource,
+      runScope: resourceRunScope(resource),
       run: extractionRun,
       variants: buildExtractionVariants({ activeRunIds, resourceId: resource.id, runLookup }),
     }),
@@ -528,6 +541,7 @@ export function addReviewLane({
       tone: "warning",
       status: "needs_review",
       meta: [{ label: "Items", value: String(warnings.length) }],
+      runScope: { kind: "course", label: "Whole course", resourceIds: [] },
     },
   });
   addEdge(edges, "resource-set", "review-collector", "review", {
@@ -535,6 +549,22 @@ export function addReviewLane({
     sourceHandle: "out-4",
     targetHandle: "in-2",
   });
+}
+
+function taskGroupRunScope(group: CourseInventoryTaskGroup): BlueprintRunScope {
+  return {
+    kind: "task_group",
+    label: group.title,
+    resourceIds: [group.sheet.id, group.solution?.id].filter(Boolean) as string[],
+  };
+}
+
+function resourceRunScope(resource: CourseInventoryNode): BlueprintRunScope {
+  return {
+    kind: "resource",
+    label: resource.name,
+    resourceIds: [resource.id],
+  };
 }
 
 export type RunLookup = {
