@@ -301,7 +301,9 @@ export function addScriptLane({
       evidence: extractionRun ? [`Run ${extractionRun.id}`] : ["No selected extraction run recorded"],
       inputs: [{ label: "extraction variants", detail: resource.name }],
       outputs: [{ label: "active extraction", detail: extractionRun?.engine ?? "missing" }],
-      outputPreview: extractionRun ? runPreview(extractionRun) : "",
+      outputPreview: extractionRun
+        ? runPreview(extractionRun)
+        : `No active extraction is selected for ${resource.name}.\nRun an extraction engine before Codex can build script sections.`,
       problems: extractionRun ? undefined : [{ label: "No active extraction", detail: "The script source has not produced a selected extraction.", severity: "warning" }],
       stepKind: "transform",
       tone: extractionRun ? "run" : "warning",

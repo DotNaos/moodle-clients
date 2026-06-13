@@ -8,15 +8,32 @@ import {
   ReactFlow,
   type NodeProps,
 } from "@xyflow/react";
-import { AlertCircle, CheckCircle2, Database, FileText, GitBranch, Layers, Search } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  ClipboardList,
+  Database,
+  Eye,
+  FileText,
+  GitBranch,
+  Layers,
+  Play,
+  RotateCw,
+  Search,
+  type LucideIcon,
+} from "lucide-react";
+import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   buildBlueprintGraph,
   type BlueprintGraphNode,
   type BlueprintNode,
   type BlueprintNodeTone,
+  type BlueprintPort,
   type PipelineRunRecord,
   type PipelineRunsResponse,
 } from "@/components/course-pipeline-blueprint-model";
@@ -101,108 +118,97 @@ export function CoursePipelineBlueprint({
       </div>
 
       <aside className="min-h-[640px] rounded-3xl bg-secondary/45 px-4 py-4">
-        {selectedNode ? (
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={selectedNode.data.tone === "warning" ? "destructive" : "secondary"}>
-                {selectedNode.data.tone}
-              </Badge>
-              {selectedNode.data.status ? <Badge variant="outline">{selectedNode.data.status}</Badge> : null}
-              {selectedNode.data.active ? <Badge>active</Badge> : null}
-            </div>
-            <h2 className="mt-4 text-lg font-semibold tracking-tight">{selectedNode.data.title}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{selectedNode.data.subtitle}</p>
-            <p className="mt-4 text-sm leading-6 text-foreground/80">{selectedNode.data.detail}</p>
+        {selectedNode ? <NodeInspector node={selectedNode} /> : <p className="text-sm text-muted-foreground">Select a node to inspect its pipeline evidence.</p>}
+      </aside>
+    </div>
+  );
+}
 
-            <div className="mt-5 grid grid-cols-3 gap-2">
-              <MetricTile label="Step" value={stepKindLabel(selectedNode.data.stepKind)} />
-              <MetricTile label="Inputs" value={String(selectedNode.data.inputs.length)} />
-              <MetricTile label="Outputs" value={String(selectedNode.data.outputs.length)} />
-            </div>
+function NodeInspector({ node }: { node: BlueprintNode }) {
+  const data = node.data;
+  const problems = data.problems ?? [];
+  const actions = inspectorActions(data);
+  return (
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", stepKindBadgeClass(data.stepKind))}>
+          {stepKindLabel(data.stepKind)}
+        </span>
+        <Badge variant={data.tone === "warning" ? "destructive" : "secondary"}>{data.tone}</Badge>
+        {data.status ? <Badge variant={data.status === "failed" ? "destructive" : "outline"}>{data.status}</Badge> : null}
+        {data.active ? <Badge>active</Badge> : null}
+      </div>
 
-            <div className="mt-3 grid gap-3">
-              <PortPanel items={selectedNode.data.inputs} title="Input" />
-              <PortPanel items={selectedNode.data.outputs} title="Output" />
-            </div>
+      <h2 className="mt-4 text-lg font-semibold tracking-tight">{data.title}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{data.subtitle}</p>
+      <p className="mt-4 text-sm leading-6 text-foreground/80">{data.detail}</p>
 
-            {selectedNode.data.problems?.length ? (
-              <div className="mt-3 rounded-2xl bg-destructive/10 px-3 py-3">
-                <p className="mb-2 text-xs font-medium text-destructive">Problems</p>
-                <div className="grid gap-2">
-                  {selectedNode.data.problems.map((problem) => (
-                    <div className="rounded-2xl bg-background/70 px-3 py-2" key={`${problem.label}:${problem.detail}`}>
-                      <p className="text-xs font-medium text-destructive">{problem.label}</p>
-                      <p className="mt-1 text-xs leading-5 text-destructive/80">{problem.detail}</p>
-                    </div>
-                  ))}
-                </div>
+      <div className="mt-5 grid grid-cols-3 gap-2">
+        <MetricTile label="Inputs" value={String(data.inputs.length)} />
+        <MetricTile label="Outputs" value={String(data.outputs.length)} />
+        <MetricTile label="Problems" value={String(problems.length)} />
+      </div>
+
+      <InspectorSection icon={ArrowRight} title="Flow">
+        <div className="grid gap-3">
+          <PortPanel items={data.inputs} title="Input" />
+          <PortPanel items={data.outputs} title="Output" />
+        </div>
+      </InspectorSection>
+
+      <InspectorSection icon={Eye} title="Preview">
+        <p className="max-h-56 overflow-auto whitespace-pre-wrap rounded-2xl bg-background/70 px-3 py-3 text-sm leading-6 text-foreground">
+          {data.outputPreview || "No direct output preview is stored for this node yet."}
+        </p>
+      </InspectorSection>
+
+      <InspectorSection icon={AlertCircle} title="Problems" tone={problems.length > 0 ? "warning" : "default"}>
+        {problems.length > 0 ? (
+          <div className="grid gap-2">
+            {problems.map((problem) => (
+              <div className="rounded-2xl bg-background/80 px-3 py-2" key={`${problem.label}:${problem.detail}`}>
+                <p className="text-xs font-medium text-destructive">{problem.label}</p>
+                <p className="mt-1 text-xs leading-5 text-destructive/80">{problem.detail}</p>
               </div>
-            ) : null}
-
-            <div className="mt-5 rounded-2xl bg-background/70 px-3 py-3">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">Rendered / Stored Preview</p>
-              <p className="max-h-48 overflow-auto whitespace-pre-wrap text-sm leading-6 text-foreground">
-                {selectedNode.data.outputPreview || "No direct output preview is stored for this node yet."}
-              </p>
-            </div>
-
-            {selectedNode.data.config?.length ? (
-              <div className="mt-3 rounded-2xl bg-background/70 px-3 py-3">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">Config</p>
-                <div className="grid gap-2">
-                  {selectedNode.data.config.map((item) => (
-                    <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-xs" key={`${selectedNode.id}:config:${item.label}`}>
-                      <span className="text-muted-foreground">{item.label}</span>
-                      <span className="break-words font-medium text-foreground">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="mt-3 rounded-2xl bg-background/70 px-3 py-3">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">Evidence</p>
-              {selectedNode.data.evidence?.length ? (
-                <div className="grid gap-2">
-                  {selectedNode.data.evidence.map((item) => (
-                    <p className="rounded-2xl bg-secondary/60 px-3 py-2 text-xs leading-5 text-foreground" key={item}>
-                      {item}
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm leading-6 text-muted-foreground">No extra evidence was recorded.</p>
-              )}
-            </div>
-
-            <div className="mt-3 rounded-2xl bg-background/70 px-3 py-3">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">Artifacts</p>
-              {selectedNode.data.artifacts?.length ? (
-                <div className="grid gap-2">
-                  {selectedNode.data.artifacts.map((artifact) => (
-                    <p className="break-words rounded-2xl bg-secondary/60 px-3 py-2 text-xs leading-5 text-foreground" key={artifact}>
-                      {artifact}
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm leading-6 text-muted-foreground">No artifacts are attached to this node.</p>
-              )}
-            </div>
-
-            <div className="mt-5 grid gap-2">
-              {selectedNode.data.meta.map((item) => (
-                <div className="rounded-2xl bg-background/70 px-3 py-2" key={`${selectedNode.id}:${item.label}`}>
-                  <p className="text-[11px] text-muted-foreground">{item.label}</p>
-                  <p className="mt-0.5 break-words text-xs font-medium text-foreground">{item.value}</p>
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Select a node to inspect its pipeline evidence.</p>
+          <p className="rounded-2xl bg-background/70 px-3 py-3 text-sm leading-6 text-muted-foreground">No problems recorded for this node.</p>
         )}
-      </aside>
+      </InspectorSection>
+
+      <InspectorSection icon={ClipboardList} title="Config">
+        <KeyValuePanel items={data.config ?? []} emptyText="No engine or model config is attached to this node." />
+      </InspectorSection>
+
+      <InspectorSection icon={Search} title="Evidence">
+        <StringList items={data.evidence ?? []} emptyText="No extra evidence was recorded." />
+      </InspectorSection>
+
+      <InspectorSection icon={FileText} title="Artifacts">
+        <StringList items={data.artifacts ?? []} emptyText="No artifacts are attached to this node." />
+      </InspectorSection>
+
+      <InspectorSection icon={Database} title="Metadata">
+        <KeyValuePanel items={data.meta} emptyText="No metadata is attached to this node." />
+      </InspectorSection>
+
+      <InspectorSection icon={Play} title="Actions">
+        <div className="grid gap-2">
+          {actions.map((action) => {
+            const Icon = action.icon;
+            return (
+              <Button className="h-9 justify-start rounded-full" disabled key={action.label} type="button" variant="secondary">
+                <Icon aria-hidden className="size-4" />
+                {action.label}
+              </Button>
+            );
+          })}
+          <p className="text-xs leading-5 text-muted-foreground">
+            Actions are shown here so the workflow is visible; backend execution buttons will be wired in a later goal.
+          </p>
+        </div>
+      </InspectorSection>
     </div>
   );
 }
@@ -309,6 +315,30 @@ function isBlueprintNode(node: BlueprintGraphNode): node is BlueprintNode {
   return node.type === "blueprint";
 }
 
+function InspectorSection({
+  children,
+  icon: Icon,
+  title,
+  tone = "default",
+}: {
+  children: ReactNode;
+  icon: LucideIcon;
+  title: string;
+  tone?: "default" | "warning";
+}) {
+  return (
+    <section className={cn("mt-4 rounded-3xl px-3 py-3", tone === "warning" ? "bg-destructive/10" : "bg-background/50")}>
+      <div className="mb-3 flex items-center gap-2">
+        <span className={cn("grid size-7 place-items-center rounded-full", tone === "warning" ? "bg-destructive/10 text-destructive" : "bg-secondary text-muted-foreground")}>
+          <Icon aria-hidden className="size-3.5" />
+        </span>
+        <h3 className={cn("text-sm font-semibold", tone === "warning" ? "text-destructive" : "text-foreground")}>{title}</h3>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function MetricTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl bg-background/70 px-3 py-2">
@@ -318,7 +348,7 @@ function MetricTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PortPanel({ items, title }: { items: Array<{ label: string; detail?: string; state?: string }>; title: string }) {
+function PortPanel({ items, title }: { items: BlueprintPort[]; title: string }) {
   return (
     <div className="rounded-2xl bg-background/70 px-3 py-3">
       <p className="mb-2 text-xs font-medium text-muted-foreground">{title}</p>
@@ -335,6 +365,64 @@ function PortPanel({ items, title }: { items: Array<{ label: string; detail?: st
       </div>
     </div>
   );
+}
+
+function KeyValuePanel({ emptyText, items }: { emptyText: string; items: Array<{ label: string; value: string }> }) {
+  if (items.length === 0) {
+    return <p className="rounded-2xl bg-background/70 px-3 py-3 text-sm leading-6 text-muted-foreground">{emptyText}</p>;
+  }
+  return (
+    <div className="grid gap-2">
+      {items.map((item) => (
+        <div className="rounded-2xl bg-background/70 px-3 py-2" key={`${item.label}:${item.value}`}>
+          <p className="text-[11px] text-muted-foreground">{item.label}</p>
+          <p className="mt-0.5 break-words text-xs font-medium text-foreground">{item.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StringList({ emptyText, items }: { emptyText: string; items: string[] }) {
+  if (items.length === 0) {
+    return <p className="rounded-2xl bg-background/70 px-3 py-3 text-sm leading-6 text-muted-foreground">{emptyText}</p>;
+  }
+  return (
+    <div className="grid gap-2">
+      {items.map((item) => (
+        <p className="break-words rounded-2xl bg-background/70 px-3 py-2 text-xs leading-5 text-foreground" key={item}>
+          {item}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function inspectorActions(data: BlueprintNode["data"]) {
+  if (data.title === "Extraction Variants") {
+    return [
+      { icon: RotateCw, label: "Run another extraction" },
+      { icon: Search, label: "Compare variants" },
+      { icon: CheckCircle2, label: "Set active result" },
+    ];
+  }
+  if (data.title === "Codex Transform") {
+    return [
+      { icon: RotateCw, label: "Rerun Codex" },
+      { icon: Search, label: "Compare draft" },
+      { icon: CheckCircle2, label: "Validate output" },
+    ];
+  }
+  if (data.tone === "output" || data.subtitle.includes("website")) {
+    return [
+      { icon: Eye, label: "Open rendered output" },
+      { icon: CheckCircle2, label: "Validate output" },
+    ];
+  }
+  return [
+    { icon: Search, label: "Inspect source" },
+    { icon: RotateCw, label: "Rerun step" },
+  ];
 }
 
 function nodeIcon(tone: BlueprintNodeTone) {

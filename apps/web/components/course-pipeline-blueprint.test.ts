@@ -370,6 +370,23 @@ describe("course pipeline blueprint graph", () => {
     }
   });
 
+  test("keeps every blueprint node inspectable", () => {
+    const graph = buildBlueprintGraph({ extractedDocuments, inventory, runs: resourceRuns, status, taskView });
+    const inspectableNodes = graph.nodes.filter((node) => node.type === "blueprint");
+
+    expect(inspectableNodes.length).toBeGreaterThan(0);
+    for (const node of inspectableNodes) {
+      expect(node.data.title.length).toBeGreaterThan(0);
+      expect(node.data.subtitle.length).toBeGreaterThan(0);
+      expect(node.data.detail.length).toBeGreaterThan(0);
+      expect(node.data.status?.length ?? 0).toBeGreaterThan(0);
+      expect(node.data.inputs.length).toBeGreaterThan(0);
+      expect(node.data.outputs.length).toBeGreaterThan(0);
+      expect(node.data.outputPreview?.length ?? 0).toBeGreaterThan(0);
+      expect(Array.isArray(node.data.meta)).toBe(true);
+    }
+  });
+
   test("handles empty pipeline data without crashing", () => {
     const graph = buildBlueprintGraph({ extractedDocuments: null, inventory: null, runs: null, status: null, taskView: null });
 
