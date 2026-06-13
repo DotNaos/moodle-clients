@@ -614,7 +614,7 @@ function SidebarResizeHandle({
       onPointerDown={onPointerDown}
       type="button"
     >
-      <span className="mx-auto block h-full w-px bg-transparent transition-colors group-hover:bg-border" />
+      <span className="mx-auto block h-full w-1 bg-transparent transition-all group-hover:bg-gradient-to-b group-hover:from-transparent group-hover:via-border group-hover:to-transparent" />
     </button>
   );
 }
