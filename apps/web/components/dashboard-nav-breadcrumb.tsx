@@ -7,6 +7,7 @@ import type { HomeView } from "@/lib/home-navigation";
 import type { Course, Material } from "@/lib/dashboard-data";
 import { courseTitle } from "@/lib/dashboard-data";
 import type { StudyOutline } from "@/lib/study-outline";
+import { taskDisplayTitle } from "@/lib/study-outline";
 import { cn } from "@/lib/utils";
 
 type BreadcrumbSegment = {
@@ -106,7 +107,11 @@ function getLeafLabel({
   }
 
   if (studyMode === "tasks" && selectedTaskId) {
-    return studyOutline.tasks.find((task) => task.id === selectedTaskId)?.title ?? null;
+    const task = studyOutline.tasks.find((task) => task.id === selectedTaskId);
+    if (task) {
+      return taskDisplayTitle(task.sheetTitle, task.title);
+    }
+    return null;
   }
 
   if (studyMode === "script" && selectedScriptSectionId) {

@@ -44,6 +44,7 @@ import {
 import type { Course, Material, User } from "@/lib/dashboard-data";
 import { courseImageUrl, courseTitle } from "@/lib/dashboard-data";
 import type { PDFViewState } from "@/lib/pdf-context";
+import { taskDisplayTitle } from "@/lib/study-outline";
 import { upsertRecentChat } from "@/lib/recent-chat-storage";
 import { cn } from "@/lib/utils";
 
@@ -750,7 +751,7 @@ function StudyContextChip({ context }: { context: NonNullable<StudyChatContext> 
     label = [test.stepLabel, test.taskTitle, test.sheetTitle].filter(Boolean).join(" · ");
   } else if (context.selectedTask) {
     badge = "Aufgabe";
-    label = [context.selectedTask.title, context.selectedTask.sheetTitle].filter(Boolean).join(" · ");
+    label = taskDisplayTitle(context.selectedTask.sheetTitle, context.selectedTask.title);
   } else if (context.selectedScriptSection) {
     badge = "Script";
     label = context.selectedScriptSection.title;
