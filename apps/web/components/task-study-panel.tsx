@@ -638,6 +638,13 @@ export function TaskStudyPanel({
         </DropdownMenuItem>
       ) : null}
       {hasPdfActions ? <DropdownMenuSeparator /> : null}
+      <DropdownMenuItem
+        disabled={Boolean(runningStage)}
+        onSelect={() => void runPipelineStage("curated")}
+      >
+        {runningStage === "curated" ? <Spinner aria-hidden /> : <RefreshCw aria-hidden />}
+        {mode === "script" ? "Script aktualisieren" : "Aufgaben aktualisieren"}
+      </DropdownMenuItem>
       <DropdownMenuItem onSelect={() => openFeedbackDialog()}>
         <AlertCircle aria-hidden />
         Problem melden
@@ -2728,17 +2735,17 @@ function studyPipelineEndpoint(path: string): string {
 
 async function loadTaskViewResponse(courseId: string, includeScript: boolean, signal?: AbortSignal): Promise<TaskViewResponse> {
   const query = `includeScript=${includeScript ? "1" : "0"}`;
-  const bundlePath = `/api/study-bundles/courses/${encodeURIComponent(courseId)}/task-view?${query}`;
-  const bundleResponse = await fetch(bundlePath, { signal });
-  if (bundleResponse.ok) {
-    return await bundleResponse.json() as TaskViewResponse;
-  }
   try {
     return await studyPipelineRequest<TaskViewResponse>(
       `/courses/${encodeURIComponent(courseId)}/study-pipeline/task-view?${query}`,
       signal ? { signal } : undefined,
     );
   } catch (pipelineError) {
+    const bundlePath = `/api/study-bundles/courses/${encodeURIComponent(courseId)}/task-view?${query}`;
+    const bundleResponse = await fetch(bundlePath, { signal });
+    if (bundleResponse.ok) {
+      return await bundleResponse.json() as TaskViewResponse;
+    }
     if (![404, 400].includes(bundleResponse.status)) {
       const payload = await bundleResponse.json().catch(() => null) as { error?: string } | null;
       throw new Error(payload?.error ?? getErrorMessage(pipelineError));

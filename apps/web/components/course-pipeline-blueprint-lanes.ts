@@ -699,14 +699,14 @@ function laneHandle(index: number): string {
 }
 
 const PIPELINE_X = {
-  group: 640,
-  pdf: 960,
-  pages: 1320,
-  sections: 1680,
-  extraction: 2040,
-  collect: 2440,
-  codex: 2800,
-  output: 3160,
+  group: 820,
+  pdf: 1260,
+  pages: 1740,
+  sections: 2220,
+  extraction: 2700,
+  collect: 3220,
+  codex: 3680,
+  output: 4140,
 } as const;
 
-const PDF_PAIR_OFFSET = 140;
+const PDF_PAIR_OFFSET = 190;

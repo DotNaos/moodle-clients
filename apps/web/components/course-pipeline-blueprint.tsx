@@ -6,6 +6,7 @@ import {
   Handle,
   Position,
   ReactFlow,
+  type Edge,
   type NodeProps,
 } from "@xyflow/react";
 import {
@@ -98,9 +99,29 @@ export function CoursePipelineBlueprint({
   selectingRunId,
   unavailable,
 }: CoursePipelineBlueprintProps) {
+  const [edgeStyle, setEdgeStyle] = useState<"rounded" | "square">("rounded");
   const graph = useMemo(
     () => buildBlueprintGraph({ extractedDocuments, inventory, runs, status, taskView, unavailable }),
     [extractedDocuments, inventory, runs, status, taskView, unavailable],
+  );
+  const nodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
+  const visibleEdges = useMemo(
+    () => graph.edges.map((edge) => {
+      const stroke = edgeColor(edge, nodeById);
+      return {
+        ...edge,
+        label: undefined,
+        markerEnd: undefined,
+        style: {
+          ...edge.style,
+          stroke,
+          strokeLinecap: "round" as const,
+          strokeWidth: edge.style?.strokeWidth ?? 2.5,
+        },
+        type: edgeStyle === "rounded" ? "default" : "step",
+      };
+    }),
+    [edgeStyle, graph.edges, nodeById],
   );
   const selectableNodes = useMemo(() => graph.nodes.filter(isBlueprintNode), [graph.nodes]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(selectableNodes[0]?.id ?? null);
@@ -126,11 +147,15 @@ export function CoursePipelineBlueprint({
           <LegendPill kind="split" label="1 -> N Split" />
           <LegendPill kind="collect" label="N -> 1 Collect" />
         </div>
+        <div className="absolute right-4 top-4 z-10 flex rounded-full bg-background/90 p-1 shadow-sm shadow-black/10">
+          <EdgeStyleButton active={edgeStyle === "rounded"} label="Rund" onClick={() => setEdgeStyle("rounded")} />
+          <EdgeStyleButton active={edgeStyle === "square"} label="Eckig" onClick={() => setEdgeStyle("square")} />
+        </div>
         <ReactFlow
           className="pipeline-blueprint-flow"
           colorMode="light"
           defaultViewport={{ x: 20, y: -280, zoom: 0.72 }}
-          edges={graph.edges}
+          edges={visibleEdges}
           maxZoom={1.4}
           minZoom={0.2}
           nodeTypes={nodeTypes}
@@ -408,10 +433,11 @@ function ExtractionActionButtons({
 
 function BlueprintNodeCard({ data, id, selected }: NodeProps<BlueprintNode>) {
   const Icon = nodeIcon(data.tone);
+  const preview = nodeBodyPreview(data.outputPreview);
   return (
     <div
       className={cn(
-        "relative h-[178px] w-[240px] overflow-hidden rounded-3xl bg-background px-4 py-3 shadow-lg shadow-black/10 transition-shadow",
+        "relative h-[286px] w-[320px] overflow-hidden rounded-3xl bg-background px-4 py-3 shadow-lg shadow-black/10 transition-shadow",
         liveNodeClass(data.live),
         selected ? "outline outline-2 outline-primary/60" : "",
       )}
@@ -430,16 +456,8 @@ function BlueprintNodeCard({ data, id, selected }: NodeProps<BlueprintNode>) {
     >
       <NodeLiveIndicator live={data.live} />
       <span aria-hidden className={cn("absolute inset-x-6 top-0 h-1 rounded-b-full", stepKindStripeClass(data.stepKind))} />
-      {HANDLE_POSITIONS.map((top, index) => (
-        <Handle
-          className="opacity-0"
-          id={`in-${index}`}
-          key={`in-${index}`}
-          position={Position.Left}
-          style={{ top: `${top}%` }}
-          type="target"
-        />
-      ))}
+      <BorderPorts direction="input" items={data.inputs} />
+      <BorderPorts direction="output" items={data.outputs} />
       <div className="flex items-start gap-3">
         <span className={cn("grid size-9 shrink-0 place-items-center rounded-full", nodeToneClass(data.tone))}>
           <Icon aria-hidden className="size-4" />
@@ -455,25 +473,128 @@ function BlueprintNodeCard({ data, id, selected }: NodeProps<BlueprintNode>) {
         </span>
         <PipelineStatusBadge active={data.active} live={data.live} status={data.status} />
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-        <span className="truncate rounded-full bg-secondary/60 px-2 py-1">in {data.inputs.length}</span>
-        <span className="truncate rounded-full bg-secondary/60 px-2 py-1 text-right">out {data.outputs.length}</span>
+
+      <div className="mt-4 min-h-[96px] rounded-2xl bg-secondary/45 px-3 py-2">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-normal text-muted-foreground">Output</span>
+          {data.problems?.length ? (
+            <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+              {data.problems.length}
+            </span>
+          ) : null}
+        </div>
+        <p className="line-clamp-3 whitespace-pre-wrap break-words text-[11px] leading-4 text-foreground/80">
+          {preview || "No preview stored yet."}
+        </p>
       </div>
-      {HANDLE_POSITIONS.map((top, index) => (
-        <Handle
-          className="opacity-0"
-          id={`out-${index}`}
-          key={`out-${index}`}
-          position={Position.Right}
-          style={{ top: `${top}%` }}
-          type="source"
-        />
-      ))}
     </div>
   );
 }
 
 const HANDLE_POSITIONS = [16, 30, 44, 58, 72, 86] as const;
+const CHANNEL_SLOTS_BY_COUNT: Record<number, number[]> = {
+  1: [2],
+  2: [1, 4],
+  3: [0, 2, 4],
+  4: [0, 2, 3, 5],
+  5: [0, 1, 2, 4, 5],
+  6: [0, 1, 2, 3, 4, 5],
+};
+
+function BorderPorts({ direction, items }: { direction: "input" | "output"; items: BlueprintPort[] }) {
+  const slotPorts = portsBySlot(items);
+  return (
+    <>
+      {HANDLE_POSITIONS.map((top, index) => {
+        const port = slotPorts.get(index);
+        return (
+          <div
+            className={cn(
+              "pointer-events-none absolute z-20 flex max-w-[8.75rem] items-center gap-1.5",
+              direction === "input" ? "left-0 -translate-x-1/2 pl-0" : "right-0 translate-x-1/2 flex-row-reverse pr-0",
+            )}
+            key={`${direction}-${index}`}
+            style={{ top: `${top}%` }}
+          >
+            <Handle
+              className={cn(
+                "pointer-events-auto !static !size-3 !translate-x-0 !translate-y-0 !rounded-full !border-2 !border-background",
+                port ? portColorClass(port) : "!bg-muted-foreground/25",
+              )}
+              id={`${direction === "input" ? "in" : "out"}-${index}`}
+              position={direction === "input" ? Position.Left : Position.Right}
+              type={direction === "input" ? "target" : "source"}
+            />
+            {port ? (
+              <span
+                className={cn(
+                  "truncate rounded-full bg-background/95 px-2 py-0.5 text-[10px] font-semibold text-foreground/75 shadow-sm shadow-black/10",
+                  direction === "output" ? "text-right" : "",
+                )}
+                title={[port.label, port.detail, port.state].filter(Boolean).join(" · ")}
+              >
+                {port.label}
+              </span>
+            ) : null}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function portsBySlot(items: BlueprintPort[]): Map<number, BlueprintPort> {
+  const slots = CHANNEL_SLOTS_BY_COUNT[Math.min(6, Math.max(1, items.length))] ?? CHANNEL_SLOTS_BY_COUNT[1];
+  const map = new Map<number, BlueprintPort>();
+  items.slice(0, 6).forEach((item, index) => {
+    map.set(slots[index] ?? index, item);
+  });
+  return map;
+}
+
+function nodeBodyPreview(rawPreview: string | undefined): string {
+  if (!rawPreview?.trim()) return "";
+  const { markdown } = preparePreviewMarkdown(rawPreview);
+  return markdown
+    .replace(/!\[[^\]]*]\([^)]+\)/g, "[image]")
+    .replace(/[#*_`>]/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 360);
+}
+
+function portColorClass(port: BlueprintPort): string {
+  const value = `${port.label} ${port.detail ?? ""} ${port.state ?? ""}`.toLowerCase();
+  if (/missing|failed|problem|review/.test(value)) return "bg-destructive";
+  if (/published|website|output|ready|script section|task draft|task/.test(value)) return "bg-emerald-500";
+  if (/extract|ocr|active extraction/.test(value)) return "bg-blue-500";
+  if (/section|block/.test(value)) return "bg-violet-500";
+  if (/page/.test(value)) return "bg-sky-500";
+  if (/pdf|file|resource|course/.test(value)) return "bg-amber-500";
+  return "bg-muted-foreground";
+}
+
+function portColorHex(port: BlueprintPort | null | undefined): string {
+  if (!port) return "#737373";
+  const value = `${port.label} ${port.detail ?? ""} ${port.state ?? ""}`.toLowerCase();
+  if (/missing|failed|problem|review/.test(value)) return "#dc2626";
+  if (/published|website|output|ready|script section|task draft|task/.test(value)) return "#10b981";
+  if (/extract|ocr|active extraction/.test(value)) return "#3b82f6";
+  if (/section|block/.test(value)) return "#8b5cf6";
+  if (/page/.test(value)) return "#0ea5e9";
+  if (/pdf|file|resource|course/.test(value)) return "#f59e0b";
+  return "#737373";
+}
+
+function edgeColor(edge: Pick<Edge, "source" | "sourceHandle">, nodeById: Map<string, BlueprintGraphNode>): string {
+  const source = nodeById.get(edge.source);
+  if (source?.type !== "blueprint") return "#737373";
+  const slot = Number(edge.sourceHandle?.replace("out-", ""));
+  if (Number.isFinite(slot)) {
+    return portColorHex(portsBySlot(source.data.outputs).get(slot));
+  }
+  return portColorHex(source.data.outputs[0]);
+}
 
 function BlueprintGroupFrame({ data }: NodeProps<Extract<BlueprintGraphNode, { type: "frame" }>>) {
   const stage = data.frame?.variant === "stage";
@@ -502,6 +623,29 @@ function LegendPill({ kind, label }: { kind: "collect" | "split" | "transform"; 
     <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", stepKindBadgeClass(kind))}>
       {label}
     </span>
+  );
+}
+
+function EdgeStyleButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={cn(
+        "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+        active ? "bg-foreground text-background" : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
   );
 }
 

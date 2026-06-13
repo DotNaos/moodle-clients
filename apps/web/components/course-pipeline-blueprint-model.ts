@@ -208,12 +208,12 @@ export function buildBlueprintGraph({
   const visibleScriptResources = scriptResources.slice(0, MAX_SCRIPT_GROUPS);
   const totalResources = status?.summary.totalResources ?? derivedInventory?.summary.totalResources ?? 0;
   const centerY = 760;
-  const taskLaneGap = 540;
+  const taskLaneGap = 720;
   const taskLaneStartY = centerY - ((Math.max(visibleTaskGroups.length, 1) - 1) * taskLaneGap) / 2;
-  const scriptLaneY = taskLaneStartY + Math.max(visibleTaskGroups.length, 1) * taskLaneGap + 160;
+  const scriptLaneY = taskLaneStartY + Math.max(visibleTaskGroups.length, 1) * taskLaneGap + 200;
   const stageTopY = taskLaneStartY - 120;
   const stageHeight = Math.max(visibleTaskGroups.length, 1) * taskLaneGap
-    + Math.max(visibleScriptResources.length, 1) * 320
+    + Math.max(visibleScriptResources.length, 1) * 420
     + 520;
 
   addStageFrames(nodes, { height: stageHeight, y: stageTopY });
@@ -252,7 +252,7 @@ export function buildBlueprintGraph({
 
   addNode(nodes, {
     id: "resource-set",
-    position: { x: 320, y: centerY },
+    position: { x: 420, y: centerY },
     data: {
       title: "Resource Set",
       subtitle: `${totalResources} resources`,
@@ -308,13 +308,13 @@ export function buildBlueprintGraph({
 
   addFrame(nodes, {
     id: "task-groups-frame",
-    position: { x: 610, y: taskLaneStartY - 52 },
+    position: { x: 780, y: taskLaneStartY - 64 },
     data: frameData({
-      height: Math.max(visibleTaskGroups.length, 1) * taskLaneGap - 160,
+      height: Math.max(visibleTaskGroups.length, 1) * taskLaneGap - 120,
       subtitle: `${taskGroups.length} task groups`,
       title: "Task groups[]",
       variant: "group",
-      width: 2830,
+      width: 3720,
     }),
   });
 
@@ -339,7 +339,7 @@ export function buildBlueprintGraph({
     const lastHidden = hiddenGroups.at(-1);
     addNode(nodes, {
       id: "task-groups-more",
-      position: { x: 680, y: centerY },
+      position: { x: 860, y: centerY },
       data: {
         title: hiddenCount > 1 ? `${titleRange(firstHidden?.title, lastHidden?.title)} collapsed` : `${firstHidden?.title ?? hiddenCount} collapsed`,
         subtitle: `${hiddenCount} hidden task group${hiddenCount === 1 ? "" : "s"}`,
@@ -360,13 +360,13 @@ export function buildBlueprintGraph({
   if (visibleScriptResources.length > 0) {
     addFrame(nodes, {
       id: "script-groups-frame",
-      position: { x: 610, y: scriptLaneY - 52 },
+      position: { x: 780, y: scriptLaneY - 64 },
       data: frameData({
-        height: Math.max(visibleScriptResources.length, 1) * 320 - 16,
+        height: Math.max(visibleScriptResources.length, 1) * 420 - 16,
         subtitle: `${scriptResources.length} script resources`,
         title: "Script groups[]",
         variant: "group",
-        width: 2830,
+        width: 3720,
       }),
     });
   }
@@ -381,11 +381,11 @@ export function buildBlueprintGraph({
       runLookup,
       extractedLookup,
       outputLookup,
-      y: scriptLaneY + index * 320,
+      y: scriptLaneY + index * 420,
     });
   });
 
-  addReviewLane({ edges, inventory: derivedInventory, nodes, runs, y: scriptLaneY + visibleScriptResources.length * 320 + 96 });
+  addReviewLane({ edges, inventory: derivedInventory, nodes, runs, y: scriptLaneY + visibleScriptResources.length * 420 + 120 });
 
   return { nodes, edges };
 }
@@ -400,16 +400,16 @@ function addFrame(nodes: BlueprintGraphNode[], node: BlueprintFrameInput) {
 
 function addStageFrames(nodes: BlueprintGraphNode[], { height, y }: { height: number; y: number }) {
   const stages = [
-    { id: "stage-course", title: "Course", subtitle: "source", width: 280, x: -20 },
-    { id: "stage-resources", title: "Resources", subtitle: "inventory", width: 300, x: 290 },
-    { id: "stage-groups", title: "Groups", subtitle: "task/script arrays", width: 290, x: 610 },
-    { id: "stage-pdfs", title: "PDFs", subtitle: "sheet + solution", width: 300, x: 930 },
-    { id: "stage-pages", title: "Pages", subtitle: "1 -> N", width: 300, x: 1290 },
-    { id: "stage-sections", title: "Sections", subtitle: "blocks", width: 300, x: 1650 },
-    { id: "stage-extraction", title: "Extraction", subtitle: "OCR variants", width: 320, x: 2010 },
-    { id: "stage-collect", title: "Collect", subtitle: "N -> 1", width: 300, x: 2410 },
-    { id: "stage-codex", title: "Codex", subtitle: "curation", width: 300, x: 2770 },
-    { id: "stage-output", title: "Outputs", subtitle: "website-ready", width: 320, x: 3130 },
+    { id: "stage-course", title: "Course", subtitle: "source", width: 360, x: -20 },
+    { id: "stage-resources", title: "Resources", subtitle: "inventory", width: 360, x: 380 },
+    { id: "stage-groups", title: "Groups", subtitle: "task/script arrays", width: 360, x: 780 },
+    { id: "stage-pdfs", title: "PDFs", subtitle: "sheet + solution", width: 380, x: 1220 },
+    { id: "stage-pages", title: "Pages", subtitle: "1 -> N", width: 380, x: 1700 },
+    { id: "stage-sections", title: "Sections", subtitle: "blocks", width: 380, x: 2180 },
+    { id: "stage-extraction", title: "Extraction", subtitle: "OCR variants", width: 400, x: 2660 },
+    { id: "stage-collect", title: "Collect", subtitle: "N -> 1", width: 380, x: 3180 },
+    { id: "stage-codex", title: "Codex", subtitle: "curation", width: 380, x: 3640 },
+    { id: "stage-output", title: "Outputs", subtitle: "website-ready", width: 400, x: 4100 },
   ];
   for (const stage of stages) {
     nodes.push({
