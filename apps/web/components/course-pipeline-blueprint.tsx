@@ -589,7 +589,7 @@ function NodePreviewContent({
           ? "space-y-1 text-[11px] leading-4 text-foreground/80 [&_.katex-display]:my-1 [&_code]:text-[10px] [&_h3]:!mt-0 [&_h3]:text-[12px] [&_h4]:!mt-0 [&_h4]:text-[11px] [&_ol]:ml-4 [&_pre]:rounded-xl [&_pre]:p-2 [&_pre]:text-[10px] [&_ul]:ml-4"
           : "max-w-none space-y-4 text-sm leading-6 [&_.katex-display]:overflow-auto [&_pre]:rounded-2xl [&_pre]:p-3",
       )}
-      text={preview.text}
+      text={size === "node" ? compactNodeMarkdownPreview(preview.text) : preview.text}
     />
   );
 }
@@ -620,7 +620,7 @@ function RenderedPreviewField({
               ? "space-y-1 text-[11px] leading-4 text-foreground/80 [&_.katex-display]:my-1 [&_code]:text-[10px] [&_h3]:!mt-0 [&_h3]:text-[12px] [&_h4]:!mt-0 [&_h4]:text-[11px] [&_ol]:ml-4 [&_pre]:rounded-xl [&_pre]:p-2 [&_pre]:text-[10px] [&_ul]:ml-4"
               : "max-w-none space-y-4 text-sm leading-6 [&_.katex-display]:overflow-auto [&_pre]:rounded-2xl [&_pre]:p-3",
           )}
-          text={field.value}
+          text={size === "node" ? compactNodeMarkdownPreview(field.value) : field.value}
         />
       ) : field.type === "json" ? (
         <JsonPreviewText text={field.value} size={size} />
@@ -631,6 +631,26 @@ function RenderedPreviewField({
       )}
     </section>
   );
+}
+
+function compactNodeMarkdownPreview(markdown: string): string {
+  const blocks = markdown.trim().split(/\n{2,}/).filter(Boolean);
+  const kept: string[] = [];
+  let hidden = 0;
+  for (const block of blocks) {
+    const image = block.match(/^!\[([^\]]*)]\(/);
+    const next = image ? `[image: ${image[1]?.trim() || "asset"}]` : block;
+    const nextLength = [...kept, next].join("\n\n").length;
+    if (kept.length >= 6 || nextLength > 700) {
+      hidden += 1;
+      continue;
+    }
+    kept.push(next);
+  }
+  if (hidden > 0) {
+    kept.push(`... ${hidden} more block${hidden === 1 ? "" : "s"}`);
+  }
+  return kept.join("\n\n");
 }
 
 function JsonPreviewText({

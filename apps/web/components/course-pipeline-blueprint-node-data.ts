@@ -7,7 +7,7 @@ import type {
   BlueprintStepKind,
   PipelineRunRecord,
 } from "@/components/course-pipeline-blueprint-model";
-import type { PDFDocumentStructure } from "@/components/extracted-document-inspector";
+import type { DocumentAsset, PDFDocumentStructure } from "@/components/extracted-document-inspector";
 import {
   runArtifactSummary,
   runConfig,
@@ -64,12 +64,14 @@ export function materializedStepNode({
 
 export function extractionNodeData({
   activeRunIds,
+  courseId,
   document,
   resource,
   run,
   variants = [],
 }: {
   activeRunIds: Set<string>;
+  courseId?: string;
   document: PDFDocumentStructure | null;
   resource: CourseInventoryNode;
   run: PipelineRunRecord | null;
@@ -107,8 +109,9 @@ export function extractionNodeData({
       ],
       extractionVariants: variants,
       inputs: [{ label: "sections[]", detail: resource.name }],
+      bodyData: extractedDocumentBodyData(document, courseId),
       outputs: [{ label: "extracted document", detail: document.engine, state: document.status }],
-      outputPreview: extractedDocumentPreview(document),
+      outputPreview: extractedDocumentMarkdown(document, courseId),
       problems: [
         { label: "Run record missing", detail: "The extracted document is available, but /runs did not include the matching immutable run.", severity: "warning" },
         ...problems,
@@ -144,8 +147,9 @@ export function extractionNodeData({
     ],
     extractionVariants: variants,
     inputs: [{ label: "sections[]", detail: resource.name }],
+    bodyData: document ? extractedDocumentBodyData(document, courseId, run) : undefined,
     outputs: [{ label: "extracted document", detail: run.engine, state: run.status }],
-    outputPreview: document ? extractedDocumentPreview(document) : runPreview(run),
+    outputPreview: document ? extractedDocumentMarkdown(document, courseId) : runPreview(run),
     problems: mergeProblems(runProblems(run), runDiagnosticProblems(run), documentProblems),
     stepKind: "split",
     tone: run.status === "failed" || run.status === "warning" ? "warning" : "run",
@@ -411,8 +415,9 @@ export function extractedDocumentProblems(document: PDFDocumentStructure): Bluep
   if ((document.diagnostics.visualOnlyPages?.length ?? 0) > 0) {
     problems.push({ label: "Visual-only pages", detail: `Pages: ${document.diagnostics.visualOnlyPages?.join(", ")}`, severity: "warning" });
   }
-  if ((document.diagnostics.unusedImageAssets?.length ?? 0) > 0) {
-    problems.push({ label: "Unused images", detail: `${document.diagnostics.unusedImageAssets?.length} extracted image asset(s) are not referenced.`, severity: "warning" });
+  const unrenderableUnusedImages = unusedImageAssets(document).filter((asset) => !asset || !asset.path);
+  if (unrenderableUnusedImages.length > 0) {
+    problems.push({ label: "Unused images", detail: `${unrenderableUnusedImages.length} extracted image asset(s) cannot be rendered.`, severity: "warning" });
   }
   if ((document.diagnostics.unknownBlocks?.length ?? 0) > 0) {
     problems.push({ label: "Unknown blocks", detail: `${document.diagnostics.unknownBlocks?.length} block(s) need review.`, severity: "warning" });
@@ -423,14 +428,106 @@ export function extractedDocumentProblems(document: PDFDocumentStructure): Bluep
   return problems;
 }
 
-function extractedDocumentPreview(document: PDFDocumentStructure): string {
-  const blocks = document.pages.flatMap((page) => page.blocks);
-  const text = blocks
-    .map((block) => block.markdown || block.text || (block.assetId ? `[${block.type}: ${block.assetId}]` : ""))
-    .filter(Boolean)
-    .slice(0, 8)
-    .join("\n\n");
-  return text || `${document.resource.name}\n${document.pages.length} page(s), ${blocks.length} block(s), ${document.assets.length} asset(s).`;
+function extractedDocumentBodyData(
+  document: PDFDocumentStructure,
+  courseId?: string,
+  run?: PipelineRunRecord,
+) {
+  return {
+    type: "extracted_document",
+    document: {
+      id: document.id,
+      resource: document.resource,
+      engine: document.engine,
+      status: document.status,
+      sourcePath: document.sourcePath ?? null,
+      extractedPath: document.extractedPath ?? null,
+      contentMarkdown: extractedDocumentMarkdown(document, courseId),
+      pages: document.pages.map((page) => ({
+        id: page.id,
+        pageNumber: page.pageNumber,
+        previewAssetId: page.previewAssetId ?? null,
+        text: page.text ?? null,
+        markdown: page.markdown ?? null,
+        blocks: page.blocks,
+        diagnostics: page.diagnostics ?? null,
+      })),
+      assets: document.assets.map((asset) => ({
+        ...asset,
+        url: extractedAssetUrl(courseId, asset.path),
+      })),
+      diagnostics: document.diagnostics,
+    },
+    run: run
+      ? {
+          id: run.id,
+          stage: run.stage,
+          engine: run.engine,
+          configHash: run.configHash,
+          status: run.status,
+          createdAt: run.createdAt,
+          startedAt: run.startedAt ?? null,
+          finishedAt: run.finishedAt ?? null,
+          artifactRoot: run.artifactRoot,
+        }
+      : null,
+  };
+}
+
+function extractedDocumentMarkdown(document: PDFDocumentStructure, courseId?: string): string {
+  const assetsById = new Map(document.assets.map((asset) => [asset.id, asset] as const));
+  const referencedAssetIds = new Set<string>();
+  const pageMarkdown = document.pages.flatMap((page) => {
+    const pageBlocks = page.blocks
+      .map((block) => {
+        if (block.assetId) {
+          referencedAssetIds.add(block.assetId);
+          const asset = assetsById.get(block.assetId);
+          if (asset) {
+            return assetMarkdown(asset, courseId, block.label || `${document.resource.name} page ${page.pageNumber}`);
+          }
+        }
+        if (block.markdown?.trim()) return block.markdown.trim();
+        if (block.text?.trim()) return block.text.trim();
+        return "";
+      })
+      .filter(Boolean);
+    if (pageBlocks.length === 0) return [];
+    if (document.pages.length <= 1) return pageBlocks;
+    return [`## Page ${page.pageNumber}`, ...pageBlocks];
+  });
+
+  const supplementalAssets = unusedImageAssets(document)
+    .filter((asset): asset is DocumentAsset => Boolean(asset?.path))
+    .filter((asset) => !referencedAssetIds.has(asset.id));
+  const supplementalMarkdown = supplementalAssets.length > 0
+    ? [
+        "## Extracted image assets",
+        ...supplementalAssets.map((asset) => assetMarkdown(asset, courseId, asset.role || asset.id)),
+      ]
+    : [];
+  const markdown = [...pageMarkdown, ...supplementalMarkdown].filter(Boolean).join("\n\n").trim();
+  return markdown || `${document.resource.name}\n\n${document.pages.length} page(s), ${document.pages.flatMap((page) => page.blocks).length} block(s), ${document.assets.length} asset(s).`;
+}
+
+function unusedImageAssets(document: PDFDocumentStructure): Array<DocumentAsset | undefined> {
+  const assetsById = new Map(document.assets.map((asset) => [asset.id, asset] as const));
+  return (document.diagnostics.unusedImageAssets ?? []).map((assetId) => assetsById.get(assetId));
+}
+
+function assetMarkdown(asset: DocumentAsset, courseId: string | undefined, fallbackAlt: string): string {
+  const alt = escapeMarkdownAlt(asset.role || fallbackAlt || asset.id);
+  const url = extractedAssetUrl(courseId, asset.path);
+  return url ? `![${alt}](${url})` : `[image asset: ${asset.id}]`;
+}
+
+function extractedAssetUrl(courseId: string | undefined, path: string): string {
+  if (!courseId || !path) return "";
+  return `/api/study-pipeline/courses/${encodeURIComponent(courseId)}/study-pipeline/extracted-asset?path=${encodeURIComponent(path)}`;
+}
+
+function escapeMarkdownAlt(value: string): string {
+  return value.replace(/[[\]]/g, "");
 }
 
 function extractedDocumentArtifacts(document: PDFDocumentStructure): string[] {

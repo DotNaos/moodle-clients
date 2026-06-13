@@ -21,7 +21,7 @@ export type PipelineNodePreview =
 
 export function buildPipelineNodePreview(data: BlueprintNodeData): PipelineNodePreview {
   const rawData = data.bodyData ?? serializableNodeData(data);
-  const fields = renderableFields(data.renderedFields);
+  const fields = renderableFields(data.renderedFields, rawData);
   const jsonText = JSON.stringify(fields.length > 0 ? omitRenderedFields(rawData, fields) : rawData, null, 2);
   if (fields.length > 0) {
     return { fields, jsonText, kind: "mixed" };
@@ -86,8 +86,11 @@ function isRecordOrArray(value: unknown): value is Record<string, unknown> | unk
   return Boolean(value) && typeof value === "object";
 }
 
-function renderableFields(fields: BlueprintRenderedField[] | undefined): BlueprintRenderedField[] {
-  return (fields ?? [])
+function renderableFields(fields: BlueprintRenderedField[] | undefined, rawData: unknown): BlueprintRenderedField[] {
+  const explicitFields = fields ?? [];
+  const explicitPaths = new Set(explicitFields.map((field) => field.path));
+  const discoveredFields = discoverRenderableFields(rawData).filter((field) => !explicitPaths.has(field.path));
+  return [...explicitFields, ...discoveredFields]
     .map((field) => {
       if (field.type !== "markdown") return field;
       return {
@@ -96,6 +99,75 @@ function renderableFields(fields: BlueprintRenderedField[] | undefined): Bluepri
       };
     })
     .filter((field) => field.value.trim().length > 0);
+}
+
+function discoverRenderableFields(value: unknown): BlueprintRenderedField[] {
+  const fields: BlueprintRenderedField[] = [];
+  walkRenderableFields(value, [], fields);
+  return fields;
+}
+
+function walkRenderableFields(
+  value: unknown,
+  path: Array<number | string>,
+  fields: BlueprintRenderedField[],
+) {
+  if (typeof value === "string") {
+    const key = path.at(-1);
+    const pathText = formatPath(path);
+    if (pathText && typeof key === "string" && isRenderableMarkdownKey(key, value)) {
+      fields.push({
+        label: fieldLabelFromPath(pathText),
+        path: pathText,
+        type: "markdown",
+        value,
+      });
+    }
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => walkRenderableFields(item, [...path, index], fields));
+    return;
+  }
+
+  for (const [key, item] of Object.entries(value)) {
+    walkRenderableFields(item, [...path, key], fields);
+  }
+}
+
+function isRenderableMarkdownKey(key: string, value: string): boolean {
+  if (!value.trim()) return false;
+  if (/(^|[._-])(markdown|mdx?)$/i.test(key) || /markdown$/i.test(key)) return true;
+  if (key !== "outputPreview") return false;
+  return looksLikeRenderableMarkdown(value);
+}
+
+function looksLikeRenderableMarkdown(value: string): boolean {
+  return [
+    /\n#{1,6}\s+\S/,
+    /!\[[^\]]*]\([^)]+\)/,
+    /<figure\b/i,
+    /```/,
+    /\\\(|\\\[|\$\$/,
+  ].some((pattern) => pattern.test(value));
+}
+
+function formatPath(path: Array<number | string>): string {
+  return path.reduce<string>((result, part) => {
+    if (typeof part === "number") return `${result}[${part}]`;
+    return result ? `${result}.${part}` : part;
+  }, "");
+}
+
+function fieldLabelFromPath(path: string): string {
+  const tail = path.split(".").at(-1) ?? path;
+  return tail
+    .replace(/\[\d+]/g, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function supportsRenderedPreview(data: BlueprintNodeData): boolean {

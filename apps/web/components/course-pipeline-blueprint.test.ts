@@ -472,6 +472,67 @@ describe("course pipeline blueprint graph", () => {
     expect(variants.find((variant) => variant.engine === "marker")?.status).toBe("missing");
   });
 
+  test("auto-discovers markdown fields in structured node body data", () => {
+    const preview = buildPipelineNodePreview({
+      title: "Generic Markdown Node",
+      subtitle: "typed body",
+      detail: "No explicit renderedFields are needed when body fields are typed by name.",
+      bodyData: {
+        output: {
+          contentMarkdown: "## Render me\n\nThis must not stay raw JSON.",
+        },
+      },
+      inputs: [],
+      outputs: [],
+      stepKind: "transform",
+      tone: "process",
+      meta: [],
+    });
+
+    expect(preview.kind).toBe("mixed");
+    if (preview.kind !== "mixed") throw new Error("Expected mixed preview");
+    expect(preview.fields[0]?.path).toBe("output.contentMarkdown");
+    expect(preview.fields[0]?.value).toContain("Render me");
+    expect(preview.jsonText).not.toContain("contentMarkdown");
+    expect(preview.jsonText).not.toContain("Render me");
+  });
+
+  test("renders extracted document markdown and image assets from structured data", () => {
+    const extractedDocumentsWithUnusedImage: ExtractedDocumentsResponse = {
+      ...extractedDocuments,
+      documents: extractedDocuments.documents.map((document) => {
+        if (document.id !== "document-947711") return document;
+        return {
+          ...document,
+          assets: [
+            ...document.assets,
+            { id: "img-unused", kind: "image", mimeType: "image/png", pageNumber: 1, path: "/assets/unused.png" },
+          ],
+          diagnostics: {
+            ...document.diagnostics,
+            unusedImageAssets: ["img-unused"],
+          },
+        };
+      }),
+    };
+    const graph = buildBlueprintGraph({ extractedDocuments: extractedDocumentsWithUnusedImage, inventory, runs: resourceRuns, status, taskView });
+    const sheetExtraction = graph.nodes.find((node) => node.id === "task-group-sheet-01-sheet-extraction");
+    if (!sheetExtraction || sheetExtraction.type !== "blueprint") throw new Error("Extraction node missing");
+
+    const preview = buildPipelineNodePreview(sheetExtraction.data);
+
+    expect(preview.kind).toBe("mixed");
+    if (preview.kind !== "mixed") throw new Error("Expected mixed preview");
+    expect(preview.fields.map((field) => field.path)).toContain("document.contentMarkdown");
+    const content = preview.fields.find((field) => field.path === "document.contentMarkdown")?.value ?? "";
+    expect(content).toContain("Aufgabe 1");
+    expect(content).toContain("/api/study-pipeline/courses/22584/study-pipeline/extracted-asset?path=");
+    expect(content).toContain("%2Fassets%2Fimg-1.png");
+    expect(content).toContain("%2Fassets%2Funused.png");
+    expect(preview.jsonText).not.toContain("contentMarkdown");
+    expect(sheetExtraction.data.problems?.map((problem) => problem.label) ?? []).not.toContain("Unused images");
+  });
+
   test("shows live running extraction work on the affected resource node", () => {
     const runningRuns: PipelineRunsResponse = {
       ...resourceRuns,

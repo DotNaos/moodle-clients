@@ -119,6 +119,7 @@ export function addTaskGroupLane({
 
   addPdfPath({
     activeRunIds,
+    courseId: extractedLookup.response?.courseId,
     edges,
     extractionId: sheetExtractionId,
     extractionRun: sheetRun,
@@ -139,6 +140,7 @@ export function addTaskGroupLane({
   if (group.solution) {
     addPdfPath({
       activeRunIds,
+      courseId: extractedLookup.response?.courseId,
       edges,
       extractionId: solutionExtractionId,
       extractionRun: solutionRun,
@@ -291,6 +293,7 @@ export function addScriptLane({
 
   addPdfPath({
     activeRunIds,
+    courseId: extractedLookup.response?.courseId,
     edges,
     extractionId,
     extractionRun,
@@ -374,6 +377,7 @@ export function addScriptLane({
 
 function addPdfPath({
   activeRunIds,
+  courseId,
   edges,
   extractionId,
   extractionRun,
@@ -392,6 +396,7 @@ function addPdfPath({
   y,
 }: {
   activeRunIds: Set<string>;
+  courseId?: string;
   edges: Edge[];
   extractionId: string;
   extractionRun: PipelineRunRecord | null;
@@ -476,6 +481,7 @@ function addPdfPath({
     position: { x: PIPELINE_X.extraction, y: y + yOffset },
     data: extractionNodeData({
       activeRunIds,
+      courseId,
       document: extractedDocument,
       resource,
       run: extractionRun,
