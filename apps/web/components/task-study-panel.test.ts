@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { ExtractedDetailsPanel } from "@/components/extracted-document-details";
 import { buildExtractedFormulaCollection, buildFormulaSourceExcerpt } from "@/components/formula-collection-panel";
 import { groupScriptSections, groupStudyTasksBySection, groupStudyTasksBySheet } from "@/components/course-study-outline";
 import { buildBlockTypeSummary, documentDiagnosticCounts } from "@/components/extracted-document-inspector";
@@ -306,6 +307,47 @@ describe("extracted document inspector", () => {
       visualOnlyPages: 1,
       warnings: 1,
     });
+  });
+
+  test("renders selected block details with image asset references", () => {
+    const asset = {
+      id: "img-1",
+      kind: "embedded_image",
+      mimeType: "image/png",
+      pageNumber: 1,
+      path: "/srv/moodle-study/courses/22584/extracted/runs/run-1/assets/image.png",
+      role: "diagram",
+    };
+    const block = {
+      assetId: "img-1",
+      id: "block-image-1",
+      label: "diagram",
+      pageNumber: 1,
+      source: "extracted_image",
+      type: "image",
+    };
+    const html = renderToStaticMarkup(React.createElement(ExtractedDetailsPanel, {
+      assetsById: new Map([[asset.id, asset]]),
+      courseId: "22584",
+      document: {
+        assets: [asset],
+        diagnostics: { unusedImageAssets: [] },
+        engine: "docling",
+        id: "doc-1",
+        pages: [{ blocks: [block], id: "page-1", pageNumber: 1, previewAssetId: "img-1" }],
+        resource: { id: "947711", name: "Aufgabenblatt 01", type: "task" },
+        runId: "run-1",
+        status: "machine-extracted",
+      },
+      page: { blocks: [block], id: "page-1", pageNumber: 1, previewAssetId: "img-1" },
+      selectedBlock: block,
+    }));
+
+    expect(html).toContain("Block details");
+    expect(html).toContain("block-image-1");
+    expect(html).toContain("Selected asset");
+    expect(html).toContain("/api/study-pipeline/courses/22584/study-pipeline/extracted-asset?path=");
+    expect(html).toContain("image.png");
   });
 });
 

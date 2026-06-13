@@ -7,6 +7,7 @@ import { PDFDocumentViewer } from "@/components/pdf-document-viewer";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AssetPreview, ExtractedDetailsPanel } from "@/components/extracted-document-details";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import type { PDFScrollCommand } from "@/lib/pdf-context";
@@ -28,7 +29,9 @@ export type ExtractedDocumentsSummary = {
   totalBlocks: number;
   pagePreviewAssets: number;
   embeddedImageAssets: number;
-  warnings: number;
+  pagesMissingText?: number;
+  visualOnlyPages?: number;
+  warnings?: number;
   unknownBlocks: number;
 };
 
@@ -74,7 +77,7 @@ export type DocumentBlock = {
   markdown?: string;
   assetId?: string;
   source?: string;
-  confidence?: number;
+  confidence?: number | string;
 };
 
 export type DocumentAsset = {
@@ -89,7 +92,7 @@ export type DocumentAsset = {
 export type ExtractedDocumentDiagnostics = {
   pagesMissingText?: number[];
   visualOnlyPages?: number[];
-  extractedImageAssets?: string[];
+  extractedImageAssets?: string[] | number;
   unusedImageAssets?: string[];
   unknownBlocks?: string[];
   warnings?: string[];
@@ -118,6 +121,7 @@ export function ExtractedDocumentInspector({
 }) {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [selectedPageNumber, setSelectedPageNumber] = useState(1);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [scrollCommand, setScrollCommand] = useState<PDFScrollCommand | null>(null);
   const [wideLayout, setWideLayout] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -126,9 +130,17 @@ export function ExtractedDocumentInspector({
   const selectedPage = selectedDocument?.pages.find((page) => page.pageNumber === selectedPageNumber)
     ?? selectedDocument?.pages[0]
     ?? null;
+  const selectedBlock = selectedPage?.blocks.find((block) => block.id === selectedBlockId)
+    ?? selectedPage?.blocks[0]
+    ?? null;
   const blockSummary = useMemo(() => buildBlockTypeSummary(documentList), [documentList]);
   const diagnosticCounts = useMemo(
     () => selectedDocument ? documentDiagnosticCounts(selectedDocument) : null,
+    [selectedDocument],
+  );
+  const summaryWarningCount = documents ? (documents.summary.warnings ?? 0) + documents.summary.unknownBlocks : 0;
+  const assetsById = useMemo(
+    () => new Map((selectedDocument?.assets ?? []).map((asset) => [asset.id, asset] as const)),
     [selectedDocument],
   );
 
@@ -164,6 +176,16 @@ export function ExtractedDocumentInspector({
     observer.observe(section);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (!selectedPage) {
+      setSelectedBlockId(null);
+      return;
+    }
+    if (!selectedPage.blocks.some((block) => block.id === selectedBlockId)) {
+      setSelectedBlockId(selectedPage.blocks[0]?.id ?? null);
+    }
+  }, [selectedBlockId, selectedPage]);
 
   function selectPage(pageNumber: number) {
     setSelectedPageNumber(pageNumber);
@@ -215,7 +237,7 @@ export function ExtractedDocumentInspector({
             <StatPill label="Seiten" value={documents.summary.totalPages} />
             <StatPill label="Blöcke" value={documents.summary.totalBlocks} />
             <StatPill label="Bilder" value={documents.summary.embeddedImageAssets} />
-            <StatPill label="Warnungen" value={documents.summary.warnings + documents.summary.unknownBlocks} tone={documents.summary.warnings + documents.summary.unknownBlocks > 0 ? "warning" : "default"} />
+            <StatPill label="Warnungen" value={summaryWarningCount} tone={summaryWarningCount > 0 ? "warning" : "default"} />
           </div>
 
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -234,7 +256,10 @@ export function ExtractedDocumentInspector({
             </div>
           ) : null}
 
-          <div className={cn("grid gap-4", wideLayout && "grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]")}>
+          <div className={cn(
+            "grid gap-4",
+            wideLayout && "xl:grid-cols-[minmax(0,0.95fr)_minmax(340px,0.9fr)_minmax(280px,0.58fr)]",
+          )}>
             <div className="min-w-0">
               <DocumentPicker
                 documents={documentList}
@@ -287,9 +312,13 @@ export function ExtractedDocumentInspector({
                     {selectedPage.blocks.length > 0 ? (
                       selectedPage.blocks.map((block) => (
                         <DocumentBlockView
+                          asset={block.assetId ? assetsById.get(block.assetId) : undefined}
                           block={block}
+                          courseId={courseId}
                           isUnknown={selectedDocument.diagnostics.unknownBlocks?.includes(block.id) ?? block.type === "unknown"}
                           key={block.id}
+                          selected={selectedBlock?.id === block.id}
+                          onSelect={() => setSelectedBlockId(block.id)}
                         />
                       ))
                     ) : (
@@ -305,6 +334,14 @@ export function ExtractedDocumentInspector({
                 </div>
               )}
             </div>
+
+            <ExtractedDetailsPanel
+              assetsById={assetsById}
+              courseId={courseId}
+              document={selectedDocument}
+              page={selectedPage}
+              selectedBlock={selectedBlock}
+            />
           </div>
         </div>
       ) : null}
@@ -408,27 +445,52 @@ function PageDiagnosticsPanel({ document, page }: { document: PDFDocumentStructu
   );
 }
 
-function DocumentBlockView({ block, isUnknown }: { block: DocumentBlock; isUnknown: boolean }) {
-  const lowConfidence = typeof block.confidence === "number" && block.confidence < LOW_CONFIDENCE_THRESHOLD;
+function DocumentBlockView({
+  asset,
+  block,
+  courseId,
+  isUnknown,
+  selected,
+  onSelect,
+}: {
+  asset?: DocumentAsset;
+  block: DocumentBlock;
+  courseId: string;
+  isUnknown: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const lowConfidence = isLowConfidence(block.confidence);
   const content = block.markdown || block.text || (block.assetId ? `Bild-Asset: ${block.assetId}` : "");
   return (
     <article
       className={cn(
-        "rounded-2xl bg-secondary/60 px-3 py-3",
+        "cursor-pointer rounded-2xl bg-secondary/60 px-3 py-3 transition-shadow",
+        selected && "shadow-[0_0_0_3px_rgba(0,0,0,0.18)]",
         (isUnknown || lowConfidence) && "bg-destructive/10 text-destructive",
       )}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <Badge variant={isUnknown ? "destructive" : "secondary"}>{blockTypeLabel(block.type)}</Badge>
         {block.label ? <Badge variant="outline">{block.label}</Badge> : null}
-        {typeof block.confidence === "number" ? (
+        {block.confidence !== undefined ? (
           <Badge variant={lowConfidence ? "destructive" : "outline"}>
-            {Math.round(block.confidence * 100)}%
+            {confidenceLabel(block.confidence)}
           </Badge>
         ) : null}
         {block.assetId ? <Badge variant="outline">Asset {block.assetId}</Badge> : null}
       </div>
       <RenderedBlockContent block={block} content={content} />
+      {asset ? <AssetPreview asset={asset} courseId={courseId} compact /> : null}
     </article>
   );
 }
@@ -531,14 +593,42 @@ export function buildBlockTypeSummary(documents: PDFDocumentStructure[]) {
 }
 
 export function documentDiagnosticCounts(document: PDFDocumentStructure) {
+  const extractedImageAssets = document.diagnostics.extractedImageAssets;
   return {
     missingPages: document.diagnostics.pagesMissingText?.length ?? 0,
     visualOnlyPages: document.diagnostics.visualOnlyPages?.length ?? 0,
-    extractedImages: document.diagnostics.extractedImageAssets?.length ?? 0,
+    extractedImages: Array.isArray(extractedImageAssets) ? extractedImageAssets.length : extractedImageAssets ?? 0,
     unusedImages: document.diagnostics.unusedImageAssets?.length ?? 0,
     unknownBlocks: document.diagnostics.unknownBlocks?.length ?? 0,
     warnings: document.diagnostics.warnings?.length ?? 0,
   };
+}
+
+function isLowConfidence(confidence: DocumentBlock["confidence"]) {
+  if (typeof confidence === "number") {
+    return confidence < LOW_CONFIDENCE_THRESHOLD;
+  }
+  return confidence === "low";
+}
+
+function confidenceLabel(confidence: DocumentBlock["confidence"]) {
+  if (typeof confidence === "number") {
+    return `${Math.round(confidence * 100)}%`;
+  }
+  if (confidence === "high") {
+    return "high confidence";
+  }
+  if (confidence === "medium") {
+    return "medium confidence";
+  }
+  if (confidence === "low") {
+    return "low confidence";
+  }
+  return confidence || "unknown";
+}
+
+function extractedAssetUrl(courseId: string, path: string) {
+  return `/api/study-pipeline/courses/${encodeURIComponent(courseId)}/study-pipeline/extracted-asset?path=${encodeURIComponent(path)}`;
 }
 
 function blockTypeLabel(type: string) {
