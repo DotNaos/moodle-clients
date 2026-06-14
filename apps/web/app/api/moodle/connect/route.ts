@@ -20,7 +20,13 @@ type QRExchangeResponse = {
 export async function POST(request: Request) {
   const { userId } = await auth();
   if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json(
+      {
+        code: "app_session_missing",
+        error: "Sign in before connecting Moodle.",
+      },
+      { status: 401 },
+    );
   }
 
   let internalSecret: string;
@@ -62,9 +68,15 @@ export async function POST(request: Request) {
 
   const payload = await readServiceJSON<QRExchangeResponse>(upstreamResponse);
   if (!upstreamResponse.ok || !payload.apiKey) {
+    const loginFailed = usesCredentials && upstreamResponse.status === 401;
     return Response.json(
-      { error: payload.error ?? "Could not connect Moodle account." },
-      { status: upstreamResponse.status || 502 },
+      {
+        code: loginFailed ? "moodle_login_failed" : "moodle_connect_failed",
+        error: loginFailed
+          ? "Moodle login failed. Check your FHGR username and password, then try again."
+          : payload.error ?? "Could not connect Moodle account.",
+      },
+      { status: loginFailed ? 400 : upstreamResponse.status || 502 },
     );
   }
 

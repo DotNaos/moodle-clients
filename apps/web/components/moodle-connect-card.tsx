@@ -21,6 +21,11 @@ type BridgeStartResponse = {
   error?: string;
 };
 
+type ConnectResponse = {
+  code?: "app_session_missing" | "moodle_connect_failed" | "moodle_login_failed";
+  error?: string;
+};
+
 type BridgeStatusResponse = {
   status?: "pending" | "connected" | "expired";
   error?: string;
@@ -51,6 +56,7 @@ export function MoodleConnectCard({ onConnected, reason }: MoodleConnectCardProp
 
     try {
       const response = await fetch("/api/mobile/bridge/start", {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -82,6 +88,7 @@ export function MoodleConnectCard({ onConnected, reason }: MoodleConnectCardProp
       try {
         const response = await fetch(`/api/mobile/bridge/status?challenge=${encodeURIComponent(challenge)}`, {
           cache: "no-store",
+          credentials: "include",
         });
         const payload = (await response.json().catch(() => ({}))) as BridgeStatusResponse;
         if (cancelled) {
@@ -138,13 +145,14 @@ export function MoodleConnectCard({ onConnected, reason }: MoodleConnectCardProp
     setCredentialError(null);
     try {
       const response = await fetch("/api/moodle/connect", {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim(), password }),
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      const payload = (await response.json().catch(() => ({}))) as ConnectResponse;
       if (!response.ok) {
-        throw new Error(payload.error ?? "Could not connect Moodle account.");
+        throw new Error(getConnectErrorMessage(payload));
       }
       setPassword("");
       setState("connected");
@@ -156,7 +164,7 @@ export function MoodleConnectCard({ onConnected, reason }: MoodleConnectCardProp
     }
   }
 
-  const connectError = credentialError ? getConnectErrorMessage(credentialError) : null;
+  const connectError = credentialError;
   const bridgeMessage = bridgeError ? getBridgeErrorMessage(bridgeError) : null;
 
   return (
@@ -274,11 +282,20 @@ function getStatusLabel(state: BridgeState): string {
   }
 }
 
-function getConnectErrorMessage(error: string): string {
-  if (error === "Could not connect Moodle account.") {
+function getConnectErrorMessage(payload: ConnectResponse): string {
+  if (payload.code === "app_session_missing") {
+    return "Your app session is not verified. Sign in again, then connect Moodle.";
+  }
+  if (payload.code === "moodle_login_failed") {
     return "Moodle login failed. Check your FHGR username and password, then try again.";
   }
-  return error;
+  if (payload.error === "Unauthorized") {
+    return "Your app session is not verified. Sign in again, then connect Moodle.";
+  }
+  if (payload.error === "Could not connect Moodle account.") {
+    return "Moodle login failed. Check your FHGR username and password, then try again.";
+  }
+  return payload.error ?? "Could not connect Moodle account.";
 }
 
 function getBridgeErrorMessage(error: string): string {
