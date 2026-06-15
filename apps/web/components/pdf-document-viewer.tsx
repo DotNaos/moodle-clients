@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Maximize2, Minimize2, Minus, Plus, X } from "lucide-react";
+import { Check, Copy, Download, ExternalLink, Maximize2, Minimize2, Minus, Plus, X } from "lucide-react";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import type React from "react";
 import type { CSSProperties } from "react";
@@ -10,6 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import {
+  buildPDFDownloadFilename,
+  canWritePDFClipboardItem,
+  fetchPDFBlob,
+  startPDFDownload,
+} from "@/lib/pdf-file-actions";
 import type {
   PDFPageContext,
   PDFScrollCommand,
@@ -26,6 +32,7 @@ const FLOAT_TRANSITION_MS = 320;
 const FLOAT_INSET = 16;
 
 type FloatState = "inline" | "opening" | "open" | "closing";
+type PDFCopyStatus = "idle" | "copying" | "copied-file" | "downloaded" | "failed";
 
 export function PDFDocumentViewer({
   allowFloat = false,
@@ -72,6 +79,7 @@ export function PDFDocumentViewer({
   const [floatState, setFloatState] = useState<FloatState>("inline");
   const [floatVisible, setFloatVisible] = useState(false);
   const [panelStyle, setPanelStyle] = useState<CSSProperties | undefined>(undefined);
+  const [copyStatus, setCopyStatus] = useState<PDFCopyStatus>("idle");
   const shellRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -82,6 +90,7 @@ export function PDFDocumentViewer({
   const zoomCommitTimeoutRef = useRef<number | null>(null);
   const fitWidthTimeoutRef = useRef<number | null>(null);
   const floatTimeoutRef = useRef<number | null>(null);
+  const copyStatusTimeoutRef = useRef<number | null>(null);
   const dragRef = useRef<{
     pointerId: number;
     scrollLeft: number;
@@ -92,6 +101,7 @@ export function PDFDocumentViewer({
   const captureTimeoutRef = useRef<number | null>(null);
   const onStateChangeRef = useRef(onStateChange);
   onStateChangeRef.current = onStateChange;
+  const downloadFilename = useMemo(() => buildPDFDownloadFilename(title), [title]);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +116,7 @@ export function PDFDocumentViewer({
     visualZoomRef.current = 1;
     setPanning(false);
     setError(null);
+    setCopyStatus("idle");
     onStateChangeRef.current(null);
 
     async function loadPDF() {
@@ -325,8 +336,41 @@ export function PDFDocumentViewer({
       if (floatTimeoutRef.current) {
         window.clearTimeout(floatTimeoutRef.current);
       }
+      if (copyStatusTimeoutRef.current) {
+        window.clearTimeout(copyStatusTimeoutRef.current);
+      }
     };
   }, []);
+
+  const scheduleCopyStatusReset = useCallback(() => {
+    if (copyStatusTimeoutRef.current) {
+      window.clearTimeout(copyStatusTimeoutRef.current);
+    }
+    copyStatusTimeoutRef.current = window.setTimeout(() => {
+      setCopyStatus("idle");
+    }, 2200);
+  }, []);
+
+  const copyPDF = useCallback(async () => {
+    setCopyStatus("copying");
+    try {
+      if (!navigator.clipboard?.write || !canWritePDFClipboardItem(window.ClipboardItem)) {
+        throw new Error("PDF clipboard is not supported.");
+      }
+      const blob = await fetchPDFBlob(url);
+      await navigator.clipboard.write([new window.ClipboardItem({ "application/pdf": blob })]);
+      setCopyStatus("copied-file");
+    } catch {
+      try {
+        startPDFDownload(url, downloadFilename);
+        setCopyStatus("downloaded");
+      } catch {
+        setCopyStatus("failed");
+      }
+    } finally {
+      scheduleCopyStatusReset();
+    }
+  }, [downloadFilename, scheduleCopyStatusReset, url]);
 
   const scheduleZoomCommit = useCallback(() => {
     if (zoomCommitTimeoutRef.current) {
@@ -745,6 +789,27 @@ export function PDFDocumentViewer({
                 {expanded ? <Minimize2 aria-hidden /> : <Maximize2 aria-hidden />}
               </Button>
             ) : null}
+            <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
+            <Button asChild aria-label="PDF herunterladen" size="icon" title="PDF herunterladen" variant="ghost">
+              <a download={downloadFilename} href={url}>
+                <Download aria-hidden />
+              </a>
+            </Button>
+            <Button
+              aria-label={copyButtonAriaLabel(copyStatus)}
+              disabled={copyStatus === "copying"}
+              onClick={() => void copyPDF()}
+              size="icon"
+              title={copyButtonTitle(copyStatus)}
+              type="button"
+              variant="ghost"
+            >
+              {copyStatus === "copied-file" || copyStatus === "downloaded" ? (
+                <Check aria-hidden />
+              ) : (
+                <Copy aria-hidden />
+              )}
+            </Button>
             {externalUrl ? (
               <Button asChild aria-label="In Moodle öffnen" size="icon" variant="ghost">
                 <a href={externalUrl} target="_blank" rel="noreferrer">
@@ -757,6 +822,36 @@ export function PDFDocumentViewer({
       </div>
     </div>
   );
+}
+
+function copyButtonAriaLabel(status: PDFCopyStatus): string {
+  switch (status) {
+    case "copying":
+      return "PDF wird kopiert";
+    case "copied-file":
+      return "PDF kopiert";
+    case "downloaded":
+      return "PDF-Download gestartet";
+    case "failed":
+      return "PDF konnte nicht kopiert werden";
+    default:
+      return "PDF kopieren";
+  }
+}
+
+function copyButtonTitle(status: PDFCopyStatus): string {
+  switch (status) {
+    case "copying":
+      return "PDF wird kopiert";
+    case "copied-file":
+      return "PDF kopiert";
+    case "downloaded":
+      return "Browser erlaubt kein PDF-Clipboard, Download gestartet";
+    case "failed":
+      return "PDF konnte nicht kopiert werden";
+    default:
+      return "PDF kopieren";
+  }
 }
 
 function PDFPageCanvas({
