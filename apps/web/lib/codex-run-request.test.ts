@@ -28,8 +28,9 @@ describe("buildCodexRunServicePayload", () => {
 
     expect(payload.stream).toBe(true);
     expect(payload.outputSchema).toBe(undefined);
-    expect(payload.prompt).toContain("Reply in plain Markdown text first.");
-    expect(payload.prompt).toContain("Do not output JSON");
+    expect(payload.prompt).toContain("Reply with the normal user-facing Markdown answer first.");
+    expect(payload.prompt).toContain("<moodle-actions>");
+    expect(payload.prompt).toContain("The chat UI hides the moodle-actions block");
     expect(payload.prompt).not.toContain("The host will convert your structured response");
   });
 

@@ -72,19 +72,6 @@ export function useCodexChat({
     );
   }
 
-  function appendAssistantMessage(messageId: string, delta: string) {
-    setMessages((current) =>
-      current.map((message) =>
-        message.id === messageId
-          ? {
-              ...message,
-              text: message.text === "Thinking..." ? delta : `${message.text}${delta}`,
-            }
-          : message,
-      ),
-    );
-  }
-
   function recordToolEvent(messageId: string, title: string, status: CodexToolStatus, sourceId?: string) {
     setMessages((current) =>
       current.map((message) => {
@@ -244,6 +231,7 @@ export function useCodexChat({
       let reachedActionLimit = false;
 
       for (let turn = 0; turn < MAX_CODEX_ACTION_TURNS; turn += 1) {
+        let streamedText = "";
         const result = await runCodexStream(
           {
             prompt: backendPrompt,
@@ -266,9 +254,11 @@ export function useCodexChat({
           },
           (event) => {
             if (event.type === "message") {
-              updateAssistantMessage(assistantMessageId, displayCodexText(event.text));
+              streamedText = event.text;
+              updateAssistantMessage(assistantMessageId, displayCodexText(streamedText));
             } else if (event.type === "delta") {
-              appendAssistantMessage(assistantMessageId, displayCodexText(event.text));
+              streamedText += event.text;
+              updateAssistantMessage(assistantMessageId, displayCodexText(streamedText));
             } else if (event.type === "tool" && !isCodexLifecycleNoise(event.title)) {
               recordToolEvent(assistantMessageId, event.title, event.status, event.id);
             }
@@ -279,7 +269,7 @@ export function useCodexChat({
         );
 
         const actions = completeCodexActions(result.actions, text);
-        updateAssistantMessage(assistantMessageId, result.finalResponse);
+        updateAssistantMessage(assistantMessageId, displayCodexText(result.finalResponse));
 
         if (actions.length === 0) {
           break;

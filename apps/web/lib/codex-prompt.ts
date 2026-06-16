@@ -64,11 +64,14 @@ ${prompt}`;
 function responseShapeBlock(mode: MoodlePromptOptions["responseMode"], allowGeneratedUI: boolean): string {
   if (mode === "plain") {
     const jsonRule = allowGeneratedUI
-      ? "- Do not output JSON, XML, code fences containing actions, or any structured envelope except for the optional fenced ```json-render block described below."
-      : "- Do not output JSON, XML, code fences containing actions, or any structured envelope.";
-    return `- Reply in plain Markdown text first.
+      ? "- If no dashboard action is needed, do not output JSON, XML, code fences containing actions, or any structured envelope except for the optional fenced ```json-render block described below."
+      : "- If no dashboard action is needed, do not output JSON, XML, code fences containing actions, or any structured envelope.";
+    return `- Reply with the normal user-facing Markdown answer first.
 ${jsonRule}
-- If a dashboard action would help, describe what should be opened or loaded in the answer instead of returning UI actions.
+- If a dashboard action is needed, write the normal user-facing Markdown answer first, then append exactly one final action block in this format: <moodle-actions>{"answer":"same user-facing answer","actions":[...]}</moodle-actions>
+- The chat UI hides the moodle-actions block while streaming and uses it only to ask the user for confirmation.
+- Never put the moodle-actions block in a code fence. Do not mention the hidden block to the user.
+- If both a json-render block and a moodle-actions block are needed, put the json-render block before the final moodle-actions block.
 - Prefer short prose paragraphs. Use headings when they help, but avoid turning the whole answer into bullet points.
 - Use at most one short list by default, with no more than 3 items, unless the user explicitly asks for a checklist, plan, or exhaustive list.
 - Do not prefix every line with "-" or combine ordered and unordered markers like "1. - Text".`;

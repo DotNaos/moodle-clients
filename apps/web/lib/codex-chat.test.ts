@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildMoodleContext,
   describePendingActions,
+  displayCodexText,
   materialCitation,
 } from "@/lib/codex-chat";
 import type { Course, Material } from "@/lib/dashboard-data";
@@ -61,5 +62,14 @@ describe("Codex chat Moodle context", () => {
     expect(rows[0].requestId).toBe("request-1");
     expect(rows[0].showControls).toBe(true);
     expect(rows[0].status).toBe("pending");
+  });
+
+  test("hides streamed action blocks from visible chat text", () => {
+    const visible = displayCodexText(
+      'Ich öffne den Kurs nach deiner Bestätigung.\n<moodle-actions>{"answer":"Ich öffne den Kurs nach deiner Bestätigung.","actions":[{"type":"open_course","courseId":"22584"}]}</moodle-actions>',
+    );
+
+    expect(visible).toBe("Ich öffne den Kurs nach deiner Bestätigung.");
+    expect(displayCodexText("Antwort\n<moodle-actions>{")).toBe("Antwort");
   });
 });
