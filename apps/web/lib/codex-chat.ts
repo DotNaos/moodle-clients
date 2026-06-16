@@ -330,10 +330,14 @@ export function isCodexLifecycleNoise(title: string): boolean {
 export function displayCodexText(text: string): string {
   try {
     const parsed = JSON.parse(text) as { answer?: unknown };
-    return typeof parsed.answer === "string" ? parsed.answer : text;
+    return typeof parsed.answer === "string" ? stripMoodleActionBlock(parsed.answer) : stripMoodleActionBlock(text);
   } catch {
-    return text;
+    return stripMoodleActionBlock(text);
   }
+}
+
+function stripMoodleActionBlock(text: string): string {
+  return text.replace(/\s*<moodle-actions\b[\s\S]*?(?:<\/moodle-actions>|$)/gi, "");
 }
 
 function asksToOpenPDF(prompt: string): boolean {
