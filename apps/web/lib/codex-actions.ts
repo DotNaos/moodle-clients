@@ -27,6 +27,12 @@ export type MoodleUIAction =
       reason?: string;
     }
   | {
+      type: "read_material_text";
+      courseId: string;
+      resourceId: string;
+      reason?: string;
+    }
+  | {
       type: "open_moodle_course_page";
       courseId: string;
       reason?: string;
@@ -99,11 +105,21 @@ export const codexOutputSchema = {
     },
     actions: {
       type: "array",
-      description: "Optional Moodle dashboard UI actions to perform after the answer.",
+      description:
+        "Optional Moodle dashboard UI actions to perform after the answer.",
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["type", "courseId", "materialId", "resourceId", "page", "taskId", "status", "reason"],
+        required: [
+          "type",
+          "courseId",
+          "materialId",
+          "resourceId",
+          "page",
+          "taskId",
+          "status",
+          "reason",
+        ],
         properties: {
           type: {
             type: "string",
@@ -112,6 +128,7 @@ export const codexOutputSchema = {
               "open_material",
               "open_resource",
               "load_course_resources",
+              "read_material_text",
               "open_moodle_course_page",
               "open_latest_pdf",
               "scroll_pdf_to_page",
@@ -120,7 +137,8 @@ export const codexOutputSchema = {
           },
           courseId: {
             type: ["string", "null"],
-            description: "Required for course actions; optional context for material actions.",
+            description:
+              "Required for course actions; optional context for material actions.",
           },
           materialId: {
             type: ["string", "null"],
@@ -136,11 +154,13 @@ export const codexOutputSchema = {
           },
           taskId: {
             type: ["string", "null"],
-            description: "Required only when type is set_task_status; the study task id from context.",
+            description:
+              "Required only when type is set_task_status; the study task id from context.",
           },
           status: {
             type: ["string", "null"],
-            description: "Required only when type is set_task_status; either done or open.",
+            description:
+              "Required only when type is set_task_status; either done or open.",
           },
           reason: {
             type: ["string", "null"],

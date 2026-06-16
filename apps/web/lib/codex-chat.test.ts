@@ -38,7 +38,9 @@ describe("Codex chat Moodle context", () => {
     expect(context.materials[0].citation).toBe(
       "[Aufgabenblatt 01](moodle-resource:22584:mod_resource_123)",
     );
-    expect(context.selectedCourse?.citation).toBe("[Deep Learning](moodle-course:22584)");
+    expect(context.selectedCourse?.citation).toBe(
+      "[Deep Learning](moodle-course:22584)",
+    );
   });
 
   test("describes requested UI actions as pending confirmations", () => {
@@ -62,6 +64,33 @@ describe("Codex chat Moodle context", () => {
     expect(rows[0].requestId).toBe("request-1");
     expect(rows[0].showControls).toBe(true);
     expect(rows[0].status).toBe("pending");
+  });
+
+  test("adds loaded material text to the next Codex context", () => {
+    const context = buildMoodleContext({
+      user: null,
+      courses: [course],
+      selectedCourse: course,
+      materials: [material],
+      selectedMaterial: null,
+      pdfState: null,
+      loadedDocuments: [
+        {
+          course,
+          material,
+          title: "Aufgabenblatt 01",
+          text: "This is the extracted PDF text.",
+          metadata: { cacheStatus: "hit" },
+        },
+      ],
+    });
+
+    expect(context.loadedMaterialTexts[0].title).toBe("Aufgabenblatt 01");
+    expect(context.loadedMaterialTexts[0].text).toContain("extracted PDF text");
+    expect(context.loadedMaterialTexts[0].citation).toBe(
+      "[Aufgabenblatt 01](moodle-resource:22584:mod_resource_123)",
+    );
+    expect(context.loadedMaterialTexts[0].cacheStatus).toBe("hit");
   });
 
   test("hides streamed action blocks from visible chat text", () => {

@@ -23,7 +23,7 @@ Authentication invariant:
 Moodle rules:
 - Answer from the Moodle context below and from any images or files the user attached to this message.
 - Do not browse the web or use external data beyond the Moodle context and the user's attachments.
-- If neither the Moodle context nor an attachment covers the question, say which course or material should be opened in the Moodle UI.
+- If neither the Moodle context nor an attachment covers the question but the relevant course material is listed, request read_material_text for that exact material instead of saying you cannot read it.
 - Never reveal raw Moodle URLs, tokens, sessions, cookies, or secret identifiers.
 - Cite course and material names when they support the answer.
 - When a course or material object has a citation field, cite it by copying that exact Markdown link. Do not invent citations or IDs.
@@ -37,6 +37,7 @@ UI control:
 - The host always asks the user for confirmation inside the chat before it applies any UI action. You should still explain the action in your answer, but do not ask for a second manual confirmation in prose.
 - The course list is always available in context.
 - If the user asks for a resource/PDF in a course and that course's resources are not present in context yet, use load_course_resources with the course ID. The host will load those resources and call you again with the resource list.
+- If the user asks what a listed PDF/material says, or asks for a summary, explanation, search, or answer grounded in that file, use read_material_text with the exact course ID and resource ID. The host will download/cache/extract it after user confirmation and call you again with loadedMaterialTexts.
 - After resources are present, use open_resource with the exact course ID and resource ID to open a file in the main preview.
 - You may use multiple UI-action rounds. If one action only loads context, continue the original request in the next round instead of treating the first action as the final result.
 - Do not stop after only opening a course when the user asked for a PDF/resource.
@@ -61,7 +62,10 @@ User question:
 ${prompt}`;
 }
 
-function responseShapeBlock(mode: MoodlePromptOptions["responseMode"], allowGeneratedUI: boolean): string {
+function responseShapeBlock(
+  mode: MoodlePromptOptions["responseMode"],
+  allowGeneratedUI: boolean,
+): string {
   if (mode === "plain") {
     const jsonRule = allowGeneratedUI
       ? "- If no dashboard action is needed, do not output JSON, XML, code fences containing actions, or any structured envelope except for the optional fenced ```json-render block described below."
@@ -93,7 +97,11 @@ ${generatedUIPromptBlock()}`;
 }
 
 function tutorModeBlock(moodleContext: unknown): string {
-  const study = (moodleContext as { study?: { test?: { active?: boolean } | null } | null } | null)?.study;
+  const study = (
+    moodleContext as {
+      study?: { test?: { active?: boolean } | null } | null;
+    } | null
+  )?.study;
   if (!study?.test?.active) {
     return "";
   }

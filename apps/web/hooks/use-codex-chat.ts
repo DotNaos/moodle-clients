@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
 import type { CodexActionResult } from "@/hooks/use-codex-moodle-actions";
 import type { MoodleUIAction } from "@/lib/codex-actions";
@@ -12,11 +18,13 @@ import {
   describePendingActions,
   displayCodexText,
   isCodexLifecycleNoise,
+  mergeLoadedDocuments,
   mergeLoadedResources,
   shouldContinueAfterActions,
   toChatHistory,
   type CodexChatUIMessage,
   type CodexToolStatus,
+  type LoadedDocumentContext,
   type LoadedResourceContext,
   type StudyChatContext,
 } from "@/lib/codex-chat";
@@ -59,7 +67,9 @@ export function useCodexChat({
   const abortControllerRef = useRef<AbortController | null>(null);
   const activeRunIdRef = useRef(0);
   const abortModesRef = useRef(new Map<number, "steer" | "stop">());
-  const actionConfirmationResolversRef = useRef(new Map<string, (approved: boolean) => void>());
+  const actionConfirmationResolversRef = useRef(
+    new Map<string, (approved: boolean) => void>(),
+  );
 
   function setRunningState(value: boolean) {
     runningRef.current = value;
@@ -68,11 +78,18 @@ export function useCodexChat({
 
   function updateAssistantMessage(messageId: string, text: string) {
     setMessages((current) =>
-      current.map((message) => (message.id === messageId ? { ...message, text } : message)),
+      current.map((message) =>
+        message.id === messageId ? { ...message, text } : message,
+      ),
     );
   }
 
-  function recordToolEvent(messageId: string, title: string, status: CodexToolStatus, sourceId?: string) {
+  function recordToolEvent(
+    messageId: string,
+    title: string,
+    status: CodexToolStatus,
+    sourceId?: string,
+  ) {
     setMessages((current) =>
       current.map((message) => {
         if (message.id !== messageId) {
@@ -98,13 +115,18 @@ export function useCodexChat({
     );
   }
 
-  function appendAssistantActions(messageId: string, actions: CodexChatUIMessage["actions"]) {
+  function appendAssistantActions(
+    messageId: string,
+    actions: CodexChatUIMessage["actions"],
+  ) {
     if (actions.length === 0) {
       return;
     }
     setMessages((current) =>
       current.map((message) =>
-        message.id === messageId ? { ...message, actions: [...message.actions, ...actions] } : message,
+        message.id === messageId
+          ? { ...message, actions: [...message.actions, ...actions] }
+          : message,
       ),
     );
   }
@@ -122,7 +144,9 @@ export function useCodexChat({
         return {
           ...message,
           actions: message.actions.map((action) =>
-            action.requestId === requestId ? { ...action, ...patch, showControls: false } : action,
+            action.requestId === requestId
+              ? { ...action, ...patch, showControls: false }
+              : action,
           ),
         };
       }),
@@ -145,7 +169,10 @@ export function useCodexChat({
   }
 
   function resolveAllActionRequests(approved: boolean) {
-    for (const [requestId, resolve] of actionConfirmationResolversRef.current.entries()) {
+    for (const [
+      requestId,
+      resolve,
+    ] of actionConfirmationResolversRef.current.entries()) {
       actionConfirmationResolversRef.current.delete(requestId);
       resolve(approved);
     }
@@ -221,13 +248,21 @@ export function useCodexChat({
     setMessages((current) => [
       ...current,
       userMessage,
-      { id: assistantMessageId, role: "assistant", text: "Thinking...", toolEvents: [], actions: [], attachments: [] },
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        text: "Thinking...",
+        toolEvents: [],
+        actions: [],
+        attachments: [],
+      },
     ]);
     setRunningState(true);
     setError(null);
 
     try {
       let loadedResources: LoadedResourceContext = [];
+      let loadedDocuments: LoadedDocumentContext = [];
       let reachedActionLimit = false;
 
       for (let turn = 0; turn < MAX_CODEX_ACTION_TURNS; turn += 1) {
@@ -250,17 +285,32 @@ export function useCodexChat({
               pdfState,
               studyContext,
               loadedResources,
+              loadedDocuments,
             }),
           },
           (event) => {
             if (event.type === "message") {
               streamedText = event.text;
-              updateAssistantMessage(assistantMessageId, displayCodexText(streamedText));
+              updateAssistantMessage(
+                assistantMessageId,
+                displayCodexText(streamedText),
+              );
             } else if (event.type === "delta") {
               streamedText += event.text;
-              updateAssistantMessage(assistantMessageId, displayCodexText(streamedText));
-            } else if (event.type === "tool" && !isCodexLifecycleNoise(event.title)) {
-              recordToolEvent(assistantMessageId, event.title, event.status, event.id);
+              updateAssistantMessage(
+                assistantMessageId,
+                displayCodexText(streamedText),
+              );
+            } else if (
+              event.type === "tool" &&
+              !isCodexLifecycleNoise(event.title)
+            ) {
+              recordToolEvent(
+                assistantMessageId,
+                event.title,
+                event.status,
+                event.id,
+              );
             }
             // "status" events — and lifecycle noise mislabeled as "tool" by older
             // backends — are intentionally ignored (hidden in UI).
@@ -269,41 +319,67 @@ export function useCodexChat({
         );
 
         const actions = completeCodexActions(result.actions, text);
-        updateAssistantMessage(assistantMessageId, displayCodexText(result.finalResponse));
+        updateAssistantMessage(
+          assistantMessageId,
+          displayCodexText(result.finalResponse),
+        );
 
         if (actions.length === 0) {
           break;
         }
 
         const requestId = crypto.randomUUID();
-        appendAssistantActions(assistantMessageId, describePendingActions(actions, courses, materials, requestId));
+        appendAssistantActions(
+          assistantMessageId,
+          describePendingActions(actions, courses, materials, requestId),
+        );
         setRunningState(false);
         const approved = await waitForActionConfirmation(requestId);
         if (!approved) {
-          updateAssistantActionRequest(assistantMessageId, requestId, { status: "cancelled" });
+          updateAssistantActionRequest(assistantMessageId, requestId, {
+            status: "cancelled",
+          });
           break;
         }
 
         setRunningState(true);
-        updateAssistantActionRequest(assistantMessageId, requestId, { status: "running" });
+        updateAssistantActionRequest(assistantMessageId, requestId, {
+          status: "running",
+        });
         let actionResult: CodexActionResult;
         try {
           actionResult = await onApplyActions(actions);
         } catch (actionError) {
           updateAssistantActionRequest(assistantMessageId, requestId, {
             status: "failed",
-            error: actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.",
+            error:
+              actionError instanceof Error
+                ? actionError.message
+                : "Aktion fehlgeschlagen.",
           });
           break;
         }
-        loadedResources = mergeLoadedResources(loadedResources, actionResult.loadedResources);
+        loadedResources = mergeLoadedResources(
+          loadedResources,
+          actionResult.loadedResources,
+        );
+        loadedDocuments = mergeLoadedDocuments(
+          loadedDocuments,
+          actionResult.loadedDocuments,
+        );
         const resourceNames = actionResult.loadedResources.flatMap((entry) =>
           entry.resources.map((resource) => resource.name),
         );
+        const documentNames = actionResult.loadedDocuments.map(
+          (entry) => entry.material.name,
+        );
         updateAssistantActionRequest(assistantMessageId, requestId, {
           status: "completed",
-          detail: resourceNames.length > 0 ? `${resourceNames.length} Materialien` : undefined,
-          resources: resourceNames,
+          detail:
+            resourceNames.length > 0 || documentNames.length > 0
+              ? `${resourceNames.length + documentNames.length} Materialien`
+              : undefined,
+          resources: [...resourceNames, ...documentNames],
         });
 
         if (!shouldContinueAfterActions(actions, actionResult)) {
@@ -319,13 +395,19 @@ export function useCodexChat({
           ...chatHistory,
           {
             role: "assistant",
-            text: buildActionFollowUpMessage(actions, actionResult.loadedResources),
+            text: buildActionFollowUpMessage(
+              actions,
+              actionResult.loadedResources,
+              actionResult.loadedDocuments,
+            ),
           },
         ];
       }
 
       if (reachedActionLimit) {
-        setError("Codex needed too many Moodle UI steps. Try asking for a more specific course or file.");
+        setError(
+          "Codex needed too many Moodle UI steps. Try asking for a more specific course or file.",
+        );
       }
     } catch (submitError) {
       if (isAbortError(submitError)) {
@@ -336,8 +418,12 @@ export function useCodexChat({
         );
         return;
       }
-      setMessages((current) => current.filter((message) => message.id !== assistantMessageId));
-      setError(submitError instanceof Error ? submitError.message : "Codex failed.");
+      setMessages((current) =>
+        current.filter((message) => message.id !== assistantMessageId),
+      );
+      setError(
+        submitError instanceof Error ? submitError.message : "Codex failed.",
+      );
     } finally {
       abortModesRef.current.delete(runId);
       if (activeRunIdRef.current === runId) {
@@ -349,12 +435,28 @@ export function useCodexChat({
 
   useEffect(() => () => stop("stop"), []);
 
-  return { messages, running, error, reset, submit, stop, setError, confirmActionRequest, cancelActionRequest };
+  return {
+    messages,
+    running,
+    error,
+    reset,
+    submit,
+    stop,
+    setError,
+    confirmActionRequest,
+    cancelActionRequest,
+  };
 }
 
-function lastRunningIndexByTitle(toolEvents: CodexChatUIMessage["toolEvents"], title: string): number {
+function lastRunningIndexByTitle(
+  toolEvents: CodexChatUIMessage["toolEvents"],
+  title: string,
+): number {
   for (let index = toolEvents.length - 1; index >= 0; index -= 1) {
-    if (toolEvents[index].title === title && toolEvents[index].status === "running") {
+    if (
+      toolEvents[index].title === title &&
+      toolEvents[index].status === "running"
+    ) {
       return index;
     }
   }
