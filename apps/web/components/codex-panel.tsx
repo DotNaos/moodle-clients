@@ -28,9 +28,11 @@ import {
   buildMoodleContext,
   completeCodexActions,
   displayCodexText,
+  mergeLoadedDocuments,
   mergeLoadedResources,
   shouldContinueAfterActions,
   toChatHistory,
+  type LoadedDocumentContext,
   type LoadedResourceContext,
 } from "@/lib/codex-chat";
 import { runCodexStream } from "@/lib/codex-stream-client";
@@ -59,6 +61,12 @@ type CodexAuthStatus = "checking" | "missing" | "connecting" | "connected";
 
 const MAX_CODEX_ACTION_TURNS = 8;
 
+type PendingPanelActions = {
+  id: string;
+  actions: MoodleUIAction[];
+  label: string;
+};
+
 export function CodexPanel({
   user,
   courses,
@@ -76,7 +84,12 @@ export function CodexPanel({
   const [copiedCode, setCopiedCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authMenuOpen, setAuthMenuOpen] = useState(false);
+  const [pendingActions, setPendingActions] =
+    useState<PendingPanelActions | null>(null);
   const authMenuRef = useRef<HTMLDivElement | null>(null);
+  const actionConfirmationRef = useRef<((approved: boolean) => void) | null>(
+    null,
+  );
 
   const contextSummary = useMemo(() => {
     if (selectedMaterial) {
@@ -110,7 +123,11 @@ export function CodexPanel({
           return;
         }
         setAuthStatus("missing");
-        setError(authError instanceof Error ? authError.message : "Could not check Codex authentication.");
+        setError(
+          authError instanceof Error
+            ? authError.message
+            : "Could not check Codex authentication.",
+        );
       }
     }
 
@@ -126,7 +143,10 @@ export function CodexPanel({
       return;
     }
     function closeOnOutsidePointer(event: PointerEvent) {
-      if (authMenuRef.current && !authMenuRef.current.contains(event.target as Node)) {
+      if (
+        authMenuRef.current &&
+        !authMenuRef.current.contains(event.target as Node)
+      ) {
         setAuthMenuOpen(false);
       }
     }
@@ -144,7 +164,11 @@ export function CodexPanel({
   }, [authMenuOpen]);
 
   async function connectCodex({ force = false }: { force?: boolean } = {}) {
-    if (authStatus === "checking" || authStatus === "connecting" || (!force && authStatus === "connected")) {
+    if (
+      authStatus === "checking" ||
+      authStatus === "connecting" ||
+      (!force && authStatus === "connected")
+    ) {
       return;
     }
 
@@ -170,11 +194,17 @@ export function CodexPanel({
       }
     } catch (authError) {
       setAuthStatus("missing");
-      setError(authError instanceof Error ? authError.message : "Could not connect ChatGPT.");
+      setError(
+        authError instanceof Error
+          ? authError.message
+          : "Could not connect ChatGPT.",
+      );
     }
   }
 
-  async function disconnectCodex({ reconnect = false }: { reconnect?: boolean } = {}) {
+  async function disconnectCodex({
+    reconnect = false,
+  }: { reconnect?: boolean } = {}) {
     if (authStatus === "checking" || authStatus === "connecting") {
       return;
     }
@@ -197,7 +227,11 @@ export function CodexPanel({
       }
     } catch (disconnectError) {
       setAuthStatus("connected");
-      setError(disconnectError instanceof Error ? disconnectError.message : "Could not sign out of ChatGPT.");
+      setError(
+        disconnectError instanceof Error
+          ? disconnectError.message
+          : "Could not sign out of ChatGPT.",
+      );
     }
   }
 
@@ -250,6 +284,7 @@ export function CodexPanel({
 
     try {
       let loadedResources: LoadedResourceContext = [];
+      let loadedDocuments: LoadedDocumentContext = [];
       let reachedActionLimit = false;
 
       for (let turn = 0; turn < MAX_CODEX_ACTION_TURNS; turn += 1) {
@@ -267,17 +302,26 @@ export function CodexPanel({
               selectedMaterial,
               pdfState,
               loadedResources,
+              loadedDocuments,
             }),
           },
           (event) => {
             if (event.type === "message") {
-              updateAssistantMessage(assistantMessageId, displayCodexText(event.text));
+              updateAssistantMessage(
+                assistantMessageId,
+                displayCodexText(event.text),
+              );
             } else if (event.type === "delta") {
-              appendAssistantMessage(assistantMessageId, displayCodexText(event.text));
+              appendAssistantMessage(
+                assistantMessageId,
+                displayCodexText(event.text),
+              );
             } else if (event.type === "tool") {
               updateAssistantMessage(
                 assistantMessageId,
-                event.status === "running" ? `Working: ${event.title}` : "Finishing...",
+                event.status === "running"
+                  ? `Working: ${event.title}`
+                  : "Finishing...",
               );
             }
           },
@@ -290,8 +334,26 @@ export function CodexPanel({
           break;
         }
 
+        setRunning(false);
+        const approved = await waitForActionConfirmation(actions);
+        if (!approved) {
+          updateAssistantMessage(
+            assistantMessageId,
+            `${displayCodexText(result.finalResponse)}\n\nAktion abgebrochen.`,
+          );
+          break;
+        }
+        setRunning(true);
+
         const actionResult = await onApplyActions(actions);
-        loadedResources = mergeLoadedResources(loadedResources, actionResult.loadedResources);
+        loadedResources = mergeLoadedResources(
+          loadedResources,
+          actionResult.loadedResources,
+        );
+        loadedDocuments = mergeLoadedDocuments(
+          loadedDocuments,
+          actionResult.loadedDocuments,
+        );
 
         if (!shouldContinueAfterActions(actions, actionResult)) {
           break;
@@ -302,25 +364,60 @@ export function CodexPanel({
           break;
         }
 
-        updateAssistantMessage(assistantMessageId, "Loaded Moodle resources. Continuing...");
+        updateAssistantMessage(
+          assistantMessageId,
+          "Loaded Moodle resources. Continuing...",
+        );
         chatHistory = [
           ...chatHistory,
           {
             role: "assistant",
-            text: buildActionFollowUpMessage(actions, actionResult.loadedResources),
+            text: buildActionFollowUpMessage(
+              actions,
+              actionResult.loadedResources,
+              actionResult.loadedDocuments,
+            ),
           },
         ];
       }
 
       if (reachedActionLimit) {
-        setError("Codex needed too many Moodle UI steps. Try asking for a more specific course or file.");
+        setError(
+          "Codex needed too many Moodle UI steps. Try asking for a more specific course or file.",
+        );
       }
     } catch (submitError) {
-      setMessages((current) => current.filter((message) => message.id !== assistantMessageId));
-      setError(submitError instanceof Error ? submitError.message : "Codex failed.");
+      setMessages((current) =>
+        current.filter((message) => message.id !== assistantMessageId),
+      );
+      setError(
+        submitError instanceof Error ? submitError.message : "Codex failed.",
+      );
     } finally {
+      setPendingActions(null);
+      actionConfirmationRef.current = null;
       setRunning(false);
     }
+  }
+
+  function waitForActionConfirmation(actions: MoodleUIAction[]) {
+    const id = crypto.randomUUID();
+    setPendingActions({
+      id,
+      actions,
+      label: describePanelActions(actions, courses, materials),
+    });
+    return new Promise<boolean>((resolve) => {
+      actionConfirmationRef.current = (approved) => {
+        setPendingActions((current) => (current?.id === id ? null : current));
+        actionConfirmationRef.current = null;
+        resolve(approved);
+      };
+    });
+  }
+
+  function resolvePendingActions(approved: boolean) {
+    actionConfirmationRef.current?.(approved);
   }
 
   const isCodexConnected = authStatus === "connected";
@@ -332,7 +429,8 @@ export function CodexPanel({
         : isCodexConnected
           ? "Connected"
           : "Connect ChatGPT";
-  const composerDisabled = running || !isCodexConnected;
+  const composerDisabled =
+    running || Boolean(pendingActions) || !isCodexConnected;
 
   function updateAssistantMessage(messageId: string, text: string) {
     setMessages((current) =>
@@ -353,7 +451,10 @@ export function CodexPanel({
         message.id === messageId
           ? {
               ...message,
-              text: message.text === "Thinking..." ? delta : `${message.text}${delta}`,
+              text:
+                message.text === "Thinking..."
+                  ? delta
+                  : `${message.text}${delta}`,
             }
           : message,
       ),
@@ -366,9 +467,13 @@ export function CodexPanel({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Bot aria-hidden className="size-4 text-muted-foreground" />
-            <h2 className="truncate text-base font-semibold tracking-tight">Codex</h2>
+            <h2 className="truncate text-base font-semibold tracking-tight">
+              Codex
+            </h2>
           </div>
-          <p className="mt-1 truncate text-xs text-muted-foreground">{contextSummary}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {contextSummary}
+          </p>
         </div>
         <div ref={authMenuRef} className="relative shrink-0">
           <Button
@@ -387,7 +492,15 @@ export function CodexPanel({
           >
             <ShieldCheck aria-hidden className="size-3.5" />
             {connectLabel}
-            {isCodexConnected ? <ChevronDown aria-hidden className={cn("size-3.5 transition-transform", authMenuOpen ? "rotate-180" : "")} /> : null}
+            {isCodexConnected ? (
+              <ChevronDown
+                aria-hidden
+                className={cn(
+                  "size-3.5 transition-transform",
+                  authMenuOpen ? "rotate-180" : "",
+                )}
+              />
+            ) : null}
           </Button>
           {authMenuOpen ? (
             <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-[1.5rem] bg-popover p-2 text-sm text-popover-foreground shadow-2xl">
@@ -415,7 +528,9 @@ export function CodexPanel({
       <div className="min-h-0 flex-1 overflow-visible px-4 pb-4 md:overflow-auto md:px-4 md:pb-4">
         {deviceCode ? (
           <div className="mb-3 rounded-[1.5rem] bg-secondary px-4 py-4 text-sm">
-            <p className="font-medium text-foreground">Finish ChatGPT sign-in</p>
+            <p className="font-medium text-foreground">
+              Finish ChatGPT sign-in
+            </p>
             <p className="mt-2 text-muted-foreground">
               Open the Codex login page and enter this code:
             </p>
@@ -435,7 +550,11 @@ export function CodexPanel({
               </Button>
             </div>
             <Button asChild className="mt-3 h-9 px-3 text-xs" size="sm">
-              <a href={deviceCode.verificationUri} rel="noreferrer" target="_blank">
+              <a
+                href={deviceCode.verificationUri}
+                rel="noreferrer"
+                target="_blank"
+              >
                 <ExternalLink aria-hidden />
                 Open ChatGPT login
               </a>
@@ -445,9 +564,12 @@ export function CodexPanel({
 
         {messages.length === 0 ? (
           <div className="flex h-full min-h-60 flex-col justify-center rounded-[1.5rem] bg-secondary px-4 py-5 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">Ask about your Moodle workspace.</p>
+            <p className="font-medium text-foreground">
+              Ask about your Moodle workspace.
+            </p>
             <p className="mt-2">
-              Codex receives the selected course and visible materials, without raw Moodle links or tokens.
+              Codex receives the selected course and visible materials, without
+              raw Moodle links or tokens.
             </p>
           </div>
         ) : (
@@ -465,6 +587,31 @@ export function CodexPanel({
                 <p className="whitespace-pre-wrap">{message.text}</p>
               </div>
             ))}
+            {pendingActions ? (
+              <div className="rounded-[1.5rem] bg-secondary px-4 py-3 text-sm text-secondary-foreground">
+                <p className="font-medium">Codex möchte das ausführen:</p>
+                <p className="mt-1 text-muted-foreground">
+                  {pendingActions.label}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    className="h-9 px-3 text-xs"
+                    onClick={() => resolvePendingActions(true)}
+                    type="button"
+                  >
+                    Ausführen
+                  </Button>
+                  <Button
+                    className="h-9 px-3 text-xs"
+                    onClick={() => resolvePendingActions(false)}
+                    type="button"
+                    variant="secondary"
+                  >
+                    Abbrechen
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             {running ? (
               <div className="flex items-center gap-2 rounded-[1.5rem] bg-secondary px-4 py-3 text-sm text-muted-foreground">
                 <Spinner aria-hidden />
@@ -492,13 +639,73 @@ export function CodexPanel({
             }
           }}
           disabled={composerDisabled}
-          placeholder={isCodexConnected ? "Ask about this course..." : "Connect ChatGPT before asking..."}
+          placeholder={
+            isCodexConnected
+              ? "Ask about this course..."
+              : "Connect ChatGPT before asking..."
+          }
         />
-        <Button disabled={composerDisabled || prompt.trim().length === 0} type="submit">
+        <Button
+          disabled={composerDisabled || prompt.trim().length === 0}
+          type="submit"
+        >
           {running ? <Spinner aria-hidden /> : <SendHorizontal aria-hidden />}
           Ask Codex
         </Button>
       </form>
     </aside>
   );
+}
+
+function describePanelActions(
+  actions: MoodleUIAction[],
+  courses: Course[],
+  materials: Material[],
+): string {
+  return actions
+    .map((action) => {
+      const courseId = "courseId" in action ? action.courseId : null;
+      const course = courseId
+        ? courses.find((candidate) => String(candidate.id) === String(courseId))
+        : null;
+      const resourceId =
+        action.type === "open_material"
+          ? action.materialId
+          : action.type === "open_resource" ||
+              action.type === "read_material_text"
+            ? action.resourceId
+            : null;
+      const material = resourceId
+        ? materials.find((candidate) => candidate.id === resourceId)
+        : null;
+      const target = material?.name ?? (course ? courseTitle(course) : null);
+
+      switch (action.type) {
+        case "read_material_text":
+          return target
+            ? `Materialinhalt lesen: ${target}`
+            : "Materialinhalt lesen";
+        case "open_resource":
+        case "open_material":
+          return target ? `Material öffnen: ${target}` : "Material öffnen";
+        case "load_course_resources":
+        case "open_course":
+          return target
+            ? `Kursmaterialien laden: ${target}`
+            : "Kursmaterialien laden";
+        case "open_moodle_course_page":
+          return target
+            ? `Moodle-Kursseite öffnen: ${target}`
+            : "Moodle-Kursseite öffnen";
+        case "open_latest_pdf":
+          return target
+            ? `Neuestes PDF öffnen: ${target}`
+            : "Neuestes PDF öffnen";
+        case "scroll_pdf_to_page":
+          return `PDF zu Seite ${action.page} scrollen`;
+        case "set_task_status":
+          return "Aufgabenstatus ändern";
+      }
+    })
+    .join("; ");
 }
