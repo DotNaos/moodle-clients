@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { Material } from "@/lib/dashboard-data";
 import { Button } from "@/components/ui/button";
-import { PDFDocumentViewer } from "@/components/pdf-document-viewer";
+import { PDFDocumentViewerMode } from "@/components/pdf-document-viewer-mode";
 import { Spinner } from "@/components/ui/spinner";
 import type { PDFScrollCommand, PDFViewState } from "@/lib/pdf-context";
 
@@ -110,7 +110,7 @@ export function FileViewer({
 
       <div className="min-h-0 flex-1 overflow-hidden bg-muted">
         {materialKind === "pdf" ? (
-          <PDFDocumentViewer
+          <PDFDocumentViewerMode
             allowFloat
             courseId={courseId}
             externalUrl={material.url}

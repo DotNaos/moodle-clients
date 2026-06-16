@@ -28,7 +28,7 @@ import {
   type StudyPipelineStage,
   type StudyPipelineStatusResponse,
 } from "@/components/study-pipeline-preview";
-import { PDFDocumentViewer } from "@/components/pdf-document-viewer";
+import { PDFDocumentViewerMode } from "@/components/pdf-document-viewer-mode";
 import type { StudyTestContext } from "@/lib/codex-chat";
 import type { Course, Material } from "@/lib/dashboard-data";
 import { courseTitle } from "@/lib/dashboard-data";
@@ -1130,7 +1130,7 @@ export function TaskStudyPanel({
           <DialogTitle className="sr-only">{previewTitle}</DialogTitle>
           <div className="min-h-0 flex-1 overflow-hidden bg-muted">
             {courseId && previewResourceId && previewPDFUrl ? (
-              <PDFDocumentViewer
+              <PDFDocumentViewerMode
                 courseId={courseId}
                 expanded={previewExpanded}
                 externalUrl={previewMaterial?.url}
@@ -1542,7 +1542,7 @@ function TaskTestMode({
               </div>
               {solutionTab === "pdf" && courseId && solutionResourceId ? (
                 <div className={cn("bg-muted", expanded ? "min-h-0 flex-1" : "h-[50dvh]")}>
-                  <PDFDocumentViewer
+                  <PDFDocumentViewerMode
                     embedded
                     courseId={courseId}
                     materialId={solutionResourceId}
@@ -1679,7 +1679,7 @@ function TaskSolutionPanel({
       </div>
       {solutionTab === "pdf" && courseId && solutionResourceId ? (
         <div className="h-[55dvh] min-h-72 bg-muted">
-          <PDFDocumentViewer
+          <PDFDocumentViewerMode
             allowFloat
             courseId={courseId}
             materialId={solutionResourceId}

@@ -44,6 +44,7 @@ export function PDFDocumentViewer({
   onExpandedChange,
   scrollCommand,
   title,
+  toolbarExtra,
   url,
   onStateChange,
 }: {
@@ -60,6 +61,7 @@ export function PDFDocumentViewer({
   onExpandedChange?: (expanded: boolean) => void;
   scrollCommand: PDFScrollCommand | null;
   title: string;
+  toolbarExtra?: React.ReactNode;
   url: string;
   onStateChange: (state: PDFViewState | null) => void;
 }) {
@@ -810,6 +812,12 @@ export function PDFDocumentViewer({
                 <Copy aria-hidden />
               )}
             </Button>
+            {toolbarExtra ? (
+              <>
+                <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
+                {toolbarExtra}
+              </>
+            ) : null}
             {externalUrl ? (
               <Button asChild aria-label="In Moodle öffnen" size="icon" variant="ghost">
                 <a href={externalUrl} target="_blank" rel="noreferrer">

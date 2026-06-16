@@ -3,7 +3,7 @@
 import { AlertCircle, Boxes, CheckCircle2, FileImage, Gauge, ImageOff, RefreshCw, ScrollText, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { PDFDocumentViewer } from "@/components/pdf-document-viewer";
+import { PDFDocumentViewerMode } from "@/components/pdf-document-viewer-mode";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -273,7 +273,7 @@ export function ExtractedDocumentInspector({
 
               {selectedDocument ? (
                 <div className="mt-3 min-h-[520px] overflow-hidden rounded-3xl bg-background/70 p-2">
-                  <PDFDocumentViewer
+                  <PDFDocumentViewerMode
                     allowFloat
                     courseId={courseId}
                     materialId={selectedDocument.resource.id}

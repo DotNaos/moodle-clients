@@ -95,6 +95,9 @@ export async function GET(request: Request, context: RouteContext) {
   if (!headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
+  if (isMaterialPDFPreviewRoute(upstreamPath) && headers.get("content-type")?.toLowerCase().includes("application/pdf")) {
+    headers.set("content-disposition", inlinePDFDisposition(headers.get("content-disposition")));
+  }
 
   if (cacheConfig && upstreamResponse.ok && headers.get("content-type")?.includes("application/json")) {
     const payload = await readServiceJSON<unknown>(upstreamResponse);
@@ -137,6 +140,17 @@ function moodleAPIKeyHeader(upstreamPath: string, apiKey: string): Record<string
     return {};
   }
   return { "X-Moodle-App-Key": apiKey };
+}
+
+function isMaterialPDFPreviewRoute(upstreamPath: string): boolean {
+  return /^courses\/[^/]+\/materials\/[^/]+\/pdf$/.test(upstreamPath);
+}
+
+function inlinePDFDisposition(disposition: string | null): string {
+  if (!disposition) {
+    return "inline";
+  }
+  return disposition.replace(/^attachment/i, "inline");
 }
 
 export async function POST(request: Request, context: RouteContext) {
