@@ -339,7 +339,7 @@ function normalizeCodexStreamEvent(value: unknown): CodexStreamEvent | null {
   if (event.type === "delta") {
     return {
       type: "delta",
-      text: typeof event.data === "string" ? event.data : "",
+      text: typeof event.text === "string" ? event.text : typeof event.data === "string" ? event.data : "",
     };
   }
 

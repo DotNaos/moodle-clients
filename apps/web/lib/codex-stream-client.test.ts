@@ -41,6 +41,28 @@ describe("codex-stream-client", () => {
     ]);
   });
 
+  test("normalizes backend NDJSON delta text events", async () => {
+    const events: CodexStreamEvent[] = [];
+    const response = new Response(
+      streamFromChunks([
+        `{"type":"thread","threadId":null}\n`,
+        `{"type":"delta","text":"Ant"}\n`,
+        `{"type":"delta","text":"wort"}\n`,
+        `{"type":"done","threadId":null,"finalResponse":"Antwort","actions":[]}\n`,
+      ]),
+    );
+
+    const result = await readCodexStream(response, (event) => events.push(event));
+
+    expect(events).toEqual([
+      { type: "thread", threadId: null },
+      { type: "delta", text: "Ant" },
+      { type: "delta", text: "wort" },
+      { type: "done", threadId: null, finalResponse: "Antwort", actions: [] },
+    ]);
+    expect(result.finalResponse).toBe("Antwort");
+  });
+
   test("falls back to HTTP when WebSocket fails before output", async () => {
     const events: CodexStreamEvent[] = [];
     const result = await runCodexStream(
