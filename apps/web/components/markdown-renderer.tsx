@@ -152,6 +152,16 @@ function normalizeListItemText(text: string): string {
 
 function inlineMarkdown(text: string): string {
   return renderMath(escapeHtml(text))
+    .replace(
+      /\[([^\]]+)\]\(moodle-resource:([^):]+):([^)]+)\)/g,
+      (_, label: string, courseId: string, materialId: string) =>
+        `<a class="inline-flex max-w-full items-center rounded-full bg-secondary px-2 py-0.5 align-baseline text-[0.9em] font-medium text-foreground no-underline" href="/courses/${escapeAttribute(decodeCitationPart(courseId))}/materials/${escapeAttribute(decodeCitationPart(materialId))}">${label}</a>`,
+    )
+    .replace(
+      /\[([^\]]+)\]\(moodle-course:([^)]+)\)/g,
+      (_, label: string, courseId: string) =>
+        `<a class="inline-flex max-w-full items-center rounded-full bg-secondary px-2 py-0.5 align-baseline text-[0.9em] font-medium text-foreground no-underline" href="/courses/${escapeAttribute(decodeCitationPart(courseId))}">${label}</a>`,
+    )
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a class="font-medium underline underline-offset-2" href="$2" rel="noreferrer" target="_blank">$1</a>')
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/__([^_]+)__/g, "<strong>$1</strong>")
@@ -196,4 +206,12 @@ function unescapeHtml(value: string): string {
     "&quot;": '"',
     "&#39;": "'",
   })[entity] ?? entity);
+}
+
+function decodeCitationPart(value: string): string {
+  try {
+    return encodeURIComponent(decodeURIComponent(unescapeHtml(value)));
+  } catch {
+    return encodeURIComponent(unescapeHtml(value));
+  }
 }

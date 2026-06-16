@@ -510,7 +510,14 @@ export function ChatPage({
                   </p>
                 )
               ) : (
-                chat.messages.map((message) => <ChatMessageBubble key={message.id} message={message} />)
+                chat.messages.map((message) => (
+                  <ChatMessageBubble
+                    key={message.id}
+                    message={message}
+                    onCancelActionRequest={chat.cancelActionRequest}
+                    onConfirmActionRequest={chat.confirmActionRequest}
+                  />
+                ))
               )}
             </div>
           </div>
@@ -709,7 +716,15 @@ function messagesForRecentChat(session: RecentChatEntry): CodexChatUIMessage[] {
   ];
 }
 
-export function ChatMessageBubble({ message }: { message: CodexChatUIMessage }) {
+export function ChatMessageBubble({
+  message,
+  onCancelActionRequest,
+  onConfirmActionRequest,
+}: {
+  message: CodexChatUIMessage;
+  onCancelActionRequest?: (requestId: string) => void;
+  onConfirmActionRequest?: (requestId: string) => void;
+}) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   if (message.role === "user") {
@@ -765,7 +780,12 @@ export function ChatMessageBubble({ message }: { message: CodexChatUIMessage }) 
         <MarkdownRenderer className="text-sm leading-relaxed" text={message.text} />
       )}
       {message.actions.map((action) => (
-        <ActionRow key={action.id} action={action} />
+        <ActionRow
+          key={action.id}
+          action={action}
+          onCancel={onCancelActionRequest}
+          onConfirm={onConfirmActionRequest}
+        />
       ))}
     </div>
   );
@@ -790,9 +810,20 @@ function ToolStatusIcon({ status }: { status: CodexToolEvent["status"] }) {
   return <Check aria-hidden className="size-3.5 shrink-0 text-emerald-500" />;
 }
 
-function ActionRow({ action }: { action: CodexAppliedAction }) {
+function ActionRow({
+  action,
+  onCancel,
+  onConfirm,
+}: {
+  action: CodexAppliedAction;
+  onCancel?: (requestId: string) => void;
+  onConfirm?: (requestId: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
-  const expandable = action.resources.length > 0;
+  const status = action.status ?? "completed";
+  const expandable = status === "completed" && action.resources.length > 0;
+  const requestId = action.requestId;
+  const detail = action.detail ?? actionStatusDetail(status);
 
   return (
     <div className="flex flex-col">
@@ -805,10 +836,10 @@ function ActionRow({ action }: { action: CodexAppliedAction }) {
         type="button"
         onClick={() => setExpanded((current) => !current)}
       >
-        <FolderOpen aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <ActionStatusIcon status={status} />
         <span className="min-w-0 truncate text-foreground/90">{action.label}</span>
-        {action.detail ? (
-          <span className="shrink-0 text-xs text-muted-foreground">{action.detail}</span>
+        {detail ? (
+          <span className="shrink-0 text-xs text-muted-foreground">{detail}</span>
         ) : null}
         {expandable ? (
           <ChevronRight
@@ -820,6 +851,30 @@ function ActionRow({ action }: { action: CodexAppliedAction }) {
           />
         ) : null}
       </button>
+      {action.reason && status === "pending" ? (
+        <p className="ml-5 mt-0.5 text-xs leading-5 text-muted-foreground">{action.reason}</p>
+      ) : null}
+      {action.error && status === "failed" ? (
+        <p className="ml-5 mt-0.5 text-xs leading-5 text-destructive">{action.error}</p>
+      ) : null}
+      {action.showControls && status === "pending" && requestId ? (
+        <div className="ml-5 mt-2 flex flex-wrap gap-2">
+          <button
+            className="rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background transition-opacity hover:opacity-90"
+            type="button"
+            onClick={() => onConfirm?.(requestId)}
+          >
+            Bestätigen
+          </button>
+          <button
+            className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+            type="button"
+            onClick={() => onCancel?.(requestId)}
+          >
+            Abbrechen
+          </button>
+        </div>
+      ) : null}
       {expandable && expanded ? (
         <ul className="mt-0.5 ml-5 flex flex-col gap-0.5 text-xs text-muted-foreground">
           {action.resources.slice(0, 8).map((resource) => (
@@ -834,6 +889,35 @@ function ActionRow({ action }: { action: CodexAppliedAction }) {
       ) : null}
     </div>
   );
+}
+
+function ActionStatusIcon({ status }: { status: NonNullable<CodexAppliedAction["status"]> }) {
+  if (status === "running") {
+    return <Spinner aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
+  }
+  if (status === "failed" || status === "cancelled") {
+    return <X aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
+  }
+  if (status === "pending") {
+    return <FolderOpen aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
+  }
+  return <Check aria-hidden className="size-3.5 shrink-0 text-emerald-500" />;
+}
+
+function actionStatusDetail(status: NonNullable<CodexAppliedAction["status"]>): string | undefined {
+  if (status === "pending") {
+    return "Bestätigung nötig";
+  }
+  if (status === "running") {
+    return "Wird ausgeführt";
+  }
+  if (status === "cancelled") {
+    return "Abgebrochen";
+  }
+  if (status === "failed") {
+    return "Fehlgeschlagen";
+  }
+  return undefined;
 }
 
 function ChatError({ message }: { message: string }) {

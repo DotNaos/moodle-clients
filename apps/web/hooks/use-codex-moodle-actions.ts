@@ -25,7 +25,7 @@ type UseCodexMoodleActionsInput = {
   pdfState: PDFViewState | null;
   loadMaterials: (courseId: string) => Promise<Material[]>;
   onOpenMaterial: (courseId: string | null, materialId: string) => void;
-  // Asks the user for confirmation and applies the status change if approved.
+  // Applies a status change that was already confirmed by the chat action card.
   onSetTaskStatus?: (taskId: string, status: "done" | "open") => Promise<void>;
   setError: Dispatch<SetStateAction<string | null>>;
   setPDFScrollCommand: Dispatch<SetStateAction<PDFScrollCommand | null>>;

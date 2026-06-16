@@ -9,7 +9,7 @@ import {
   buildAttachmentPrompt,
   buildMoodleContext,
   completeCodexActions,
-  describeAppliedActions,
+  describePendingActions,
   displayCodexText,
   isCodexLifecycleNoise,
   mergeLoadedResources,
@@ -59,6 +59,7 @@ export function useCodexChat({
   const abortControllerRef = useRef<AbortController | null>(null);
   const activeRunIdRef = useRef(0);
   const abortModesRef = useRef(new Map<number, "steer" | "stop">());
+  const actionConfirmationResolversRef = useRef(new Map<string, (approved: boolean) => void>());
 
   function setRunningState(value: boolean) {
     runningRef.current = value;
@@ -121,7 +122,58 @@ export function useCodexChat({
     );
   }
 
+  function updateAssistantActionRequest(
+    messageId: string,
+    requestId: string,
+    patch: Partial<CodexChatUIMessage["actions"][number]>,
+  ) {
+    setMessages((current) =>
+      current.map((message) => {
+        if (message.id !== messageId) {
+          return message;
+        }
+        return {
+          ...message,
+          actions: message.actions.map((action) =>
+            action.requestId === requestId ? { ...action, ...patch, showControls: false } : action,
+          ),
+        };
+      }),
+    );
+  }
+
+  function waitForActionConfirmation(requestId: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      actionConfirmationResolversRef.current.set(requestId, resolve);
+    });
+  }
+
+  function resolveActionRequest(requestId: string, approved: boolean) {
+    const resolve = actionConfirmationResolversRef.current.get(requestId);
+    if (!resolve) {
+      return;
+    }
+    actionConfirmationResolversRef.current.delete(requestId);
+    resolve(approved);
+  }
+
+  function resolveAllActionRequests(approved: boolean) {
+    for (const [requestId, resolve] of actionConfirmationResolversRef.current.entries()) {
+      actionConfirmationResolversRef.current.delete(requestId);
+      resolve(approved);
+    }
+  }
+
+  function confirmActionRequest(requestId: string) {
+    resolveActionRequest(requestId, true);
+  }
+
+  function cancelActionRequest(requestId: string) {
+    resolveActionRequest(requestId, false);
+  }
+
   function stop(mode: "steer" | "stop" = "stop") {
+    resolveAllActionRequests(false);
     const controller = abortControllerRef.current;
     if (!controller) {
       setRunningState(false);
@@ -135,6 +187,7 @@ export function useCodexChat({
   }
 
   function reset(nextMessages: CodexChatUIMessage[] = []) {
+    resolveAllActionRequests(false);
     const controller = abortControllerRef.current;
     if (controller) {
       abortModesRef.current.set(activeRunIdRef.current, "stop");
@@ -156,6 +209,7 @@ export function useCodexChat({
     if (runningRef.current) {
       stop("steer");
     }
+    resolveAllActionRequests(false);
     const abortController = new AbortController();
     const runId = activeRunIdRef.current + 1;
     activeRunIdRef.current = runId;
@@ -231,12 +285,36 @@ export function useCodexChat({
           break;
         }
 
-        const actionResult = await onApplyActions(actions);
+        const requestId = crypto.randomUUID();
+        appendAssistantActions(assistantMessageId, describePendingActions(actions, courses, materials, requestId));
+        setRunningState(false);
+        const approved = await waitForActionConfirmation(requestId);
+        if (!approved) {
+          updateAssistantActionRequest(assistantMessageId, requestId, { status: "cancelled" });
+          break;
+        }
+
+        setRunningState(true);
+        updateAssistantActionRequest(assistantMessageId, requestId, { status: "running" });
+        let actionResult: CodexActionResult;
+        try {
+          actionResult = await onApplyActions(actions);
+        } catch (actionError) {
+          updateAssistantActionRequest(assistantMessageId, requestId, {
+            status: "failed",
+            error: actionError instanceof Error ? actionError.message : "Aktion fehlgeschlagen.",
+          });
+          break;
+        }
         loadedResources = mergeLoadedResources(loadedResources, actionResult.loadedResources);
-        appendAssistantActions(
-          assistantMessageId,
-          describeAppliedActions(actions, actionResult.loadedResources, courses),
+        const resourceNames = actionResult.loadedResources.flatMap((entry) =>
+          entry.resources.map((resource) => resource.name),
         );
+        updateAssistantActionRequest(assistantMessageId, requestId, {
+          status: "completed",
+          detail: resourceNames.length > 0 ? `${resourceNames.length} Materialien` : undefined,
+          resources: resourceNames,
+        });
 
         if (!shouldContinueAfterActions(actions, actionResult)) {
           break;
@@ -281,7 +359,7 @@ export function useCodexChat({
 
   useEffect(() => () => stop("stop"), []);
 
-  return { messages, running, error, reset, submit, stop, setError };
+  return { messages, running, error, reset, submit, stop, setError, confirmActionRequest, cancelActionRequest };
 }
 
 function lastRunningIndexByTitle(toolEvents: CodexChatUIMessage["toolEvents"], title: string): number {

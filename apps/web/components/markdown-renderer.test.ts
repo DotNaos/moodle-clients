@@ -52,4 +52,14 @@ describe("MarkdownRenderer", () => {
     expect(html).toContain("<ul");
     expect(html).not.toContain("<ol");
   });
+
+  test("renders Moodle material citations as internal dashboard links", () => {
+    const html = renderMarkdownTextToHtml(
+      "Siehe [Aufgabenblatt 01](moodle-resource:22584:mod_resource_123).",
+    ).join("");
+
+    expect(html).toContain('href="/courses/22584/materials/mod_resource_123"');
+    expect(html).toContain("Aufgabenblatt 01");
+    expect(html).not.toContain("moodle-resource:");
+  });
 });

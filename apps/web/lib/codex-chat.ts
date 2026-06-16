@@ -18,12 +18,19 @@ export type CodexToolEvent = {
   status: CodexToolStatus;
 };
 
+export type CodexActionStatus = "pending" | "running" | "completed" | "cancelled" | "failed";
+
 export type CodexAppliedAction = {
   id: string;
   type: MoodleUIAction["type"];
   label: string;
   detail?: string;
   resources: string[];
+  status?: CodexActionStatus;
+  requestId?: string;
+  reason?: string;
+  error?: string;
+  showControls?: boolean;
 };
 
 export type CodexChatUIMessage = {
@@ -107,6 +114,17 @@ const ACTION_LABELS: Record<MoodleUIAction["type"], string> = {
   set_task_status: "Aufgabenstatus vorgeschlagen",
 };
 
+const PENDING_ACTION_LABELS: Record<MoodleUIAction["type"], string> = {
+  open_course: "Kursmaterialien laden",
+  open_material: "Material öffnen",
+  open_resource: "Ressource öffnen",
+  load_course_resources: "Materialien laden",
+  open_moodle_course_page: "Moodle-Kursseite öffnen",
+  open_latest_pdf: "Neuestes PDF öffnen",
+  scroll_pdf_to_page: "PDF verschieben",
+  set_task_status: "Aufgabenstatus ändern",
+};
+
 export function describeAppliedActions(
   actions: MoodleUIAction[],
   loadedResources: LoadedResourceContext,
@@ -137,6 +155,37 @@ export function describeAppliedActions(
       label,
       detail,
       resources,
+      status: "completed",
+    };
+  });
+}
+
+export function describePendingActions(
+  actions: MoodleUIAction[],
+  courses: Course[],
+  materials: Material[],
+  requestId: string,
+): CodexAppliedAction[] {
+  return actions.map((action, index) => {
+    const course = findActionCourse(action, courses);
+    const material = findActionMaterial(action, materials);
+    const base = PENDING_ACTION_LABELS[action.type];
+    const label = material?.name
+      ? `${base}: ${material.name}`
+      : course
+        ? `${base}: ${courseTitle(course)}`
+        : base;
+
+    return {
+      id: crypto.randomUUID(),
+      type: action.type,
+      label,
+      detail: actionDetail(action),
+      resources: [],
+      status: "pending",
+      requestId,
+      reason: action.reason ?? undefined,
+      showControls: index === 0,
     };
   });
 }
@@ -298,6 +347,7 @@ function courseContext(course: Course) {
     title: courseTitle(course),
     subtitle: courseSubtitle(course),
     category: course.categoryName ?? course.category ?? null,
+    citation: `[${courseTitle(course)}](moodle-course:${encodeCitationPart(course.id)})`,
   };
 }
 
@@ -310,5 +360,45 @@ function materialContext(material: Material) {
     sectionName: material.sectionName ?? null,
     courseId: material.courseId ?? null,
     uploadedAt: material.uploadedAt ?? null,
+    citation: materialCitation(material),
   };
+}
+
+export function materialCitation(material: Material): string | null {
+  const courseId = material.courseId == null ? null : String(material.courseId);
+  if (!courseId) {
+    return null;
+  }
+  return `[${material.name}](moodle-resource:${encodeCitationPart(courseId)}:${encodeCitationPart(material.id)})`;
+}
+
+function encodeCitationPart(value: string | number): string {
+  return encodeURIComponent(String(value));
+}
+
+function findActionCourse(action: MoodleUIAction, courses: Course[]): Course | null {
+  const courseId = "courseId" in action ? action.courseId : null;
+  if (!courseId) {
+    return null;
+  }
+  return courses.find((candidate) => String(candidate.id) === String(courseId)) ?? null;
+}
+
+function findActionMaterial(action: MoodleUIAction, materials: Material[]): Material | null {
+  const materialId =
+    action.type === "open_material" ? action.materialId : action.type === "open_resource" ? action.resourceId : null;
+  if (!materialId) {
+    return null;
+  }
+  return materials.find((candidate) => candidate.id === materialId) ?? null;
+}
+
+function actionDetail(action: MoodleUIAction): string | undefined {
+  if (action.type === "scroll_pdf_to_page") {
+    return `Seite ${action.page}`;
+  }
+  if (action.type === "set_task_status") {
+    return action.status === "done" ? "Als erledigt markieren" : "Wieder öffnen";
+  }
+  return undefined;
 }

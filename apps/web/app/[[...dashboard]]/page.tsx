@@ -546,14 +546,9 @@ export default function Home() {
       }
     },
     onSetTaskStatus: async (taskId, status) => {
-      const title = taskTitleForId(taskId, studyOutline, taskView) ?? taskId;
-      const question =
-        status === "done"
-          ? `Codex schlägt vor, "${title}" als erledigt zu markieren. Übernehmen?`
-          : `Codex schlägt vor, "${title}" wieder zu öffnen. Übernehmen?`;
-      if (window.confirm(question)) {
-        await updateTaskStatus(taskId, status);
-      }
+      // Codex UI actions are approved in the chat before this callback runs, so
+      // do not ask again with a browser modal here.
+      await updateTaskStatus(taskId, status);
     },
     setError,
     setPDFScrollCommand,
