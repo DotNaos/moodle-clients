@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildPDFDownloadFilename,
   canWritePDFClipboardItem,
+  canWritePNGClipboardItem,
   type ClipboardItemConstructor,
 } from "@/lib/pdf-file-actions";
 
@@ -28,5 +29,22 @@ describe("PDF file actions", () => {
     expect(canWritePDFClipboardItem(supporting)).toBe(true);
     expect(canWritePDFClipboardItem(unsupported)).toBe(false);
     expect(canWritePDFClipboardItem(undefined)).toBe(false);
+  });
+
+  test("detects whether the browser can write PNG clipboard items", () => {
+    const supporting = class {
+      static supports(type: string) {
+        return type === "image/png";
+      }
+    } as unknown as ClipboardItemConstructor;
+    const unsupported = class {
+      static supports() {
+        return false;
+      }
+    } as unknown as ClipboardItemConstructor;
+
+    expect(canWritePNGClipboardItem(supporting)).toBe(true);
+    expect(canWritePNGClipboardItem(unsupported)).toBe(false);
+    expect(canWritePNGClipboardItem(undefined)).toBe(false);
   });
 });

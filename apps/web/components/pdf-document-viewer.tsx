@@ -6,6 +6,7 @@ import type React from "react";
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+import { PDFImageCopyActions } from "@/components/pdf-image-copy-actions";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -374,6 +375,11 @@ export function PDFDocumentViewer({
     }
   }, [downloadFilename, scheduleCopyStatusReset, url]);
 
+  const getCurrentPageCanvas = useCallback(
+    () => pageRefs.current[currentPage]?.querySelector("canvas") ?? null,
+    [currentPage],
+  );
+
   const scheduleZoomCommit = useCallback(() => {
     if (zoomCommitTimeoutRef.current) {
       window.clearTimeout(zoomCommitTimeoutRef.current);
@@ -738,7 +744,7 @@ export function PDFDocumentViewer({
         </div>
 
         <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-3">
-          <div className="pointer-events-auto flex max-w-full items-center gap-0.5 rounded-full bg-background/90 p-1 shadow-lg ring-1 ring-border/60 backdrop-blur-md">
+          <div className="pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full bg-background/90 p-1 shadow-lg ring-1 ring-border/60 backdrop-blur-md">
             <Button
               aria-label="Kleiner zoomen"
               disabled={visualZoom <= MIN_ZOOM}
@@ -812,6 +818,7 @@ export function PDFDocumentViewer({
                 <Copy aria-hidden />
               )}
             </Button>
+            <PDFImageCopyActions getCurrentPageCanvas={getCurrentPageCanvas} />
             {toolbarExtra ? (
               <>
                 <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
