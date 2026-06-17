@@ -221,15 +221,20 @@ function NativeBrowserPDFViewer({
       ) : null}
       <div
         className={cn(
-          "flex min-h-0 flex-col overflow-hidden bg-muted",
+          "overflow-hidden bg-muted",
           panelFloating
             ? "fixed inset-4 z-[60] rounded-3xl shadow-2xl ring-1 ring-border"
             : "relative h-full",
         )}
       >
+        {/* Fill the iframe by absolutely anchoring it to this positioned panel
+            rather than stretching it as a flex child: a flex-1 iframe collapses
+            to its intrinsic height on mobile Chrome, and Safari paints an
+            iframe inside a lazily-sized flex item blank. A plain positioned
+            block gives both engines a definite box to render into. */}
         <iframe
           key={iframeKey}
-          className="min-h-0 flex-1 bg-card"
+          className="absolute inset-0 size-full border-0 bg-card"
           src={nativeUrl}
           title={`Browser PDF viewer: ${title}`}
         />

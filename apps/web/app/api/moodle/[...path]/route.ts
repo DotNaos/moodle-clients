@@ -8,6 +8,7 @@ import {
   MOODLE_SERVICES_URL,
   readServiceJSON,
 } from "@/lib/moodle-services";
+import { buildPDFRangeResponse } from "@/lib/pdf-range-response";
 
 type RouteContext = {
   params: Promise<{ path?: string[] }> | { path?: string[] };
@@ -36,6 +37,7 @@ export async function GET(request: Request, context: RouteContext) {
 
   const params = await context.params;
   const upstreamPath = params.path?.map(encodeURIComponent).join("/") ?? "";
+  const isPDFPreview = isMaterialPDFPreviewRoute(upstreamPath);
   const requestUrl = new URL(request.url);
   const search = upstreamSearch(requestUrl.searchParams);
   const cacheConfig = getMoodleCacheConfig(userId, upstreamPath, requestUrl.searchParams);
@@ -56,7 +58,7 @@ export async function GET(request: Request, context: RouteContext) {
   let upstreamResponse = await fetch(upstreamUrl, {
     cache: "no-store",
     headers: {
-      ...proxyRequestHeaders(request),
+      ...proxyRequestHeaders(request, { forwardRange: !isPDFPreview }),
       ...moodleAPIKeyHeader(upstreamPath, session.apiKey),
     },
   });
@@ -67,7 +69,7 @@ export async function GET(request: Request, context: RouteContext) {
       upstreamResponse = await fetch(upstreamUrl, {
         cache: "no-store",
         headers: {
-          ...proxyRequestHeaders(request),
+          ...proxyRequestHeaders(request, { forwardRange: !isPDFPreview }),
           ...moodleAPIKeyHeader(upstreamPath, restored.session.apiKey),
         },
       });
@@ -95,8 +97,12 @@ export async function GET(request: Request, context: RouteContext) {
   if (!headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
-  if (isMaterialPDFPreviewRoute(upstreamPath) && headers.get("content-type")?.toLowerCase().includes("application/pdf")) {
+  if (isPDFPreview && headers.get("content-type")?.toLowerCase().includes("application/pdf")) {
     headers.set("content-disposition", inlinePDFDisposition(headers.get("content-disposition")));
+    // Safari only renders a framed PDF when the server answers Range requests
+    // with 206; the upstream may not, so we buffer and serve ranges ourselves.
+    const body = await upstreamResponse.arrayBuffer();
+    return buildPDFRangeResponse(body, request.headers.get("range"), headers);
   }
 
   if (cacheConfig && upstreamResponse.ok && headers.get("content-type")?.includes("application/json")) {
@@ -124,8 +130,15 @@ function upstreamSearch(searchParams: URLSearchParams): string {
   return text ? `?${text}` : "";
 }
 
-function proxyRequestHeaders(request: Request): Record<string, string> {
+function proxyRequestHeaders(
+  request: Request,
+  options?: { forwardRange?: boolean },
+): Record<string, string> {
   const headers: Record<string, string> = {};
+  // The PDF preview route serves ranges itself, so it fetches the full body.
+  if (options?.forwardRange === false) {
+    return headers;
+  }
   for (const header of ["range", "if-range"]) {
     const value = request.headers.get(header);
     if (value) {
