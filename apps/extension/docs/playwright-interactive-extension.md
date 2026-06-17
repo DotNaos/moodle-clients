@@ -9,8 +9,8 @@ loaded.
 For Playwright-based Moodle login in this repo, use the 1Password references
 from `scripts/playwright-op-config.mjs`:
 
-- username: `op://Personal/FHGR/username`
-- password: `op://Personal/FHGR/password`
+- username: `op://Personal/FHGR - Moodle/username`
+- password: `op://Personal/FHGR - Moodle/password`
 
 Do not hardcode the resolved values into the repo. Resolve them via `op read`
 or by importing the helper from `scripts/playwright-op-config.mjs`.

@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 
-export const MOODLE_USERNAME_OP_REF = 'op://Personal/FHGR/username'
-export const MOODLE_PASSWORD_OP_REF = ['op://Personal/FHGR', 'password'].join('/')
+export const MOODLE_USERNAME_OP_REF = 'op://Personal/FHGR - Moodle/username'
+export const MOODLE_PASSWORD_OP_REF = ['op://Personal/FHGR - Moodle', 'password'].join('/')
 
 export function readOnePasswordReference(reference) {
   const result = spawnSync('op', ['read', reference], {

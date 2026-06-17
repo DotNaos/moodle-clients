@@ -28,6 +28,11 @@ Install dependencies:
 bun install
 ```
 
+Local secrets live in the checked-in `.env.op` as 1Password references. The
+root development scripts load it automatically through `op run`, so fresh git
+worktrees do not need a copied `.env` file. Keep `.env` only for private local
+overrides.
+
 Run the web app:
 
 ```sh
