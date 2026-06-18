@@ -155,6 +155,7 @@ export default function Home() {
     loadRecordings,
     recordingsByCourseId,
     resetRecordings,
+    resolveRecordingStream,
     signInWebexBrowser,
     selectRecording,
     selectedRecordingForCourse,
@@ -551,6 +552,7 @@ export default function Home() {
       const recording = recordings.find((item) => item.recordingUuid === recordingId);
       if (recording) {
         selectRecording(courseId, recording);
+        void resolveRecordingStream(courseId, recording);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -892,8 +894,8 @@ export default function Home() {
         if (!activeCourseId) {
           return;
         }
-        selectRecording(activeCourseId, recording);
         navigator.open({ kind: "recording", courseId: activeCourseId, recordingId: recording.recordingUuid });
+        void resolveRecordingStream(activeCourseId, recording);
       }}
       onSelectedScriptSectionIdChange={(sectionId) => {
         if (sectionId && activeCourseId) {

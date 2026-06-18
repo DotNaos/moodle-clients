@@ -114,15 +114,19 @@ export function WebexRecordingsPanel({
             ) : null}
             <div className="relative shrink-0 overflow-hidden bg-black md:rounded-[1.75rem] md:shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
               {activeRecording?.streamUrl ? (
-                <>
-                  <WebexRecordingPlayer
-                    key={activeRecording.recordingUuid}
-                    poster={activeRecording.coverUrl}
-                    src={activeRecording.streamUrl}
-                  />
-                </>
+                <WebexRecordingPlayer
+                  key={activeRecording.recordingUuid}
+                  poster={activeRecording.coverUrl}
+                  src={activeRecording.streamUrl}
+                />
+              ) : activeRecording ? (
+                <RecordingStreamPreview
+                  loading={state?.resolvingRecordingUuid === activeRecording.recordingUuid}
+                  recording={activeRecording}
+                  onPlay={() => onPlay(activeRecording)}
+                />
               ) : (
-                <div className="grid aspect-video min-h-[320px] place-items-center px-6 text-center">
+                <div className="grid aspect-video place-items-center px-6 text-center">
                   <div className="max-w-sm">
                     <Video className="mx-auto mb-3 text-muted-foreground" aria-hidden />
                     <p className="font-medium text-background">{state?.loading ? "Loading recordings" : "No recording selected"}</p>
@@ -137,7 +141,13 @@ export function WebexRecordingsPanel({
           </div>
 
           <aside className="flex min-h-0 flex-col overflow-hidden px-4 md:px-0">
-            <RecordingList recordings={recordings} selected={activeRecording} loading={state?.loading} onPlay={onPlay} />
+            <RecordingList
+              recordings={recordings}
+              selected={activeRecording}
+              loading={state?.loading}
+              resolvingRecordingUuid={state?.resolvingRecordingUuid}
+              onPlay={onPlay}
+            />
           </aside>
         </div>
       ) : (
@@ -146,6 +156,53 @@ export function WebexRecordingsPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function RecordingStreamPreview({
+  loading,
+  onPlay,
+  recording,
+}: {
+  loading: boolean;
+  onPlay: () => void;
+  recording: WebexRecording;
+}) {
+  return (
+    <div className="relative aspect-video w-full overflow-hidden bg-black text-white">
+      {recording.coverUrl ? (
+        <img alt="" className="absolute inset-0 h-full w-full object-cover opacity-72" src={recording.coverUrl} />
+      ) : (
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,#111_0%,#30343b_100%)]" />
+      )}
+      <div className="absolute inset-0 bg-black/35" />
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent px-4 pb-4 pt-20 md:px-6 md:pb-6">
+        <p className="line-clamp-1 text-lg font-semibold md:text-2xl">
+          {recording.sessionTitle || recording.recordingName}
+        </p>
+        <p className="mt-1 text-sm text-white/72">
+          {formatRecordingDate(recording.recordingDate)}
+          {recording.durationSeconds ? ` · ${formatDuration(recording.durationSeconds)}` : ""}
+        </p>
+        {loading ? (
+          <div className="mt-4">
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/25">
+              <div className="h-full w-2/3 rounded-full bg-white/90 animate-pulse" />
+            </div>
+            <p className="mt-2 text-sm text-white/72">Video wird vorbereitet...</p>
+          </div>
+        ) : null}
+      </div>
+      <button
+        className="absolute left-1/2 top-1/2 z-10 grid size-16 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white/92 text-black shadow-2xl transition-transform hover:scale-105 disabled:cursor-wait disabled:opacity-75 md:size-20"
+        type="button"
+        aria-label={loading ? "Video is loading" : "Load video"}
+        disabled={loading}
+        onClick={onPlay}
+      >
+        {loading ? <Spinner aria-hidden /> : <Play className="ml-1 size-7 fill-current md:size-9" aria-hidden />}
+      </button>
+    </div>
   );
 }
 
@@ -166,6 +223,7 @@ function ActiveRecordingMobileMeta({ recording }: { recording: WebexRecording })
 
 function RecordingList({
   recordings,
+  resolvingRecordingUuid,
   selected,
   loading,
   onPlay,
@@ -173,6 +231,7 @@ function RecordingList({
   recordings: WebexRecording[];
   selected: WebexRecording | null;
   loading?: boolean;
+  resolvingRecordingUuid?: string | null;
   onPlay: (recording: WebexRecording) => void;
 }) {
   const content = useMemo(() => {
@@ -184,6 +243,7 @@ function RecordingList({
     }
     return recordings.map((recording) => {
       const active = selected?.recordingUuid === recording.recordingUuid;
+      const resolving = resolvingRecordingUuid === recording.recordingUuid;
       return (
         <button
           key={recording.recordingUuid}
@@ -192,9 +252,10 @@ function RecordingList({
             active ? "md:bg-secondary" : "md:hover:bg-secondary/70",
           )}
           type="button"
+          disabled={resolving}
           onClick={() => onPlay(recording)}
         >
-          <EpisodeThumbnail recording={recording} active={active} />
+          <EpisodeThumbnail recording={recording} active={active} loading={resolving} />
           <span className="min-w-0 pr-2">
             <span className="block line-clamp-2 text-base font-semibold leading-tight md:truncate">
               {formatRecordingDate(recording.recordingDate)}
@@ -212,7 +273,7 @@ function RecordingList({
         </button>
       );
     });
-  }, [loading, onPlay, recordings, selected]);
+  }, [loading, onPlay, recordings, resolvingRecordingUuid, selected]);
 
   return (
     <div className="min-h-0 flex-1 overflow-auto">
@@ -229,9 +290,11 @@ function RecordingList({
 
 function EpisodeThumbnail({
   active,
+  loading,
   recording,
 }: {
   active: boolean;
+  loading?: boolean;
   recording: WebexRecording;
 }) {
   return (
@@ -254,8 +317,13 @@ function EpisodeThumbnail({
           active ? "bg-white/28" : "bg-black/55",
         )}
       >
-        <Play className="ml-0.5" size={18} aria-hidden />
+        {loading ? <Spinner aria-hidden /> : <Play className="ml-0.5" size={18} aria-hidden />}
       </span>
+      {loading ? (
+        <span className="absolute inset-x-2 bottom-2 h-1 overflow-hidden rounded-full bg-white/25">
+          <span className="block h-full w-2/3 rounded-full bg-white/90 animate-pulse" />
+        </span>
+      ) : null}
     </span>
   );
 }

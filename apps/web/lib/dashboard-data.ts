@@ -33,7 +33,7 @@ export type Material = {
 export type WebexRecording = {
   recordingDate: string;
   recordingName: string;
-  streamUrl: string;
+  streamUrl?: string;
   sourceUrl?: string;
   recordingUuid: string;
   coverUrl?: string;
@@ -46,6 +46,7 @@ export type WebexRecordingState = {
   loaded: boolean;
   error: string | null;
   recordings: WebexRecording[];
+  resolvingRecordingUuid?: string | null;
 };
 
 export type CategoryOption = {
