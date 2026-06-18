@@ -12,4 +12,11 @@ if [[ "${WEB_VIA_PORTLESS:-}" != "1" && "${WEB_ALLOW_DIRECT:-}" != "1" ]]; then
   exit 1
 fi
 
+if [[ -z "${CLERK_SECRET_KEY:-}" || -z "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}" ]]; then
+  echo "Missing Clerk dev keys."
+  echo "Start the web app with: bun run web:dev"
+  echo "That command loads .env.op through 1Password before Next.js starts."
+  exit 1
+fi
+
 exec bun next dev --hostname 0.0.0.0 --port "${PORT:-3008}"

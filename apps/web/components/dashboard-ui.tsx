@@ -52,6 +52,9 @@ export function CourseThumbnail({
   const [failed, setFailed] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const inView = useInView(ref);
+  useEffect(() => {
+    setFailed(false);
+  }, [imageUrl]);
   const dimensions = circle
     ? size === "large"
       ? "size-16"
@@ -137,6 +140,9 @@ export function CourseSidebarRow({
   const imageUrl = courseImageUrl(course);
   const [imageFailed, setImageFailed] = useState(false);
   const showImage = Boolean(imageUrl) && !imageFailed;
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUrl]);
 
   if (collapsed) {
     return (
@@ -216,6 +222,9 @@ export function CourseGridCard({
   const imageUrl = courseImageUrl(course);
   const [imageFailed, setImageFailed] = useState(false);
   const showImage = Boolean(imageUrl) && !imageFailed;
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUrl]);
 
   return (
     <button
