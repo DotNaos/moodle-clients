@@ -205,12 +205,39 @@ export async function POST(request: Request, context: RouteContext) {
   });
 }
 
+export async function PUT(request: Request, context: RouteContext) {
+  const params = await context.params;
+  const route = params.path?.join("/") ?? "";
+  if (!isRecordingProgressRoute(route)) {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+  return proxyMoodleMutation(request, params.path ?? [], "PUT");
+}
+
+export async function PATCH(request: Request, context: RouteContext) {
+  const params = await context.params;
+  const route = params.path?.join("/") ?? "";
+  if (!isRecordingProgressRoute(route)) {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+  return proxyMoodleMutation(request, params.path ?? [], "PATCH");
+}
+
 function isStudyPipelineRoute(route: string): boolean {
   const parts = route.split("/");
   return parts.length >= 3 && parts[0] === "courses" && parts[2] === "study-pipeline";
 }
 
+function isRecordingProgressRoute(route: string): boolean {
+  const parts = route.split("/");
+  return parts.length === 5 && parts[0] === "courses" && parts[2] === "recordings" && parts[4] === "progress";
+}
+
 async function proxyMoodlePost(request: Request, path: string[]) {
+  return proxyMoodleMutation(request, path, "POST");
+}
+
+async function proxyMoodleMutation(request: Request, path: string[], method: "POST" | "PUT" | "PATCH") {
   const { userId } = await auth();
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -229,7 +256,7 @@ async function proxyMoodlePost(request: Request, path: string[]) {
   const upstreamPath = path.map(encodeURIComponent).join("/");
   const body = await request.text();
   let upstreamResponse = await fetch(`${MOODLE_SERVICES_URL}/api/${upstreamPath}`, {
-    method: "POST",
+    method,
     cache: "no-store",
     headers: {
       "Content-Type": request.headers.get("content-type") ?? "application/json",
@@ -242,7 +269,7 @@ async function proxyMoodlePost(request: Request, path: string[]) {
     const restored = await restoreMoodleSession(userId);
     if (restored.ok) {
       upstreamResponse = await fetch(`${MOODLE_SERVICES_URL}/api/${upstreamPath}`, {
-        method: "POST",
+        method,
         cache: "no-store",
         headers: {
           "Content-Type": request.headers.get("content-type") ?? "application/json",

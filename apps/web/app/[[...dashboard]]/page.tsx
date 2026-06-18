@@ -156,6 +156,7 @@ export default function Home() {
     recordingsByCourseId,
     resetRecordings,
     resolveRecordingStream,
+    saveRecordingProgress,
     signInWebexBrowser,
     selectRecording,
     selectedRecordingForCourse,
@@ -896,6 +897,12 @@ export default function Home() {
         }
         navigator.open({ kind: "recording", courseId: activeCourseId, recordingId: recording.recordingUuid });
         void resolveRecordingStream(activeCourseId, recording);
+      }}
+      onRecordingProgress={(recording, progress) => {
+        if (!activeCourseId) {
+          return;
+        }
+        void saveRecordingProgress(activeCourseId, recording, progress).catch(() => undefined);
       }}
       onSelectedScriptSectionIdChange={(sectionId) => {
         if (sectionId && activeCourseId) {

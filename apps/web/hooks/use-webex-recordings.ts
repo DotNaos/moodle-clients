@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { WebexRecording, WebexRecordingState } from "@/lib/dashboard-data";
+import type { WebexRecording, WebexRecordingProgress, WebexRecordingState } from "@/lib/dashboard-data";
 import { apiRequest, getErrorMessage } from "@/lib/moodle-api";
 
 const RECORDING_STREAM_TIMEOUT_MS = 60_000;
@@ -155,6 +155,55 @@ export function useWebexRecordings() {
     }
   }
 
+  async function saveRecordingProgress(
+    courseId: string,
+    recording: WebexRecording,
+    progress: { positionSeconds: number; durationSeconds?: number; completed?: boolean },
+  ): Promise<WebexRecordingProgress | null> {
+    const response = await apiRequest<{ progress?: WebexRecordingProgress }>(
+      `/courses/${encodeURIComponent(courseId)}/recordings/${encodeURIComponent(recording.recordingUuid)}/progress`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          positionSeconds: Math.max(0, Math.round(progress.positionSeconds)),
+          durationSeconds: Math.max(0, Math.round(progress.durationSeconds ?? recording.durationSeconds ?? 0)),
+          completed: Boolean(progress.completed),
+        }),
+      },
+    );
+    const savedProgress = response.progress;
+    if (!savedProgress) {
+      return null;
+    }
+
+    setRecordingsByCourseId((current) => {
+      const cached = current[courseId];
+      if (!cached) {
+        return current;
+      }
+      return {
+        ...current,
+        [courseId]: {
+          ...cached,
+          recordings: cached.recordings.map((item) =>
+            item.recordingUuid === recording.recordingUuid ? { ...item, progress: savedProgress } : item,
+          ),
+        },
+      };
+    });
+    setSelectedRecordingByCourseId((current) => {
+      const selected = current[courseId];
+      if (!selected || selected.recordingUuid !== recording.recordingUuid) {
+        return current;
+      }
+      return {
+        ...current,
+        [courseId]: { ...selected, progress: savedProgress },
+      };
+    });
+    return savedProgress;
+  }
+
   async function signInWebexBrowser(courseId: string, credentials: { username: string; password: string }) {
     await apiRequest<{ savedSession: boolean }>("/webex/credentials", {
       method: "POST",
@@ -167,6 +216,7 @@ export function useWebexRecordings() {
     recordingsByCourseId,
     resetRecordings,
     resolveRecordingStream,
+    saveRecordingProgress,
     signInWebexBrowser,
     selectRecording,
     selectedRecordingForCourse,

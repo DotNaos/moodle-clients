@@ -45,6 +45,7 @@ export function CourseMainPanel({
   onMaterialLayoutChange,
   onMaterialTypeFilterChange,
   onPlayRecording,
+  onRecordingProgress,
   onSelectMaterial,
   onSelectScriptSection,
   onSelectTask,
@@ -83,6 +84,10 @@ export function CourseMainPanel({
   onMaterialLayoutChange: (layout: CourseResourcesLayout) => void;
   onMaterialTypeFilterChange: (filter: MaterialTypeFilter) => void;
   onPlayRecording: (recording: WebexRecording) => void;
+  onRecordingProgress?: (
+    recording: WebexRecording,
+    progress: { positionSeconds: number; durationSeconds?: number; completed?: boolean },
+  ) => void;
   onSelectMaterial: (material: Material) => void;
   onSelectScriptSection: (sectionId: string) => void;
   onSelectTask: (taskId: string) => void;
@@ -163,6 +168,7 @@ export function CourseMainPanel({
           selectedRecording={selectedRecording}
           onLoad={onLoadRecordings}
           onPlay={onPlayRecording}
+          onProgress={onRecordingProgress}
           onSignInWebexBrowser={onSignInWebexBrowser}
         />
       </section>

@@ -39,6 +39,16 @@ export type WebexRecording = {
   coverUrl?: string;
   sessionTitle: string;
   durationSeconds?: number;
+  progress?: WebexRecordingProgress;
+};
+
+export type WebexRecordingProgress = {
+  courseId: string;
+  recordingUuid: string;
+  positionSeconds: number;
+  durationSeconds?: number;
+  completed: boolean;
+  updatedAt: string;
 };
 
 export type WebexRecordingState = {

@@ -12,9 +12,13 @@ type SeekOverlay = { direction: "forward" | "rewind"; id: number } | null;
 const playbackSpeeds = [0.75, 1, 1.25, 1.5, 2];
 
 export function WebexRecordingPlayer({
+  initialPositionSeconds = 0,
+  onProgressChange,
   poster,
   src,
 }: {
+  initialPositionSeconds?: number;
+  onProgressChange?: (progress: { positionSeconds: number; durationSeconds?: number; completed?: boolean }) => void;
   poster?: string;
   src: string;
 }) {
@@ -33,6 +37,8 @@ export function WebexRecordingPlayer({
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const [seekOverlay, setSeekOverlay] = useState<SeekOverlay>(null);
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialSeekAppliedRef = useRef(false);
+  const lastProgressReportRef = useRef<{ positionSeconds: number; reportedAt: number } | null>(null);
   const usesHLS = isHLSStreamUrl(src);
 
   useEffect(() => {
@@ -102,6 +108,8 @@ export function WebexRecordingPlayer({
     setDuration(0);
     setSpeed(1);
     setSpeedMenuOpen(false);
+    initialSeekAppliedRef.current = false;
+    lastProgressReportRef.current = null;
     video.playbackRate = 1;
   }, [src]);
 
@@ -226,6 +234,26 @@ export function WebexRecordingPlayer({
     setCurrentTime(readPointerTime(event.clientX));
   };
 
+  const reportPlaybackProgress = useCallback((force = false, nextTime?: number) => {
+    if (!onProgressChange) {
+      return;
+    }
+    const video = videoRef.current;
+    const effectiveTime = nextTime ?? video?.currentTime ?? currentTime;
+    const effectiveDuration = Number.isFinite(video?.duration) ? video?.duration ?? duration : duration;
+    const payload = playbackProgressPayload(effectiveTime, effectiveDuration);
+    if (!payload) {
+      return;
+    }
+    const now = Date.now();
+    const lastReport = lastProgressReportRef.current;
+    if (!force && lastReport && payload.positionSeconds - lastReport.positionSeconds < 10 && now - lastReport.reportedAt < 15_000) {
+      return;
+    }
+    lastProgressReportRef.current = { positionSeconds: payload.positionSeconds, reportedAt: now };
+    onProgressChange(payload);
+  }, [currentTime, duration, onProgressChange]);
+
   const handleProgressPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!isDragging) {
       return;
@@ -241,6 +269,7 @@ export function WebexRecordingPlayer({
     if (videoRef.current) {
       videoRef.current.currentTime = nextTime;
     }
+    reportPlaybackProgress(true, nextTime);
   };
 
   const handleLoadedMetadata = () => {
@@ -248,8 +277,15 @@ export function WebexRecordingPlayer({
     if (!video) {
       return;
     }
-    setDuration(Number.isFinite(video.duration) ? video.duration : 0);
+    const nextDuration = Number.isFinite(video.duration) ? video.duration : 0;
+    setDuration(nextDuration);
     setIsMuted(video.muted);
+    if (!initialSeekAppliedRef.current && initialPositionSeconds > 0 && nextDuration > 0) {
+      const nextTime = Math.max(0, Math.min(initialPositionSeconds, Math.max(0, nextDuration - 5)));
+      video.currentTime = nextTime;
+      setCurrentTime(nextTime);
+      initialSeekAppliedRef.current = true;
+    }
   };
 
   const handleTimeUpdate = () => {
@@ -261,6 +297,17 @@ export function WebexRecordingPlayer({
     if (Number.isFinite(video.duration)) {
       setDuration(video.duration);
     }
+    reportPlaybackProgress(false, video.currentTime);
+  };
+
+  const handlePause = () => {
+    setIsPlaying(false);
+    reportPlaybackProgress(true);
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+    reportPlaybackProgress(true, duration || videoRef.current?.duration || currentTime);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -302,7 +349,8 @@ export function WebexRecordingPlayer({
         onClick={togglePlay}
         onDoubleClick={toggleFullscreen}
         onLoadedMetadata={handleLoadedMetadata}
-        onPause={() => setIsPlaying(false)}
+        onPause={handlePause}
+        onEnded={handleEnded}
         onPlay={() => setIsPlaying(true)}
         onTimeUpdate={handleTimeUpdate}
         poster={poster}
@@ -429,6 +477,22 @@ export function WebexRecordingPlayer({
       </div>
     </div>
   );
+}
+
+function playbackProgressPayload(
+  currentTime: number,
+  duration: number,
+): { positionSeconds: number; durationSeconds?: number; completed?: boolean } | null {
+  const positionSeconds = Math.max(0, Math.round(currentTime));
+  const durationSeconds = Number.isFinite(duration) && duration > 0 ? Math.round(duration) : 0;
+  if (positionSeconds < 1 && durationSeconds < 1) {
+    return null;
+  }
+  return {
+    positionSeconds,
+    durationSeconds,
+    completed: durationSeconds > 0 && durationSeconds - positionSeconds <= 15,
+  };
 }
 
 function canPlayNativeHLS(video: HTMLVideoElement): boolean {

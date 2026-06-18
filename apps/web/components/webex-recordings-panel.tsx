@@ -17,6 +17,7 @@ export function WebexRecordingsPanel({
   selectedRecording,
   onLoad,
   onPlay,
+  onProgress,
   onSignInWebexBrowser,
 }: {
   course: Course | null;
@@ -24,6 +25,10 @@ export function WebexRecordingsPanel({
   selectedRecording: WebexRecording | null;
   onLoad: () => void;
   onPlay: (recording: WebexRecording) => void;
+  onProgress?: (
+    recording: WebexRecording,
+    progress: { positionSeconds: number; durationSeconds?: number; completed?: boolean },
+  ) => void;
   onSignInWebexBrowser: (credentials: { username: string; password: string }) => Promise<void>;
 }) {
   const [signingIn, setSigningIn] = useState(false);
@@ -31,7 +36,8 @@ export function WebexRecordingsPanel({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const recordings = state?.recordings ?? [];
-  const activeRecording = selectedRecording ?? recordings[0] ?? null;
+  const continueRecording = findContinueRecording(recordings);
+  const activeRecording = selectedRecording ?? continueRecording ?? recordings[0] ?? null;
   const needsBrowserSignIn = state?.error?.toLowerCase().includes("credentials");
 
   async function submitBrowserSignIn(event: FormEvent<HTMLFormElement>) {
@@ -116,8 +122,10 @@ export function WebexRecordingsPanel({
               {activeRecording?.streamUrl ? (
                 <WebexRecordingPlayer
                   key={activeRecording.recordingUuid}
+                  initialPositionSeconds={resumePosition(activeRecording)}
                   poster={activeRecording.coverUrl}
                   src={activeRecording.streamUrl}
+                  onProgressChange={(progress) => onProgress?.(activeRecording, progress)}
                 />
               ) : activeRecording ? (
                 <RecordingStreamPreview
@@ -184,6 +192,9 @@ function RecordingStreamPreview({
           {formatRecordingDate(recording.recordingDate)}
           {recording.durationSeconds ? ` · ${formatDuration(recording.durationSeconds)}` : ""}
         </p>
+        {recordingProgressLabel(recording) ? (
+          <p className="mt-1 text-sm font-medium text-white/86">{recordingProgressLabel(recording)}</p>
+        ) : null}
         {loading ? (
           <div className="mt-4">
             <div className="h-1.5 overflow-hidden rounded-full bg-white/25">
@@ -208,6 +219,7 @@ function RecordingStreamPreview({
 
 function ActiveRecordingMobileMeta({ recording }: { recording: WebexRecording }) {
   const duration = formatDuration(recording.durationSeconds);
+  const progressLabel = recordingProgressLabel(recording);
   return (
     <div className="flex flex-col gap-2 px-4 pb-5 pt-3 md:hidden">
       <p className="line-clamp-2 text-lg font-semibold leading-tight">
@@ -217,6 +229,7 @@ function ActiveRecordingMobileMeta({ recording }: { recording: WebexRecording })
         {formatRecordingDate(recording.recordingDate)}
         {duration ? ` · ${duration}` : ""}
       </p>
+      {progressLabel ? <p className="text-sm font-medium text-foreground dark:text-white/80">{progressLabel}</p> : null}
     </div>
   );
 }
@@ -269,6 +282,11 @@ function RecordingList({
                 {formatDuration(recording.durationSeconds)}
               </span>
             ) : null}
+            {recordingProgressLabel(recording) ? (
+              <span className="mt-1 block text-xs font-medium text-foreground/80 dark:text-white/72 md:text-muted-foreground">
+                {recordingProgressLabel(recording)}
+              </span>
+            ) : null}
           </span>
         </button>
       );
@@ -297,6 +315,7 @@ function EpisodeThumbnail({
   loading?: boolean;
   recording: WebexRecording;
 }) {
+  const progress = recordingProgress(recording);
   return (
     <span className="relative block aspect-video overflow-hidden rounded-xl bg-black md:rounded-[1.1rem]">
       {recording.coverUrl ? (
@@ -323,9 +342,66 @@ function EpisodeThumbnail({
         <span className="absolute inset-x-2 bottom-2 h-1 overflow-hidden rounded-full bg-white/25">
           <span className="block h-full w-2/3 rounded-full bg-white/90 animate-pulse" />
         </span>
+      ) : progress ? (
+        <span className="absolute inset-x-0 bottom-0 h-1 overflow-hidden bg-white/22">
+          <span className="block h-full rounded-r-full bg-white" style={{ width: `${progress.percent}%` }} />
+        </span>
       ) : null}
     </span>
   );
+}
+
+function findContinueRecording(recordings: WebexRecording[]): WebexRecording | null {
+  return recordings.find((recording) => {
+    const progress = recordingProgress(recording);
+    return progress && !progress.completed && progress.positionSeconds >= 10;
+  }) ?? null;
+}
+
+function resumePosition(recording: WebexRecording): number {
+  const progress = recordingProgress(recording);
+  if (!progress || progress.completed) {
+    return 0;
+  }
+  return progress.positionSeconds >= 10 ? progress.positionSeconds : 0;
+}
+
+function recordingProgressLabel(recording: WebexRecording): string | null {
+  const progress = recordingProgress(recording);
+  if (!progress) {
+    return null;
+  }
+  if (progress.completed) {
+    return "Watched";
+  }
+  if (progress.remainingSeconds > 0) {
+    return `Continue · ${formatDuration(progress.remainingSeconds) || "<1 min"} left`;
+  }
+  return `Continue at ${formatPlaybackTime(progress.positionSeconds)}`;
+}
+
+function recordingProgress(recording: WebexRecording): {
+  completed: boolean;
+  durationSeconds: number;
+  percent: number;
+  positionSeconds: number;
+  remainingSeconds: number;
+} | null {
+  const stored = recording.progress;
+  const positionSeconds = Math.max(0, Math.round(stored?.positionSeconds ?? 0));
+  const durationSeconds = Math.max(0, Math.round(stored?.durationSeconds ?? recording.durationSeconds ?? 0));
+  const completed = Boolean(stored?.completed || durationSeconds > 0 && durationSeconds - positionSeconds <= 15 && positionSeconds > 0);
+  if (!completed && positionSeconds < 5) {
+    return null;
+  }
+  const percent = durationSeconds > 0 ? Math.max(0, Math.min(100, positionSeconds / durationSeconds * 100)) : 0;
+  return {
+    completed,
+    durationSeconds,
+    percent: completed ? 100 : percent,
+    positionSeconds,
+    remainingSeconds: Math.max(0, durationSeconds - positionSeconds),
+  };
 }
 
 function formatRecordingDate(value: string): string {
@@ -350,4 +426,15 @@ function formatDuration(seconds?: number): string {
     return `${minutes} min`;
   }
   return `${hours} h ${remainingMinutes.toString().padStart(2, "0")} min`;
+}
+
+function formatPlaybackTime(seconds: number): string {
+  const rounded = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const remainingSeconds = rounded % 60;
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+  }
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 }
