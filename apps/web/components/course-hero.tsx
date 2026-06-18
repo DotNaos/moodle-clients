@@ -1,7 +1,7 @@
 "use client";
 
 import { ExternalLink, ImageIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { Course } from "@/lib/dashboard-data";
@@ -12,6 +12,9 @@ export function CourseHero({ className, course }: { className?: string; course: 
   const imageUrl = courseImageUrl(course);
   const [imageFailed, setImageFailed] = useState(false);
   const showImage = Boolean(imageUrl) && !imageFailed;
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUrl]);
 
   return (
     <section className={cn("relative isolate overflow-hidden bg-secondary", className)}>

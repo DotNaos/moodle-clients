@@ -670,6 +670,9 @@ function useIsCompactViewport(): boolean {
 function SidebarCourseHero({ course }: { course: Course }) {
   const imageUrl = courseImageUrl(course);
   const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUrl]);
 
   return (
     <div className="flex flex-col items-center gap-3 px-4 py-14 text-center">

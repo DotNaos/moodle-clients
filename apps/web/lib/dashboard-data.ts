@@ -147,8 +147,28 @@ export function courseSubtitle(course: Course): string {
 }
 
 export function courseImageUrl(course: Course): string | null {
-  const value = course.heroImage ?? course.courseImage ?? course.courseimage;
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
+  const value = firstNonEmpty(course.heroImage, course.courseImage, course.courseimage);
+  return value ? proxiedMoodleImageUrl(value) : null;
+}
+
+function firstNonEmpty(...values: Array<string | undefined>): string | null {
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return null;
+}
+
+function proxiedMoodleImageUrl(value: string): string {
+  if (value.startsWith("/api/course-images/")) {
+    return `/api/moodle${value.slice("/api".length)}`;
+  }
+  return value;
 }
 
 function compareCourses(left: Course, right: Course): number {
