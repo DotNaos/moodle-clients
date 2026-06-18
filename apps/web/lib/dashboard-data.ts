@@ -57,6 +57,7 @@ export type WebexRecordingState = {
   error: string | null;
   recordings: WebexRecording[];
   resolvingRecordingUuid?: string | null;
+  streamError?: string | null;
 };
 
 export type CategoryOption = {

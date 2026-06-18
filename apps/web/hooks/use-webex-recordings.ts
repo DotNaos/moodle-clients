@@ -23,6 +23,19 @@ export function useWebexRecordings() {
       ...current,
       [courseId]: recording,
     }));
+    setRecordingsByCourseId((current) => {
+      const cached = current[courseId];
+      if (!cached?.streamError) {
+        return current;
+      }
+      return {
+        ...current,
+        [courseId]: {
+          ...cached,
+          streamError: null,
+        },
+      };
+    });
   }
 
   async function loadRecordings(courseId: string, options: { refresh?: boolean } = {}): Promise<WebexRecording[]> {
@@ -39,6 +52,7 @@ export function useWebexRecordings() {
         error: null,
         recordings: cached?.recordings ?? [],
         resolvingRecordingUuid: cached?.resolvingRecordingUuid ?? null,
+        streamError: null,
       },
     }));
 
@@ -55,11 +69,12 @@ export function useWebexRecordings() {
           error: null,
           recordings,
           resolvingRecordingUuid: current[courseId]?.resolvingRecordingUuid ?? null,
+          streamError: null,
         },
       }));
       setSelectedRecordingByCourseId((current) => ({
         ...current,
-        [courseId]: current[courseId] ?? recordings[0] ?? null,
+        [courseId]: selectedFromRecordings(current[courseId], recordings),
       }));
       return recordings;
     } catch (loadError) {
@@ -71,6 +86,7 @@ export function useWebexRecordings() {
           error: getErrorMessage(loadError),
           recordings: cached?.recordings ?? [],
           resolvingRecordingUuid: null,
+          streamError: null,
         },
       }));
     }
@@ -79,25 +95,26 @@ export function useWebexRecordings() {
   }
 
   async function resolveRecordingStream(courseId: string, recording: WebexRecording): Promise<WebexRecording | null> {
-    if (recording.streamUrl) {
-      selectRecording(courseId, recording);
-      return recording;
-    }
+    const pendingRecording = recordingWithoutStream(recording);
 
     setSelectedRecordingByCourseId((current) => ({
       ...current,
-      [courseId]: recording,
+      [courseId]: pendingRecording,
     }));
     setRecordingsByCourseId((current) => {
       const cached = current[courseId];
+      const recordings = (cached?.recordings ?? [pendingRecording]).map((item) =>
+        item.recordingUuid === pendingRecording.recordingUuid ? recordingWithoutStream(item) : item,
+      );
       return {
         ...current,
         [courseId]: {
           loading: cached?.loading ?? false,
           loaded: cached?.loaded ?? true,
-          error: null,
-          recordings: cached?.recordings ?? [recording],
+          error: cached?.error ?? null,
+          recordings,
           resolvingRecordingUuid: recording.recordingUuid,
+          streamError: null,
         },
       };
     });
@@ -127,6 +144,7 @@ export function useWebexRecordings() {
             error: null,
             recordings: recordings.length > 0 ? recordings : [resolved],
             resolvingRecordingUuid: null,
+            streamError: null,
           },
         };
       });
@@ -143,9 +161,10 @@ export function useWebexRecordings() {
           [courseId]: {
             loading: cached?.loading ?? false,
             loaded: cached?.loaded ?? true,
-            error: getErrorMessage(resolveError),
+            error: cached?.error ?? null,
             recordings: cached?.recordings ?? [recording],
             resolvingRecordingUuid: null,
+            streamError: getErrorMessage(resolveError),
           },
         };
       });
@@ -221,4 +240,20 @@ export function useWebexRecordings() {
     selectRecording,
     selectedRecordingForCourse,
   };
+}
+
+function recordingWithoutStream(recording: WebexRecording): WebexRecording {
+  const metadata = { ...recording };
+  delete metadata.streamUrl;
+  return metadata;
+}
+
+function selectedFromRecordings(
+  selected: WebexRecording | null | undefined,
+  recordings: WebexRecording[],
+): WebexRecording | null {
+  if (!selected) {
+    return recordings[0] ?? null;
+  }
+  return recordings.find((recording) => recording.recordingUuid === selected.recordingUuid) ?? recordings[0] ?? null;
 }

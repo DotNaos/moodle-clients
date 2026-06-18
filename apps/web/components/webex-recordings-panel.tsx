@@ -111,8 +111,8 @@ export function WebexRecordingsPanel({
           </form>
         </div>
       ) : course ? (
-        <div className="grid min-h-0 flex-1 gap-5 overflow-auto px-0 pb-5 md:px-6 md:pb-6 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="flex min-h-0 flex-col gap-0 md:gap-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto px-0 pb-5 md:px-6 md:pb-6 xl:grid xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="relative z-10 flex shrink-0 flex-col gap-0 md:gap-4 xl:min-h-0 xl:shrink">
             {state?.error ? (
               <div className="mx-4 mb-4 rounded-3xl bg-destructive/10 px-4 py-3 text-sm text-destructive md:mx-0 md:mb-0">
                 {state.error}
@@ -131,6 +131,7 @@ export function WebexRecordingsPanel({
                 <RecordingStreamPreview
                   loading={state?.resolvingRecordingUuid === activeRecording.recordingUuid}
                   recording={activeRecording}
+                  streamError={state?.streamError ?? null}
                   onPlay={() => onPlay(activeRecording)}
                 />
               ) : (
@@ -148,7 +149,7 @@ export function WebexRecordingsPanel({
             {activeRecording ? <ActiveRecordingMobileMeta recording={activeRecording} /> : null}
           </div>
 
-          <aside className="flex min-h-0 flex-col overflow-hidden px-4 md:px-0">
+          <aside className="relative z-0 flex min-h-0 flex-col overflow-visible px-4 md:px-0 xl:overflow-hidden">
             <RecordingList
               recordings={recordings}
               selected={activeRecording}
@@ -171,10 +172,12 @@ function RecordingStreamPreview({
   loading,
   onPlay,
   recording,
+  streamError,
 }: {
   loading: boolean;
   onPlay: () => void;
   recording: WebexRecording;
+  streamError?: string | null;
 }) {
   return (
     <div className="relative aspect-video w-full overflow-hidden bg-black text-white">
@@ -202,6 +205,8 @@ function RecordingStreamPreview({
             </div>
             <p className="mt-2 text-sm text-white/72">Video wird vorbereitet...</p>
           </div>
+        ) : streamError ? (
+          <p className="mt-3 max-w-2xl text-sm font-medium text-white/86">{streamError}</p>
         ) : null}
       </div>
       <button
