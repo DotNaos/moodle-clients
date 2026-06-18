@@ -6,6 +6,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { WebexRecordingPlayer } from "@/components/webex-recording-player";
 import type { Course, WebexRecording, WebexRecordingState } from "@/lib/dashboard-data";
 import { courseTitle } from "@/lib/dashboard-data";
 import { cn } from "@/lib/utils";
@@ -108,17 +109,11 @@ export function WebexRecordingsPanel({
             ) : null}
             <div className="overflow-hidden rounded-[1.5rem] bg-black">
               {activeRecording?.streamUrl ? (
-                <div className="relative aspect-video w-full">
-                  <video
-                    key={activeRecording.recordingUuid}
-                    className="absolute inset-0 h-full w-full object-contain"
-                    controls
-                    controlsList="nodownload"
-                    poster={activeRecording.coverUrl}
-                    preload="metadata"
-                    src={activeRecording.streamUrl}
-                  />
-                </div>
+                <WebexRecordingPlayer
+                  key={activeRecording.recordingUuid}
+                  poster={activeRecording.coverUrl}
+                  src={activeRecording.streamUrl}
+                />
               ) : (
                 <div className="grid aspect-video min-h-[260px] place-items-center px-6 text-center">
                   <div className="max-w-sm">
