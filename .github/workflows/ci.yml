@@ -43,3 +43,86 @@ jobs:
 
       - name: Build
         run: bun run build
+
+  backend-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    defaults:
+      run:
+        working-directory: services/moodle
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/moodle/go.mod
+          cache: true
+          cache-dependency-path: services/moodle/go.sum
+
+      - name: Run backend tests
+        run: go test ./...
+
+  backend-docker-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve runtime base image
+        id: runtime_base
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          hash="$(sha256sum services/moodle/docker/runtime-base/Dockerfile services/moodle/go.mod services/moodle/go.sum | sha256sum | cut -c1-16)"
+          echo "ref=ghcr.io/dotnaos/moodle-services-runtime-base:bookworm-${hash}" >> "${GITHUB_OUTPUT}"
+
+      - name: Pull runtime base image
+        id: pull_runtime_base
+        continue-on-error: true
+        shell: bash
+        run: |
+          docker pull "${{ steps.runtime_base.outputs.ref }}"
+          docker tag "${{ steps.runtime_base.outputs.ref }}" moodle-services-runtime-base:ci
+
+      - name: Build runtime base image fallback
+        if: steps.pull_runtime_base.outcome != 'success'
+        uses: docker/build-push-action@v6
+        with:
+          context: services/moodle
+          file: services/moodle/docker/runtime-base/Dockerfile
+          load: true
+          tags: moodle-services-runtime-base:ci
+
+      - name: Build backend Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: services/moodle
+          load: true
+          push: false
+          tags: moodle-services:test
+          build-args: |
+            RUNTIME_BASE_IMAGE=moodle-services-runtime-base:ci

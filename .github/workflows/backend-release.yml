@@ -1,0 +1,210 @@
+name: Backend Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the release as unstable"
+        required: false
+        default: false
+        type: boolean
+      release_name:
+        description: "Optional release title override"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - name: Resolve release input
+        id: resolve
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+          INPUT_RELEASE_NAME: ${{ inputs.release_name }}
+        run: |
+          set -euo pipefail
+
+          release_name="${INPUT_RELEASE_NAME:-${INPUT_TAG}}"
+          echo "tag=${INPUT_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "prerelease=${INPUT_PRERELEASE:-false}" >> "${GITHUB_OUTPUT}"
+          echo "release_name=${release_name}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.resolve.outputs.tag }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/moodle/go.mod
+          cache: true
+          cache-dependency-path: services/moodle/go.sum
+
+      - name: Run backend tests
+        working-directory: services/moodle
+        run: go test ./...
+
+      - name: Check if release already exists
+        id: release_state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ steps.resolve.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Run GoReleaser
+        if: steps.release_state.outputs.exists != 'true'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          workdir: services/moodle
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update release metadata
+        if: steps.resolve.outputs.prerelease == 'true' || steps.resolve.outputs.release_name != steps.resolve.outputs.tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          args=(--title "${{ steps.resolve.outputs.release_name }}")
+          if [[ "${{ steps.resolve.outputs.prerelease }}" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+          gh release edit "${{ steps.resolve.outputs.tag }}" "${args[@]}"
+
+  runtime-base-image:
+    needs: release
+    runs-on: ubuntu-latest
+    outputs:
+      image-ref: ${{ steps.image.outputs.ref }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image name
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          hash="$(sha256sum services/moodle/docker/runtime-base/Dockerfile services/moodle/go.mod services/moodle/go.sum | sha256sum | cut -c1-16)"
+          name="ghcr.io/dotnaos/moodle-services-runtime-base"
+          tag="bookworm-${hash}"
+          echo "name=${name}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "ref=${name}:${tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check runtime base image
+        id: base
+        continue-on-error: true
+        shell: bash
+        run: docker buildx imagetools inspect "${{ steps.image.outputs.ref }}" >/dev/null
+
+      - name: Prepare runtime base metadata
+        id: meta
+        if: steps.base.outcome != 'success'
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=raw,value=bookworm
+            type=raw,value=${{ steps.image.outputs.tag }}
+
+      - name: Build and push runtime base image
+        if: steps.base.outcome != 'success'
+        uses: docker/build-push-action@v6
+        with:
+          context: services/moodle
+          file: services/moodle/docker/runtime-base/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=backend-runtime-base
+          cache-to: type=gha,mode=max,scope=backend-runtime-base
+
+  container-image:
+    needs:
+      - release
+      - runtime-base-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/dotnaos/moodle-services
+          tags: |
+            type=raw,value=${{ needs.release.outputs.tag }}
+            type=raw,value=${{ needs.release.outputs.tag }}-amd64
+            type=raw,value=latest,enable=${{ needs.release.outputs.prerelease != 'true' }}
+            type=raw,value=latest-amd64,enable=${{ needs.release.outputs.prerelease != 'true' }}
+
+      - name: Build and push backend container image
+        uses: docker/build-push-action@v6
+        with:
+          context: services/moodle
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            RUNTIME_BASE_IMAGE=${{ needs.runtime-base-image.outputs.image-ref }}
+          cache-from: type=gha,scope=backend-container-amd64
+          cache-to: type=gha,mode=max,scope=backend-container-amd64
