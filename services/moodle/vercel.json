@@ -1,0 +1,173 @@
+{
+  "ignoreCommand": "echo 'moodle-services deploys to VPS; skip Vercel build' && exit 0",
+  "rewrites": [
+    {
+      "source": "/.well-known/oauth-protected-resource",
+      "destination": "/api/oauth?route=protected-resource"
+    },
+    {
+      "source": "/.well-known/oauth-authorization-server",
+      "destination": "/api/oauth?route=authorization-server"
+    },
+    {
+      "source": "/oauth/register",
+      "destination": "/api/oauth?route=register"
+    },
+    {
+      "source": "/oauth/authorize",
+      "destination": "/api/oauth?route=authorize"
+    },
+    {
+      "source": "/oauth/authorize/complete",
+      "destination": "/api/oauth?route=authorize-complete"
+    },
+    {
+      "source": "/oauth/token",
+      "destination": "/api/oauth?route=token"
+    },
+    {
+      "source": "/api/openapi.json",
+      "destination": "/api/openapi"
+    },
+    {
+      "source": "/api/categories",
+      "destination": "/api/courses?route=categories"
+    },
+    {
+      "source": "/api/auth/qr/exchange",
+      "destination": "/api/auth_qr_exchange"
+    },
+    {
+      "source": "/api/auth/clerk/qr/exchange",
+      "destination": "/api/auth_qr_exchange?clerk=1"
+    },
+    {
+      "source": "/api/auth/clerk/login",
+      "destination": "/api/auth_qr_exchange?clerk=login"
+    },
+    {
+      "source": "/api/auth/clerk/session",
+      "destination": "/api/auth_qr_exchange?clerk=session"
+    },
+    {
+      "source": "/api/auth/clerk/mobile/bridge/start",
+      "destination": "/api/auth_qr_exchange?bridge=start"
+    },
+    {
+      "source": "/api/auth/clerk/mobile/bridge/status",
+      "destination": "/api/auth_qr_exchange?bridge=status"
+    },
+    {
+      "source": "/api/auth/clerk/mobile/bridge/complete",
+      "destination": "/api/auth_qr_exchange?bridge=complete"
+    },
+    {
+      "source": "/api/auth/clerk/codex/state",
+      "destination": "/api/auth_qr_exchange?codex=state"
+    },
+    {
+      "source": "/api/codex/status",
+      "destination": "/api/codex?action=status"
+    },
+    {
+      "source": "/api/codex/auth",
+      "destination": "/api/codex?action=auth"
+    },
+    {
+      "source": "/api/codex/auth/callback",
+      "destination": "/api/codex?action=auth-callback"
+    },
+    {
+      "source": "/api/codex/models",
+      "destination": "/api/codex?action=models"
+    },
+    {
+      "source": "/api/codex/files",
+      "destination": "/api/codex?action=files"
+    },
+    {
+      "source": "/api/codex/run",
+      "destination": "/api/codex?action=run"
+    },
+    {
+      "source": "/api/course-images/:courseId",
+      "destination": "/api/courses?route=course-image&courseId=:courseId"
+    },
+    {
+      "source": "/api/courses/:courseId/materials/:resourceId/text",
+      "destination": "/api/material_text?courseId=:courseId&resourceId=:resourceId"
+    },
+    {
+      "source": "/api/courses/:courseId/materials/:resourceId/pdf",
+      "destination": "/api/pdf?courseId=:courseId&resourceId=:resourceId"
+    },
+    {
+      "source": "/api/courses/:courseId/materials",
+      "destination": "/api/materials?courseId=:courseId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline",
+      "destination": "/api/materials?route=study-pipeline&courseId=:courseId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline/status",
+      "destination": "/api/materials?route=study-pipeline&action=status&courseId=:courseId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline/raw",
+      "destination": "/api/materials?route=study-pipeline&action=stage&stage=raw&courseId=:courseId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline/extracted",
+      "destination": "/api/materials?route=study-pipeline&action=stage&stage=extracted&courseId=:courseId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline/curated",
+      "destination": "/api/materials?route=study-pipeline&action=stage&stage=curated&courseId=:courseId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline/extracted-documents",
+      "destination": "/api/materials?route=study-pipeline&action=extracted-documents&courseId=:courseId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline/script",
+      "destination": "/api/materials?route=study-pipeline&action=script&courseId=:courseId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline/extracted-asset",
+      "destination": "/api/materials?route=study-pipeline&action=extracted-asset&courseId=:courseId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline/task-view",
+      "destination": "/api/materials?route=study-pipeline&action=task-view&courseId=:courseId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline/runs",
+      "destination": "/api/materials?route=study-pipeline&action=runs&courseId=:courseId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline/runs/:runId/select",
+      "destination": "/api/materials?route=study-pipeline&action=select-run&courseId=:courseId&runId=:runId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline/tasks/:taskId/chat",
+      "destination": "/api/materials?route=study-pipeline&action=chat&courseId=:courseId&taskId=:taskId"
+    },
+    {
+      "source": "/api/courses/:courseId/study-pipeline/tasks/:taskId/attempts",
+      "destination": "/api/materials?route=study-pipeline&action=attempts&courseId=:courseId&taskId=:taskId"
+    },
+    {
+      "source": "/api/courses/:courseId/recordings",
+      "destination": "/api/courses?route=recordings&courseId=:courseId"
+    },
+    {
+      "source": "/api/calendar",
+      "destination": "/api/courses?route=calendar"
+    },
+    {
+      "source": "/api/webex/credentials",
+      "destination": "/api/keys?route=webex-credentials"
+    }
+  ]
+}

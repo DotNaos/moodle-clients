@@ -1,0 +1,965 @@
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	contract "github.com/DotNaos/moodle-services/pkg/apicontracts"
+	svc "github.com/DotNaos/moodle-services/pkg/moodleservices"
+	"github.com/DotNaos/moodle-services/pkg/studypipeline"
+)
+
+func Materials(w http.ResponseWriter, r *http.Request) {
+	svc.EnsureRequestID(w, r)
+	if !svc.AllowMethods(w, r, http.MethodGet, http.MethodPost) {
+		return
+	}
+	courseID := strings.TrimSpace(r.URL.Query().Get("courseId"))
+	if courseID == "" {
+		svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "courseId query parameter is required"})
+		return
+	}
+	cfg := svc.LoadServerEnv()
+	var studyStore *svc.Store
+	var studyUserID string
+	var codexUserID string
+	if cfg.DatabaseURL != "" {
+		st, user, _, err := svc.AuthenticatedUser(r, cfg)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		codexUserID, err = verifiedCodexUserID(r, st, user)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		defer func() { _ = st.Close() }()
+		studyStore = st
+		studyUserID = user.ID
+	} else {
+		codexUserID = strings.TrimSpace(r.Header.Get("X-Clerk-User-Id"))
+	}
+	service, closeFn, err := svc.ServiceForRequest(r, cfg)
+	if err != nil {
+		svc.WriteError(w, err)
+		return
+	}
+	defer closeFn()
+	materials, err := service.ListMaterials(courseID)
+	if err != nil {
+		svc.WriteError(w, err)
+		return
+	}
+	if r.URL.Query().Get("route") == "study-pipeline" {
+		handleStudyPipeline(w, r, service, courseID, materials, studyStore, studyUserID, codexUserID)
+		return
+	}
+	if r.Method != http.MethodGet {
+		svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	svc.WriteJSON(w, http.StatusOK, contract.MaterialsResponse{Materials: materials})
+}
+
+func handleStudyPipeline(w http.ResponseWriter, r *http.Request, service svc.Service, courseID string, materials []svc.Resource, studyStore *svc.Store, studyUserID string, codexUserID string) {
+	startedAt := time.Now()
+	action := strings.TrimSpace(r.URL.Query().Get("action"))
+	stage := contract.NormalizeStudyPipelineStage(r.URL.Query().Get("stage"))
+	if r.Method != http.MethodGet {
+		svc.LogRequestEvent(r, "study_pipeline.request.start", map[string]any{
+			"action":         firstNonEmptyString(action, "status"),
+			"course_id":      courseID,
+			"resource_count": len(materials),
+			"stage":          stage,
+		})
+		defer func() {
+			svc.LogRequestEvent(r, "study_pipeline.request.finish", map[string]any{
+				"action":      firstNonEmptyString(action, "status"),
+				"course_id":   courseID,
+				"duration_ms": time.Since(startedAt).Milliseconds(),
+				"stage":       stage,
+			})
+		}()
+	}
+	options := studypipeline.RunOptions{
+		Downloader: service.Client,
+		Now:        time.Now(),
+		UserID:     codexUserID,
+	}
+
+	switch action {
+	case "", "status":
+		if r.Method != http.MethodGet {
+			input := applyStageRequestOptions(r, &options)
+			stage = defaultStage(stage)
+			if stageNeedsCodex(stage) && strings.TrimSpace(codexUserID) == "" {
+				svc.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "Codex user identity is required before running the Codex stage."})
+				return
+			}
+			filteredMaterials, ok := filterStudyPipelineResources(materials, input.ResourceIDs)
+			if !ok {
+				svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "no Moodle resources matched requested resourceIds"})
+				return
+			}
+			response, err := studypipeline.RunStage(courseID, filteredMaterials, stage, options)
+			workCtx := context.WithoutCancel(r.Context())
+			if err != nil {
+				if response.CourseID != "" {
+					if run, recordErr := svc.RecordStudyPipelineResponse(workCtx, studyStore, studyUserID, response); recordErr != nil {
+						svc.WriteError(w, recordErr)
+						return
+					} else if run.ID != "" {
+						response.Run = &run
+					}
+				} else if recordErr := recordStudyPipelineFailure(workCtx, studyStore, studyUserID, courseID, stage, options, err); recordErr != nil {
+					svc.WriteError(w, recordErr)
+					return
+				}
+				svc.WriteError(w, err)
+				return
+			}
+			if run, err := svc.RecordStudyPipelineResponse(workCtx, studyStore, studyUserID, response); err != nil {
+				svc.WriteError(w, err)
+				return
+			} else if run.ID != "" {
+				response.Run = &run
+			}
+			applyRecordedRunOutcome(&response)
+			if response.Status == "failed" {
+				svc.WriteError(w, fmt.Errorf("%s", firstNonEmptyString(response.Error, "study pipeline stage failed")))
+				return
+			}
+			svc.WriteJSON(w, http.StatusOK, response)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, studypipeline.Status(courseID, materials, options))
+	case "stage":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		input := applyStageRequestOptions(r, &options)
+		stage = defaultStage(stage)
+		if stageNeedsCodex(stage) && strings.TrimSpace(codexUserID) == "" {
+			svc.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "Codex user identity is required before running the Codex stage."})
+			return
+		}
+		filteredMaterials, ok := filterStudyPipelineResources(materials, input.ResourceIDs)
+		if !ok {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "no Moodle resources matched requested resourceIds"})
+			return
+		}
+		response, err := studypipeline.RunStage(courseID, filteredMaterials, stage, options)
+		workCtx := context.WithoutCancel(r.Context())
+		if err != nil {
+			if response.CourseID != "" {
+				if run, recordErr := svc.RecordStudyPipelineResponse(workCtx, studyStore, studyUserID, response); recordErr != nil {
+					svc.WriteError(w, recordErr)
+					return
+				} else if run.ID != "" {
+					response.Run = &run
+				}
+			} else if recordErr := recordStudyPipelineFailure(workCtx, studyStore, studyUserID, courseID, stage, options, err); recordErr != nil {
+				svc.WriteError(w, recordErr)
+				return
+			}
+			svc.WriteError(w, err)
+			return
+		}
+		if run, err := svc.RecordStudyPipelineResponse(workCtx, studyStore, studyUserID, response); err != nil {
+			svc.WriteError(w, err)
+			return
+		} else if run.ID != "" {
+			response.Run = &run
+		}
+		applyRecordedRunOutcome(&response)
+		if response.Status == "failed" {
+			svc.WriteError(w, fmt.Errorf("%s", firstNonEmptyString(response.Error, "study pipeline stage failed")))
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, response)
+	case "plan":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		input := readStudyPipelinePlanRequest(r)
+		stages, err := studyPipelinePlanStages(input.Mode, input.StartStage)
+		if err != nil {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if stagesNeedCodex(stages) && strings.TrimSpace(codexUserID) == "" {
+			svc.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "Codex user identity is required before running the Codex stage."})
+			return
+		}
+		filteredMaterials, ok := filterStudyPipelineResources(materials, input.ResourceIDs)
+		if !ok {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "no Moodle resources matched requested resourceIds"})
+			return
+		}
+		svc.LogRequestEvent(r, "study_pipeline.plan.start", map[string]any{
+			"course_id":                courseID,
+			"mode":                     input.Mode,
+			"model":                    input.Model,
+			"requested_resource_count": len(input.ResourceIDs),
+			"resource_count":           len(filteredMaterials),
+			"start_stage":              input.StartStage,
+			"stages":                   strings.Join(stages, ","),
+		})
+		workCtx := context.WithoutCancel(r.Context())
+		steps := make([]contract.StudyPipelinePlanStep, 0, len(stages))
+		for _, stage := range stages {
+			steps = append(steps, contract.StudyPipelinePlanStep{Stage: stage, Status: "queued"})
+		}
+		result := contract.StudyPipelinePlanResponse{
+			CourseID: courseID,
+			Status:   "succeeded",
+			Steps:    steps,
+		}
+		for index, stage := range stages {
+			stepOptions := studypipeline.RunOptions{
+				Downloader: service.Client,
+				Now:        time.Now(),
+				UserID:     codexUserID,
+			}
+			applyPlanStageOptions(input, stage, &stepOptions)
+			result.Steps[index].Status = "running"
+			stepStartedAt := time.Now()
+			svc.LogRequestEvent(r, "study_pipeline.plan.step.start", map[string]any{
+				"course_id":      courseID,
+				"engine":         stepOptions.Engine,
+				"resource_count": len(filteredMaterials),
+				"stage":          stage,
+				"step_index":     index,
+			})
+
+			response, runErr := studypipeline.RunStage(courseID, filteredMaterials, stage, stepOptions)
+			if runErr != nil {
+				result.Status = "failed"
+				result.Steps[index].Status = "failed"
+				result.Steps[index].Error = runErr.Error()
+				if response.CourseID != "" {
+					if run, recordErr := svc.RecordStudyPipelineResponse(workCtx, studyStore, studyUserID, response); recordErr != nil {
+						result.Steps[index].Error = recordErr.Error()
+					} else {
+						if run.ID != "" {
+							response.Run = &run
+						}
+						result.Steps[index].Response = &response
+						result.Steps[index].Run = response.Run
+						result.Response = &response
+					}
+				} else if recordErr := recordStudyPipelineFailure(workCtx, studyStore, studyUserID, courseID, stage, stepOptions, runErr); recordErr != nil {
+					result.Steps[index].Error = recordErr.Error()
+				}
+				svc.LogRequestEvent(r, "study_pipeline.plan.step.failed", map[string]any{
+					"course_id":   courseID,
+					"duration_ms": time.Since(stepStartedAt).Milliseconds(),
+					"error":       result.Steps[index].Error,
+					"stage":       stage,
+					"step_index":  index,
+				})
+				break
+			}
+			run, recordErr := svc.RecordStudyPipelineResponse(workCtx, studyStore, studyUserID, response)
+			if recordErr != nil {
+				result.Status = "failed"
+				result.Steps[index].Status = "failed"
+				result.Steps[index].Error = recordErr.Error()
+				svc.LogRequestEvent(r, "study_pipeline.plan.step.record_failed", map[string]any{
+					"course_id":   courseID,
+					"duration_ms": time.Since(stepStartedAt).Milliseconds(),
+					"error":       recordErr.Error(),
+					"stage":       stage,
+					"step_index":  index,
+				})
+				break
+			}
+			if run.ID != "" {
+				response.Run = &run
+			}
+			applyRecordedRunOutcome(&response)
+			if response.Status == "failed" {
+				result.Status = "failed"
+				result.Steps[index].Status = "failed"
+				result.Steps[index].Error = firstNonEmptyString(response.Error, "study pipeline stage failed")
+				result.Steps[index].Response = &response
+				result.Steps[index].Run = response.Run
+				result.Response = &response
+				svc.LogRequestEvent(r, "study_pipeline.plan.step.failed", map[string]any{
+					"course_id":   courseID,
+					"duration_ms": time.Since(stepStartedAt).Milliseconds(),
+					"error":       result.Steps[index].Error,
+					"run_id":      run.ID,
+					"stage":       stage,
+					"step_index":  index,
+				})
+				break
+			}
+			result.Steps[index].Status = "succeeded"
+			result.Steps[index].Response = &response
+			result.Steps[index].Run = response.Run
+			result.Response = &response
+			svc.LogRequestEvent(r, "study_pipeline.plan.step.succeeded", map[string]any{
+				"course_id":   courseID,
+				"duration_ms": time.Since(stepStartedAt).Milliseconds(),
+				"run_id":      run.ID,
+				"stage":       stage,
+				"step_index":  index,
+			})
+		}
+		svc.LogRequestEvent(r, "study_pipeline.plan.finish", map[string]any{
+			"course_id":   courseID,
+			"duration_ms": time.Since(startedAt).Milliseconds(),
+			"status":      result.Status,
+		})
+		svc.WriteJSON(w, http.StatusOK, result)
+	case "runs":
+		if r.Method != http.MethodGet {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		runs, selections, err := studyStore.ListStudyPipelineRuns(r.Context(), studyUserID, courseID)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, contract.StudyPipelineRunsResponse{
+			CourseID:         courseID,
+			Runs:             runs,
+			ActiveSelections: selections,
+		})
+	case "select-run":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if studyStore == nil {
+			svc.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "pipeline run storage is not configured"})
+			return
+		}
+		runID := strings.TrimSpace(r.URL.Query().Get("runId"))
+		if runID == "" {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "runId query parameter is required"})
+			return
+		}
+		var input contract.StudyPipelineSelectRunRequest
+		_ = json.NewDecoder(r.Body).Decode(&input)
+		selection, err := studyStore.SelectActiveStudyPipelineRun(r.Context(), studyUserID, courseID, runID, input.Reason)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, contract.StudyPipelineSelectRunResponse{Selection: selection})
+	case "review":
+		if r.Method != http.MethodGet {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		feedback, proposals, audit, err := studyStore.ListStudyPipelineReview(r.Context(), courseID)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, contract.StudyPipelineReviewResponse{
+			CourseID:  courseID,
+			Feedback:  feedback,
+			Proposals: proposals,
+			Audit:     audit,
+		})
+	case "feedback":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if studyStore == nil {
+			svc.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "pipeline review storage is not configured"})
+			return
+		}
+		var input contract.StudyPipelineFeedbackRequest
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		feedback, err := studyStore.RecordStudyPipelineFeedback(r.Context(), studyUserID, courseID, svc.StudyPipelineFeedbackInput{
+			TargetID:         input.TargetID,
+			TargetKind:       input.TargetKind,
+			FeedbackType:     input.FeedbackType,
+			Message:          input.Message,
+			SourceRunID:      input.SourceRunID,
+			SourceArtifactID: input.SourceArtifactID,
+		})
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, contract.StudyPipelineFeedbackResponse{Feedback: feedback})
+	case "proposals":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if studyStore == nil {
+			svc.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "pipeline review storage is not configured"})
+			return
+		}
+		var input contract.StudyPipelineProposalRequest
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		proposal, err := studyStore.RecordStudyPipelineProposal(r.Context(), studyUserID, courseID, svc.StudyPipelineProposalInput{
+			TargetID:         input.TargetID,
+			TargetKind:       input.TargetKind,
+			Title:            input.Title,
+			ContentPreview:   input.ContentPreview,
+			SourceRunID:      input.SourceRunID,
+			SourceArtifactID: input.SourceArtifactID,
+			Model:            input.Model,
+		})
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, contract.StudyPipelineProposalResponse{Proposal: proposal})
+	case "submit-proposal":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if studyStore == nil {
+			svc.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "pipeline review storage is not configured"})
+			return
+		}
+		proposalID := strings.TrimSpace(r.URL.Query().Get("proposalId"))
+		if proposalID == "" {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "proposalId query parameter is required"})
+			return
+		}
+		proposal, err := studyStore.SubmitStudyPipelineProposal(r.Context(), studyUserID, courseID, proposalID)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, contract.StudyPipelineProposalResponse{Proposal: proposal})
+	case "promote-proposal":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if studyStore == nil {
+			svc.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "pipeline review storage is not configured"})
+			return
+		}
+		proposalID := strings.TrimSpace(r.URL.Query().Get("proposalId"))
+		if proposalID == "" {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "proposalId query parameter is required"})
+			return
+		}
+		input := moderationRequest(r)
+		proposal, audit, err := studyStore.PromoteStudyPipelineProposal(r.Context(), studyUserID, courseID, proposalID, input.Reason)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, contract.StudyPipelineProposalModerationResponse{Proposal: proposal, Audit: audit})
+	case "dismiss-proposal":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if studyStore == nil {
+			svc.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "pipeline review storage is not configured"})
+			return
+		}
+		proposalID := strings.TrimSpace(r.URL.Query().Get("proposalId"))
+		if proposalID == "" {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "proposalId query parameter is required"})
+			return
+		}
+		input := moderationRequest(r)
+		proposal, audit, err := studyStore.DismissStudyPipelineProposal(r.Context(), studyUserID, courseID, proposalID, input.Reason)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, contract.StudyPipelineProposalModerationResponse{Proposal: proposal, Audit: audit})
+	case "resolve-feedback":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if studyStore == nil {
+			svc.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "pipeline review storage is not configured"})
+			return
+		}
+		feedbackID := strings.TrimSpace(r.URL.Query().Get("feedbackId"))
+		if feedbackID == "" {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "feedbackId query parameter is required"})
+			return
+		}
+		input := moderationRequest(r)
+		feedback, audit, err := studyStore.ResolveStudyPipelineFeedback(r.Context(), studyUserID, courseID, feedbackID, input.Reason)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, contract.StudyPipelineFeedbackModerationResponse{Feedback: feedback, Audit: audit})
+	case "dismiss-feedback":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if studyStore == nil {
+			svc.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "pipeline review storage is not configured"})
+			return
+		}
+		feedbackID := strings.TrimSpace(r.URL.Query().Get("feedbackId"))
+		if feedbackID == "" {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "feedbackId query parameter is required"})
+			return
+		}
+		input := moderationRequest(r)
+		feedback, audit, err := studyStore.DismissStudyPipelineFeedback(r.Context(), studyUserID, courseID, feedbackID, input.Reason)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, contract.StudyPipelineFeedbackModerationResponse{Feedback: feedback, Audit: audit})
+	case "publish-run":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if studyStore == nil {
+			svc.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "pipeline run storage is not configured"})
+			return
+		}
+		runID := strings.TrimSpace(r.URL.Query().Get("runId"))
+		if runID == "" {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "runId query parameter is required"})
+			return
+		}
+		input := moderationRequest(r)
+		selection, audit, err := studyStore.PublishStudyPipelineRun(r.Context(), studyUserID, courseID, runID, input.Reason)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, contract.StudyPipelinePublishRunResponse{Selection: &selection, Audit: audit})
+	case "unpublish-run":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		if studyStore == nil {
+			svc.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "pipeline run storage is not configured"})
+			return
+		}
+		runID := strings.TrimSpace(r.URL.Query().Get("runId"))
+		if runID == "" {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "runId query parameter is required"})
+			return
+		}
+		input := moderationRequest(r)
+		audit, err := studyStore.UnpublishStudyPipelineRun(r.Context(), studyUserID, courseID, runID, input.Reason)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, contract.StudyPipelinePublishRunResponse{Audit: audit})
+	case "inventory":
+		if r.Method != http.MethodGet {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		inventory, err := studypipeline.LoadInventory(courseID, materials, options)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, inventory)
+	case "extracted-documents":
+		if r.Method != http.MethodGet {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		documents, err := studypipeline.LoadExtractedDocuments(courseID, materials, options)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, documents)
+	case "extracted-asset":
+		if r.Method != http.MethodGet {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		data, contentType, err := studypipeline.OpenExtractedAsset(courseID, r.URL.Query().Get("path"), options)
+		if err != nil {
+			switch {
+			case errors.Is(err, studypipeline.ErrInvalidExtractedAssetPath):
+				svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			case errors.Is(err, studypipeline.ErrExtractedAssetNotFound):
+				svc.WriteJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			default:
+				svc.WriteError(w, err)
+			}
+			return
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Cache-Control", "private, max-age=3600")
+		_, _ = w.Write(data)
+	case "script":
+		script, err := studypipeline.LoadScript(courseID, materials, options)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, map[string]string{"courseId": courseID, "scriptMarkdown": script})
+	case "task-view":
+		includeScript := r.URL.Query().Get("includeScript") != "0"
+		view, err := studypipeline.LoadTaskView(courseID, materials, includeScript, options)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, view)
+	case "refine":
+		if r.Method != http.MethodPost {
+			svc.WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+			return
+		}
+		var input contract.StudyPipelineRefineRequest
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if strings.TrimSpace(input.Model) == "" {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "model is required; load /api/codex/models and pass one of the returned model ids"})
+			return
+		}
+		if strings.TrimSpace(codexUserID) == "" {
+			svc.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "Codex user identity is required before refining content."})
+			return
+		}
+		if strings.Contains(r.Header.Get("Accept"), "application/x-ndjson") {
+			w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusOK)
+			flusher, _ := w.(http.Flusher)
+			encoder := json.NewEncoder(w)
+			emit := func(event contract.StudyPipelineRefineEvent) {
+				_ = encoder.Encode(event)
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+			emit(contract.StudyPipelineRefineEvent{
+				Type:            "queued",
+				Message:         "Queued Codex refinement on the server.",
+				Model:           strings.TrimSpace(input.Model),
+				ReasoningEffort: strings.TrimSpace(input.ReasoningEffort),
+			})
+			options.UserID = codexUserID
+			options.RefineEvent = emit
+			response, err := studypipeline.RefineContent(r.Context(), courseID, materials, input, options)
+			if err != nil {
+				emit(contract.StudyPipelineRefineEvent{
+					Type:  "error",
+					Error: err.Error(),
+				})
+				return
+			}
+			if studyStore != nil {
+				_, _ = studyStore.RecordStudyPipelineProposal(r.Context(), studyUserID, courseID, svc.StudyPipelineProposalInput{
+					TargetID:       response.Target.ID,
+					TargetKind:     response.Target.Kind,
+					Title:          response.Target.Title,
+					ContentPreview: response.ContentPreview,
+					Model:          response.Target.Model,
+				})
+			}
+			target := response.Target
+			emit(contract.StudyPipelineRefineEvent{
+				Type:           "done",
+				Message:        "Codex refinement finished.",
+				Target:         &target,
+				ContentPreview: response.ContentPreview,
+			})
+			return
+		}
+		options.UserID = codexUserID
+		response, err := studypipeline.RefineContent(r.Context(), courseID, materials, input, options)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		if studyStore != nil {
+			_, _ = studyStore.RecordStudyPipelineProposal(r.Context(), studyUserID, courseID, svc.StudyPipelineProposalInput{
+				TargetID:       response.Target.ID,
+				TargetKind:     response.Target.Kind,
+				Title:          response.Target.Title,
+				ContentPreview: response.ContentPreview,
+				Model:          response.Target.Model,
+			})
+		}
+		svc.WriteJSON(w, http.StatusOK, response)
+	case "chat":
+		taskID := strings.TrimSpace(r.URL.Query().Get("taskId"))
+		if taskID == "" {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "taskId query parameter is required"})
+			return
+		}
+		if r.Method == http.MethodGet {
+			messages, _ := studypipeline.Messages("", courseID, taskID)
+			svc.WriteJSON(w, http.StatusOK, map[string]any{"messages": messages})
+			return
+		}
+		var input struct {
+			Role string `json:"role"`
+			Text string `json:"text"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		messages, err := studypipeline.AppendMessage("", courseID, taskID, input.Role, input.Text)
+		if err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, map[string]any{"messages": messages})
+	case "attempts":
+		taskID := strings.TrimSpace(r.URL.Query().Get("taskId"))
+		if taskID == "" {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "taskId query parameter is required"})
+			return
+		}
+		var input contract.StudyPipelineAttempt
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := studypipeline.RecordAttempt("", courseID, taskID, input); err != nil {
+			svc.WriteError(w, err)
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, map[string]bool{"saved": true})
+	case "task-status":
+		taskID := strings.TrimSpace(r.URL.Query().Get("taskId"))
+		if taskID == "" {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "taskId query parameter is required"})
+			return
+		}
+		var input contract.StudyPipelineTaskStatusRequest
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := studypipeline.RecordTaskStatus("", courseID, taskID, input.Status); err != nil {
+			svc.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		svc.WriteJSON(w, http.StatusOK, map[string]any{"saved": true, "status": input.Status})
+	default:
+		svc.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "unknown study pipeline action"})
+	}
+}
+
+func applyRecordedRunOutcome(response *contract.StudyPipelineResponse) {
+	if response == nil || response.Run == nil {
+		return
+	}
+	if strings.TrimSpace(response.Run.Status) != "failed" {
+		return
+	}
+	response.Status = "failed"
+	response.Error = firstNonEmptyString(response.Run.Error, response.Error, "study pipeline stage failed")
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func applyStageRequestOptions(r *http.Request, options *studypipeline.RunOptions) contract.StudyPipelineStageRequest {
+	if r.Body == nil {
+		return contract.StudyPipelineStageRequest{}
+	}
+	var input contract.StudyPipelineStageRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		return contract.StudyPipelineStageRequest{}
+	}
+	options.Engine = input.Engine
+	options.ConfigHash = input.ConfigHash
+	options.Model = strings.TrimSpace(input.Model)
+	options.ReasoningEffort = strings.TrimSpace(input.ReasoningEffort)
+	return input
+}
+
+func readStudyPipelinePlanRequest(r *http.Request) contract.StudyPipelinePlanRequest {
+	if r.Body == nil {
+		return contract.StudyPipelinePlanRequest{}
+	}
+	var input contract.StudyPipelinePlanRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		return contract.StudyPipelinePlanRequest{}
+	}
+	return input
+}
+
+func studyPipelinePlanStages(mode string, startStage string) ([]string, error) {
+	stageIDs := []string{"inventory", "raw", "extracted", "curated"}
+	startStage = contract.NormalizeStudyPipelineStage(startStage)
+	if startStage == "" {
+		startStage = "curated"
+	}
+	startIndex := -1
+	for index, stage := range stageIDs {
+		if stage == startStage {
+			startIndex = index
+			break
+		}
+	}
+	if startIndex < 0 {
+		return nil, errors.New("unknown study pipeline stage")
+	}
+	switch strings.TrimSpace(mode) {
+	case "", "from":
+		return stageIDs[startIndex:], nil
+	case "single":
+		return []string{stageIDs[startIndex]}, nil
+	default:
+		return nil, errors.New("unknown study pipeline mode")
+	}
+}
+
+func applyPlanStageOptions(input contract.StudyPipelinePlanRequest, stage string, options *studypipeline.RunOptions) {
+	options.Model = strings.TrimSpace(input.Model)
+	options.ReasoningEffort = strings.TrimSpace(input.ReasoningEffort)
+	switch stage {
+	case "extracted":
+		options.Engine = input.Engine
+		options.ConfigHash = input.ConfigHash
+		if strings.TrimSpace(options.Engine) == "" {
+			options.Engine = "pdftotext"
+		}
+		if strings.TrimSpace(options.ConfigHash) == "" {
+			options.ConfigHash = "config:extracted:pdftotext:default"
+		}
+	case "curated":
+		options.Engine = "codex"
+		if strings.Contains(strings.TrimSpace(input.ConfigHash), ":curated:") {
+			options.ConfigHash = input.ConfigHash
+		}
+	default:
+		options.Engine = input.Engine
+		options.ConfigHash = input.ConfigHash
+	}
+}
+
+func verifiedCodexUserID(r *http.Request, st *svc.Store, user svc.User) (string, error) {
+	clerkUserID := strings.TrimSpace(r.Header.Get("X-Clerk-User-Id"))
+	if clerkUserID == "" {
+		return "", nil
+	}
+	if st == nil || strings.TrimSpace(user.ID) == "" {
+		return "", fmt.Errorf("cannot verify Codex user identity")
+	}
+	clerkUser, err := st.UserForClerkID(r.Context(), clerkUserID)
+	if err != nil {
+		return "", err
+	}
+	if clerkUser.ID != user.ID {
+		return "", svc.ErrUnauthorized
+	}
+	return clerkUserID, nil
+}
+
+func stagesNeedCodex(stages []string) bool {
+	for _, stage := range stages {
+		if stageNeedsCodex(stage) {
+			return true
+		}
+	}
+	return false
+}
+
+func stageNeedsCodex(stage string) bool {
+	return contract.NormalizeStudyPipelineStage(stage) == "curated"
+}
+
+func filterStudyPipelineResources(resources []svc.Resource, resourceIDs []string) ([]svc.Resource, bool) {
+	wanted := map[string]struct{}{}
+	for _, id := range resourceIDs {
+		if trimmed := strings.TrimSpace(id); trimmed != "" {
+			wanted[trimmed] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return resources, true
+	}
+	filtered := make([]svc.Resource, 0, len(wanted))
+	for _, resource := range resources {
+		if _, ok := wanted[resource.ID]; ok {
+			filtered = append(filtered, resource)
+		}
+	}
+	return filtered, len(filtered) > 0
+}
+
+func moderationRequest(r *http.Request) contract.StudyPipelineModerationRequest {
+	var input contract.StudyPipelineModerationRequest
+	if r.Body == nil {
+		return input
+	}
+	_ = json.NewDecoder(r.Body).Decode(&input)
+	return input
+}
+
+func defaultStage(stage string) string {
+	stage = contract.NormalizeStudyPipelineStage(stage)
+	if stage == "" {
+		return "curated"
+	}
+	return stage
+}
+
+func recordStudyPipelineFailure(ctx context.Context, st *svc.Store, userID string, courseID string, stage string, options studypipeline.RunOptions, runErr error) error {
+	if st == nil || strings.TrimSpace(userID) == "" || strings.TrimSpace(courseID) == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	_, err := st.RecordStudyPipeline(ctx, svc.StudyPipelineRecordInput{
+		UserID:       userID,
+		CourseID:     courseID,
+		Stage:        defaultStage(stage),
+		Engine:       options.Engine,
+		ConfigHash:   options.ConfigHash,
+		ArtifactRoot: studypipeline.CourseArtifactRoot("", courseID),
+		Status:       "failed",
+		Error:        errorMessage(runErr),
+		StartedAt:    now,
+		FinishedAt:   now,
+	})
+	return err
+}
+
+func errorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}

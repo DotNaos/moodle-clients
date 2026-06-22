@@ -1,0 +1,23 @@
+services:
+    moodle-api:
+        build:
+            context: .
+            args:
+                RUNTIME_BASE_IMAGE: ${MOODLE_RUNTIME_BASE_IMAGE:-ghcr.io/dotnaos/moodle-services-runtime-base:bookworm}
+        image: ghcr.io/dotnaos/moodle-services:latest
+        command: ['serve', '--addr', ':8080']
+        environment:
+            - PORT=8080
+            - MOODLE_HOME=/data
+            - MOODLE_DOCKER_CONTAINER_DATA_DIR=/data
+            - MOODLE_DOCKER_HOST_DATA_DIR=${HOME}/.moodle
+            - MOODLE_OCR_CACHE_DIR=/data/ocr/cache
+            - MOODLE_STUDY_ARTIFACT_ROOT=/data/study
+            - MOODLE_STUDY_CODEX_DOCKER_IMAGE=moodle-study-codex-runner:local
+            - MOODLE_USERNAME=${MOODLE_USERNAME}
+            - MOODLE_PASSWORD=${MOODLE_PASSWORD}
+        ports:
+            - '8080:8080'
+        volumes:
+            - ${HOME}/.moodle:/data
+            - /var/run/docker.sock:/var/run/docker.sock

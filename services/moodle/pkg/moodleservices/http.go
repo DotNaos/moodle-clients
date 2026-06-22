@@ -1,0 +1,296 @@
+package moodleservices
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+)
+
+const (
+	EnvDatabaseURL          = "DATABASE_URL"
+	EnvEncryptionKey        = "APP_ENCRYPTION_KEY"
+	EnvAPIKeyHashSecret     = "API_KEY_HASH_SECRET"
+	EnvCalendarURL          = "MOODLE_CALENDAR_URL"
+	EnvResourceCacheRoot    = "MOODLE_RESOURCE_CACHE_ROOT"
+	EnvCodexStateQuota      = "CODEX_STATE_USER_QUOTA_BYTES"
+	EnvCodexStateAdminQuota = "CODEX_STATE_ADMIN_QUOTA_BYTES"
+	EnvAdminClerkUsers      = "MOODLE_ADMIN_CLERK_USER_IDS"
+)
+
+const OAuthAccessTokenPrefix = "moodle_oauth_"
+const DefaultCodexStateUserQuotaBytes int64 = 512 * 1024 * 1024
+const DefaultCodexStateAdminQuotaBytes int64 = 1024 * 1024 * 1024
+const MaxCodexStateUserQuotaBytes int64 = 5 * 1024 * 1024 * 1024
+
+var ErrDatabaseNotConfigured = fmt.Errorf("%s is not configured", EnvDatabaseURL)
+
+type ServerEnv struct {
+	DatabaseURL               string
+	EncryptionKey             string
+	HashSecret                []byte
+	CalendarURL               string
+	ResourceCacheRoot         string
+	CodexStateUserQuotaBytes  int64
+	CodexStateAdminQuotaBytes int64
+	AdminClerkUserIDs         map[string]bool
+}
+
+func LoadServerEnv() ServerEnv {
+	encryptionKey := strings.TrimSpace(os.Getenv(EnvEncryptionKey))
+	hashSecret := strings.TrimSpace(os.Getenv(EnvAPIKeyHashSecret))
+	if hashSecret == "" {
+		hashSecret = encryptionKey
+	}
+	return ServerEnv{
+		DatabaseURL:               strings.TrimSpace(os.Getenv(EnvDatabaseURL)),
+		EncryptionKey:             encryptionKey,
+		HashSecret:                []byte(hashSecret),
+		CalendarURL:               strings.TrimSpace(os.Getenv(EnvCalendarURL)),
+		ResourceCacheRoot:         strings.TrimSpace(os.Getenv(EnvResourceCacheRoot)),
+		CodexStateUserQuotaBytes:  parsePositiveInt64Env(EnvCodexStateQuota, DefaultCodexStateUserQuotaBytes),
+		CodexStateAdminQuotaBytes: parsePositiveInt64Env(EnvCodexStateAdminQuota, DefaultCodexStateAdminQuotaBytes),
+		AdminClerkUserIDs:         parseCSVSetEnv(EnvAdminClerkUsers),
+	}
+}
+
+func parsePositiveIntEnv(name string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func parsePositiveInt64Env(name string, fallback int64) int64 {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func parseCSVSetEnv(name string) map[string]bool {
+	out := map[string]bool{}
+	for _, part := range strings.Split(os.Getenv(name), ",") {
+		value := strings.TrimSpace(part)
+		if value != "" {
+			out[value] = true
+		}
+	}
+	return out
+}
+
+func (cfg ServerEnv) IsConfiguredAdminClerkUser(clerkUserID string) bool {
+	return cfg.AdminClerkUserIDs[strings.TrimSpace(clerkUserID)]
+}
+
+func OpenStoreFromEnv(cfg ServerEnv) (*Store, error) {
+	if cfg.DatabaseURL == "" {
+		return nil, ErrDatabaseNotConfigured
+	}
+	return OpenStore(cfg.DatabaseURL)
+}
+
+func EncryptionBox(cfg ServerEnv) (Box, error) {
+	if cfg.EncryptionKey == "" {
+		return Box{}, fmt.Errorf("%s is not configured", EnvEncryptionKey)
+	}
+	return NewBox(cfg.EncryptionKey)
+}
+
+func AuthenticatedUser(r *http.Request, cfg ServerEnv) (*Store, User, string, error) {
+	apiKey := APIKeyFromRequest(r)
+	if apiKey == "" {
+		return nil, User{}, "", ErrUnauthorized
+	}
+	st, err := OpenStoreFromEnv(cfg)
+	if err != nil {
+		return nil, User{}, "", err
+	}
+	var user User
+	if strings.HasPrefix(apiKey, OAuthAccessTokenPrefix) {
+		user, err = st.UserForOAuthAccessToken(r.Context(), apiKey, cfg.HashSecret)
+	} else {
+		user, err = st.UserForAPIKey(r.Context(), apiKey, cfg.HashSecret)
+	}
+	if err != nil {
+		_ = st.Close()
+		return nil, User{}, "", err
+	}
+	return st, user, apiKey, nil
+}
+
+func ServiceForRequest(r *http.Request, cfg ServerEnv) (Service, func(), error) {
+	apiKey := APIKeyFromRequest(r)
+	if apiKey == "" {
+		return Service{}, nil, ErrUnauthorized
+	}
+	st, err := OpenStoreFromEnv(cfg)
+	if err != nil {
+		return Service{}, nil, err
+	}
+	closeFn := func() { _ = st.Close() }
+	var credentials MoodleCredentials
+	if strings.HasPrefix(apiKey, OAuthAccessTokenPrefix) {
+		credentials, err = st.MoodleCredentialsForOAuthAccessToken(r.Context(), apiKey, cfg.HashSecret)
+	} else {
+		credentials, err = st.MoodleCredentialsForAPIKey(r.Context(), apiKey, cfg.HashSecret)
+	}
+	if err != nil {
+		closeFn()
+		return Service{}, nil, err
+	}
+	box, err := EncryptionBox(cfg)
+	if err != nil {
+		closeFn()
+		return Service{}, nil, err
+	}
+	sessionJSON, err := box.DecryptString(credentials.EncryptedMobileSessionJSON)
+	if err != nil {
+		closeFn()
+		return Service{}, nil, err
+	}
+	var session MobileSession
+	if err := json.Unmarshal([]byte(sessionJSON), &session); err != nil {
+		closeFn()
+		return Service{}, nil, fmt.Errorf("decode stored Moodle session: %w", err)
+	}
+	client, err := NewMobileClient(session, session.ResolvedSchoolID())
+	if err != nil {
+		closeFn()
+		return Service{}, nil, err
+	}
+	calendarURL := cfg.CalendarURL
+	if credentials.EncryptedCalendarURL != "" {
+		if decrypted, err := box.DecryptString(credentials.EncryptedCalendarURL); err == nil {
+			calendarURL = decrypted
+		}
+	}
+	webexSessionJSON := ""
+	if credentials.EncryptedWebexSessionJSON != "" {
+		if decrypted, err := box.DecryptString(credentials.EncryptedWebexSessionJSON); err == nil {
+			webexSessionJSON = decrypted
+		}
+	}
+	webexCredentialsJSON := ""
+	if credentials.EncryptedWebexCredentials != "" {
+		if decrypted, err := box.DecryptString(credentials.EncryptedWebexCredentials); err == nil {
+			webexCredentialsJSON = decrypted
+		}
+	}
+	return Service{
+		Client:               client,
+		CalendarURL:          calendarURL,
+		ResourceCacheRoot:    cfg.ResourceCacheRoot,
+		WebexSessionJSON:     webexSessionJSON,
+		WebexCredentialsJSON: webexCredentialsJSON,
+	}, closeFn, nil
+}
+
+func WriteJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func WriteError(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, ErrUnauthorized):
+		status = http.StatusUnauthorized
+	case errors.Is(err, ErrNotFound):
+		status = http.StatusNotFound
+	}
+	WriteJSON(w, status, map[string]string{"error": err.Error()})
+}
+
+func EnsureRequestID(w http.ResponseWriter, r *http.Request) string {
+	requestID := RequestID(r)
+	if requestID == "" {
+		requestID = newRequestID()
+	}
+	w.Header().Set("X-Request-ID", requestID)
+	return requestID
+}
+
+func RequestID(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	for _, header := range []string{"X-Request-ID", "X-Request-Id", "X-Correlation-ID"} {
+		if value := strings.TrimSpace(r.Header.Get(header)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func LogRequestEvent(r *http.Request, event string, fields map[string]any) {
+	payload := map[string]any{
+		"event":      event,
+		"request_id": RequestID(r),
+		"ts":         time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if r != nil {
+		payload["method"] = r.Method
+		payload["path"] = r.URL.Path
+	}
+	for key, value := range fields {
+		if strings.TrimSpace(key) != "" {
+			payload[key] = value
+		}
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf(`{"event":"log_marshal_failed","error":%q}`, err.Error())
+		return
+	}
+	log.Print(string(data))
+}
+
+func newRequestID() string {
+	var bytes [16]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return strconv.FormatInt(time.Now().UTC().UnixNano(), 36)
+	}
+	return hex.EncodeToString(bytes[:])
+}
+
+func AllowMethods(w http.ResponseWriter, r *http.Request, methods ...string) bool {
+	SetServiceCORS(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return false
+	}
+	for _, method := range methods {
+		if r.Method == method {
+			return true
+		}
+	}
+	WriteJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+	return false
+}
+
+func SetServiceCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "authorization, content-type, x-moodle-app-key, x-moodle-internal-secret, x-clerk-user-id, x-request-id")
+	w.Header().Set("Access-Control-Expose-Headers", "x-request-id")
+}
