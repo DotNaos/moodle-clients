@@ -376,8 +376,8 @@ export function TaskStudyPanel({
       }
       const status = statusResult.value;
       setPipelineStatus(status);
-      if (status.stage === "curated") {
-        await loadView(id, includeScript, request);
+      if (status.stage === "curated" || selectedTaskId || mode === "script") {
+        await loadView(id, includeScript, request, { allowUnavailable: status.stage !== "curated" });
       }
     } catch (statusError) {
       if (!isAbortError(statusError)) {
@@ -463,6 +463,7 @@ export function TaskStudyPanel({
     id: string,
     includeScript = mode === "script",
     request?: { requestId: number; signal: AbortSignal },
+    options?: { allowUnavailable?: boolean },
   ) {
     setLoading(true);
     setError(null);
@@ -476,6 +477,9 @@ export function TaskStudyPanel({
       setMessage(null);
     } catch (loadError) {
       if (isAbortError(loadError)) {
+        return;
+      }
+      if (options?.allowUnavailable && isTaskViewUnavailable(loadError)) {
         return;
       }
       setError(formatStudyPipelineError(loadError));
@@ -2862,7 +2866,9 @@ async function studyPipelineRequest<T>(path: string, init: RequestInit = {}): Pr
     const errorMessage = payload && typeof payload === "object" && "error" in payload
       ? String(payload.error)
       : `Moodle study pipeline failed with ${response.status}.`;
-    throw new Error(errorMessage);
+    const error = new Error(errorMessage) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
   }
   return payload as T;
 }
@@ -2942,4 +2948,9 @@ function stageDoneMessage(stage: StudyPipelineStage, mode: Mode): string {
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError"
     || error instanceof Error && error.name === "AbortError";
+}
+
+function isTaskViewUnavailable(error: unknown): boolean {
+  const status = (error as { status?: unknown })?.status;
+  return status === 400 || status === 404 || status === 409;
 }
