@@ -314,6 +314,8 @@ func LoadTaskView(courseID string, resources []moodle.Resource, includeScript bo
 			ResourceID:      link.Task.ID,
 			Title:           link.Task.Name,
 			Kind:            "task",
+			SectionID:       link.Task.SectionID,
+			SectionName:     link.Task.SectionName,
 			ContentState:    contentState,
 			Readiness:       readiness,
 			ReadinessLabel:  readinessLabel,
@@ -323,6 +325,8 @@ func LoadTaskView(courseID string, resources []moodle.Resource, includeScript bo
 				TaskID:           taskID,
 				SourceResourceID: link.Task.ID,
 				Title:            link.Task.Name,
+				SectionID:        link.Task.SectionID,
+				SectionName:      link.Task.SectionName,
 				PromptMarkdown:   taskPrompt(root, courseID, link),
 				ContentState:     contentState,
 				Parts: []contract.StudyPipelineTaskPart{{

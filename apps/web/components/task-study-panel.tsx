@@ -49,6 +49,8 @@ export type TaskViewResponse = {
     resourceId: string;
     title: string;
     kind: string;
+    sectionId?: string;
+    sectionName?: string;
     contentState?: StudyContentState;
     readiness?: "ready" | "unprocessed" | "unknown" | string;
     readinessLabel?: string;
@@ -78,6 +80,8 @@ type TaskViewTask = {
   taskId: string;
   sourceResourceId: string;
   title: string;
+  sectionId?: string;
+  sectionName?: string;
   promptMarkdown: string;
   contentState?: StudyContentState;
   parts: Array<{ id: string; label?: string; promptMarkdown: string }>;
@@ -1870,7 +1874,7 @@ function buildTaskOutline(
         readOnly: isReadOnlyTaskSheet(sheet),
         readiness: sheet.readiness ?? "unknown",
         readinessLabel: sheet.readinessLabel,
-        sectionTitle: material?.sectionName,
+        sectionTitle: task.sectionName ?? sheet.sectionName ?? material?.sectionName,
         sheetTitle: sheet.title,
         status: task.status,
         title: task.title,

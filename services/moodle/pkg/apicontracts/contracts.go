@@ -413,6 +413,8 @@ type StudyPipelineTaskSheet struct {
 	ResourceID         string                  `json:"resourceId"`
 	Title              string                  `json:"title"`
 	Kind               string                  `json:"kind"`
+	SectionID          string                  `json:"sectionId,omitempty"`
+	SectionName        string                  `json:"sectionName,omitempty"`
 	ContentState       StudyPipelineContentRef `json:"contentState"`
 	Readiness          string                  `json:"readiness"`
 	ReadinessLabel     string                  `json:"readinessLabel"`
@@ -428,6 +430,8 @@ type StudyPipelineTaskItem struct {
 	TaskID           string                  `json:"taskId"`
 	SourceResourceID string                  `json:"sourceResourceId"`
 	Title            string                  `json:"title"`
+	SectionID        string                  `json:"sectionId,omitempty"`
+	SectionName      string                  `json:"sectionName,omitempty"`
 	PromptMarkdown   string                  `json:"promptMarkdown"`
 	ContentState     StudyPipelineContentRef `json:"contentState"`
 	Parts            []StudyPipelineTaskPart `json:"parts"`

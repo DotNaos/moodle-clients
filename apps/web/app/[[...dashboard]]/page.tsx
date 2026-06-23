@@ -79,7 +79,7 @@ import { parsePDFPageHash, type PDFScrollCommand, type PDFViewState } from "@/li
 import type { StudyChatContext, StudyTestContext } from "@/lib/codex-chat";
 import { readRecentChats } from "@/lib/recent-chat-storage";
 import { upsertRecentTask } from "@/lib/recent-task-storage";
-import { EMPTY_STUDY_OUTLINE, taskDisplayTitle, type StudyOutline } from "@/lib/study-outline";
+import { buildStudyOutlineFromTaskView, EMPTY_STUDY_OUTLINE, taskDisplayTitle, type StudyOutline } from "@/lib/study-outline";
 import { buildTaskLinksByResourceId, taskIdForMaterial } from "@/lib/task-material-links";
 import { cn } from "@/lib/utils";
 
@@ -1398,23 +1398,6 @@ async function studyPipelineRequest<T>(path: string, init: RequestInit = {}): Pr
     throw error;
   }
   return payload as T;
-}
-
-function buildStudyOutlineFromTaskView(view: TaskViewResponse): StudyOutline {
-  return {
-    scriptSections: [],
-    tasks: view.sheets.flatMap((sheet) =>
-      sheet.tasks.map((task) => ({
-        id: task.taskId,
-        readOnly: Boolean(sheet.readOnly),
-        readiness: sheet.readiness,
-        readinessLabel: sheet.readinessLabel,
-        sheetTitle: sheet.title,
-        status: task.status,
-        title: task.title,
-      })),
-    ),
-  };
 }
 
 function isTaskOverviewUnavailable(error: unknown): boolean {

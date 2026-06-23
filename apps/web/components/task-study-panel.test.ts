@@ -17,6 +17,7 @@ import {
   parseDashboardRouteSearch,
 } from "@/lib/dashboard-route";
 import { renderFormulaMarkdownHTML } from "@/lib/formula-renderer";
+import { buildStudyOutlineFromTaskView } from "@/lib/study-outline";
 
 const scriptMarkdown = [
   "# Course Script",
@@ -126,6 +127,28 @@ describe("task outline", () => {
           },
         ],
       },
+    ]);
+  });
+
+  test("builds the overview outline with Moodle chapter names from task-view", () => {
+    const outline = buildStudyOutlineFromTaskView({
+      sheets: [
+        {
+          sectionName: "Einführung",
+          title: "Aufgabenblatt 01",
+          tasks: [{ status: "open", taskId: "task-01", title: "Aufgabenblatt 01" }],
+        },
+        {
+          sectionName: "Netztopologien",
+          title: "Aufgabenblatt 03",
+          tasks: [{ sectionName: "Netztopologien", status: "open", taskId: "task-03-1", title: "Aufgabe 1" }],
+        },
+      ],
+    });
+
+    expect(groupStudyTasksBySection(outline.tasks).map((group) => group.title)).toEqual([
+      "Einführung",
+      "Netztopologien",
     ]);
   });
 });

@@ -28,6 +28,40 @@ export const EMPTY_STUDY_OUTLINE: StudyOutline = {
   tasks: [],
 };
 
+type TaskViewOutlineSource = {
+  sheets: Array<{
+    readOnly?: boolean;
+    readiness?: "ready" | "unprocessed" | "unknown" | string;
+    readinessLabel?: string;
+    sectionName?: string;
+    title: string;
+    tasks: Array<{
+      sectionName?: string;
+      status: TaskProgressStatus;
+      taskId: string;
+      title: string;
+    }>;
+  }>;
+};
+
+export function buildStudyOutlineFromTaskView(view: TaskViewOutlineSource): StudyOutline {
+  return {
+    scriptSections: [],
+    tasks: view.sheets.flatMap((sheet) =>
+      sheet.tasks.map((task) => ({
+        id: task.taskId,
+        readOnly: Boolean(sheet.readOnly),
+        readiness: sheet.readiness,
+        readinessLabel: sheet.readinessLabel,
+        sectionTitle: task.sectionName ?? sheet.sectionName,
+        sheetTitle: sheet.title,
+        status: task.status,
+        title: task.title,
+      })),
+    ),
+  };
+}
+
 // Combines sheet and task numbering into one label: "Aufgabenblatt 01" +
 // "Aufgabe 1" → "Aufgabe 1.1". Titles outside that pattern stay unchanged.
 export function taskDisplayTitle(sheetTitle: string | null | undefined, taskTitle: string): string {

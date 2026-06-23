@@ -485,6 +485,9 @@ func TestCuratedStageRunsCodexCurationWhenModelIsSelected(t *testing.T) {
 	if len(view.Sheets) != 1 || view.Sheets[0].Readiness != "ready" || view.Sheets[0].ReadOnly {
 		t.Fatalf("expected Codex-curated sheet to be ready, got %#v", view.Sheets)
 	}
+	if view.Sheets[0].SectionName != "Week 1" || view.Sheets[0].Tasks[0].SectionName != "Week 1" {
+		t.Fatalf("expected task view to preserve section names, got sheet=%q task=%q", view.Sheets[0].SectionName, view.Sheets[0].Tasks[0].SectionName)
+	}
 	for _, decision := range response.ElementDecisions {
 		if decision.DecidedBy != "codex" {
 			t.Fatalf("expected Codex-backed decision, got %#v", decision)
