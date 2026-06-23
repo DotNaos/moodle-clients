@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Deploy Moodle backend on VPS
         env:
@@ -27,6 +27,9 @@ jobs:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_SSH_KNOWN_HOSTS: ${{ secrets.VPS_SSH_KNOWN_HOSTS }}
           VPS_DEPLOY_DIR: ${{ secrets.VPS_DEPLOY_DIR }}
+          VPS_COMPOSE_FILE: ${{ secrets.VPS_COMPOSE_FILE }}
+          VPS_COMPOSE_PROJECT: ${{ secrets.VPS_COMPOSE_PROJECT }}
+          VPS_DOCKER_SERVICE: ${{ secrets.VPS_DOCKER_SERVICE }}
           VPS_HEALTH_URL: ${{ secrets.VPS_HEALTH_URL }}
           MOODLE_DOCKER_IMAGE: ${{ inputs.image || 'ghcr.io/dotnaos/moodle:latest-amd64' }}
         run: |
@@ -49,13 +52,12 @@ jobs:
 
           remote_env=(
             "MOODLE_DOCKER_IMAGE=${MOODLE_DOCKER_IMAGE}"
+            "MOODLE_DEPLOY_DIR=${VPS_DEPLOY_DIR:-/opt/platform/apps/moodle-staging}"
+            "MOODLE_COMPOSE_FILE=${VPS_COMPOSE_FILE:-compose.yml}"
+            "MOODLE_COMPOSE_PROJECT=${VPS_COMPOSE_PROJECT:-private-platform-moodle-staging}"
+            "MOODLE_DOCKER_SERVICE=${VPS_DOCKER_SERVICE:-api}"
+            "MOODLE_HEALTH_URL=${VPS_HEALTH_URL:-https://moodle-services.os-home.net/healthz}"
           )
-          if [[ -n "${VPS_DEPLOY_DIR:-}" ]]; then
-            remote_env+=("MOODLE_DEPLOY_DIR=${VPS_DEPLOY_DIR}")
-          fi
-          if [[ -n "${VPS_HEALTH_URL:-}" ]]; then
-            remote_env+=("MOODLE_HEALTH_URL=${VPS_HEALTH_URL}")
-          fi
 
           env_prefix=""
           for item in "${remote_env[@]}"; do

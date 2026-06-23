@@ -44,7 +44,7 @@ jobs:
           echo "release_name=${release_name}" >> "${GITHUB_OUTPUT}"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ steps.resolve.outputs.tag }}
@@ -102,7 +102,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.release.outputs.tag }}
 
@@ -171,7 +171,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.release.outputs.tag }}
 

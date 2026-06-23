@@ -43,6 +43,13 @@ async function proxyStudyPipeline(request: Request, context: RouteContext) {
   if (!isStudyPipelinePath(upstreamPath)) {
     return withRequestId(Response.json({ error: "Study pipeline route not found." }, { status: 404 }), requestId);
   }
+  const serviceApiKey = readMoodleServicesApiKey();
+  if (request.method === "GET" && serviceApiKey && isReadOnlyStudyPipelinePath(upstreamPath)) {
+    return proxyStudyPipelineWithApiKey(request, upstreamPath, {
+      apiKey: serviceApiKey,
+      clerkUserId: "",
+    }, requestId, startedAt);
+  }
   const backendGate = await checkBackendPreflight(userId);
   if (backendGate.state === "blocked") {
     return withRequestId(pipelineBlockedResponse(
@@ -369,6 +376,31 @@ function truncateLogValue(value: string): string {
 function isStudyPipelinePath(path: string): boolean {
   const parts = path.split("/");
   return parts.length >= 3 && parts[0] === "courses" && parts[2] === "study-pipeline";
+}
+
+function isReadOnlyStudyPipelinePath(path: string): boolean {
+  const parts = path.split("/");
+  if (parts.length < 3 || parts[0] !== "courses" || parts[2] !== "study-pipeline") {
+    return false;
+  }
+  if (parts.length === 3) {
+    return true;
+  }
+  const action = parts[3];
+  return [
+    "extracted-asset",
+    "extracted-documents",
+    "inventory",
+    "review",
+    "runs",
+    "script",
+    "status",
+    "task-view",
+  ].includes(action);
+}
+
+function readMoodleServicesApiKey(): string {
+  return process.env.MOODLE_SERVICES_API_KEY?.trim() ?? "";
 }
 
 function studyPipelineHeaders(userId: string, apiKey: string): Headers {
