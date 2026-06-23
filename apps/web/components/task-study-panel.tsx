@@ -2038,7 +2038,7 @@ function asArray<T>(value: T[] | null | undefined): T[] {
 }
 
 function cleanStudyBundleMarkdown(markdown: string): string {
-  return markdown
+  return stripStudyMetadataFrontmatter(markdown)
     .replace(/^#\s+[^\n]+\n+/m, "")
     .replace(/^Source task:\s+.+$/gim, "")
     .replace(/^Solution status:\s+.+$/gim, "")
@@ -2048,6 +2048,13 @@ function cleanStudyBundleMarkdown(markdown: string): string {
     .replace(/\n##\s+Original Sources[\s\S]*$/im, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function stripStudyMetadataFrontmatter(markdown: string): string {
+  return markdown.replace(/(^|\n)---\n([\s\S]*?)\n---\n*/g, (match, prefix: string, body: string) => {
+    const isStudyMetadata = /^(status|ai_used|course_id|source_task|linked_solution|model|generated_at):/im.test(body);
+    return isStudyMetadata ? prefix : match;
+  });
 }
 
 function slugifyTaskId(value: string): string {

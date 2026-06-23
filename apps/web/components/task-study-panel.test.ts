@@ -761,6 +761,56 @@ describe("task view display normalization", () => {
     ]);
   });
 
+  test("removes study metadata frontmatter after leading source links", () => {
+    const view = normalizeTaskViewForDisplay({
+      courseId: "22584",
+      generatedAt: "2026-06-23T00:00:00.000Z",
+      progress: { checked: 0, correct: 0, done: 0, needsReview: 0, open: 1, wrong: 0 },
+      resources: [],
+      scriptMarkdown: "",
+      sheets: [
+        {
+          contentState: {
+            id: "sheet-01",
+            kind: "task",
+            status: "codex-improved",
+            statusLabel: "Codex improved",
+            title: "Aufgabenblatt 01",
+          },
+          kind: "PDF",
+          resourceId: "sheet-01",
+          tasks: [{
+            parts: [],
+            promptMarkdown: [
+              "Source: [Moodle resource](moodle-resource:sheet-01)",
+              "",
+              "---",
+              "status: codex-improved",
+              "ai_used: true",
+              "course_id: \"22584\"",
+              "source_task: \"sheet-01\"",
+              "---",
+              "",
+              "## Aufgabe 1",
+              "",
+              "Real task text.",
+            ].join("\n"),
+            sourceResourceId: "sheet-01",
+            status: "open",
+            taskId: "01",
+            title: "Aufgabenblatt 01",
+          }],
+          title: "Aufgabenblatt 01",
+        },
+      ],
+    });
+
+    const prompt = view.sheets[0]?.tasks[0]?.promptMarkdown ?? "";
+    expect(prompt).toContain("Real task text.");
+    expect(prompt).not.toContain("status: codex-improved");
+    expect(prompt).not.toContain("course_id");
+  });
+
   test("keeps unprocessed worksheets visible but out of the next-practice flow", () => {
     const html = renderToStaticMarkup(React.createElement(TaskOutline, {
       onSelectTask: () => undefined,
