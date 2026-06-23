@@ -1123,6 +1123,50 @@ func TestRefineContentPassesCustomPromptToRefiner(t *testing.T) {
 	}
 }
 
+func TestRefineContentCanUseCodexSDKRunner(t *testing.T) {
+	root := t.TempDir()
+	courseID := "22585"
+	resources := []moodle.Resource{
+		{ID: "1", Name: "Lecture Teil 03", FileType: "txt", SectionName: "Week 1"},
+	}
+	writeExtractedFixture(t, root, courseID, "slides", "1-Lecture Teil 03", "Raw lecture text")
+	requestPath := filepath.Join(root, "sdk-refine-request.json")
+	responsePath := filepath.Join(root, "sdk-refine-response.json")
+	if err := os.WriteFile(responsePath, []byte(`{"finalResponse":"## Lecture Teil 03\n\nClean refined text.","threadId":"test-sdk-thread","usage":null}`+"\n"), 0o644); err != nil {
+		t.Fatalf("write SDK refine response: %v", err)
+	}
+	runnerPath := filepath.Join(root, "fake-sdk-refiner.sh")
+	if err := os.WriteFile(runnerPath, []byte("#!/bin/sh\nset -eu\ncat > "+shellQuoteForTest(requestPath)+"\ncat "+shellQuoteForTest(responsePath)+"\n"), 0o755); err != nil {
+		t.Fatalf("write SDK refine runner: %v", err)
+	}
+
+	response, err := RefineContent(context.Background(), courseID, resources, contract.StudyPipelineRefineRequest{
+		Kind:            "script-section",
+		TargetID:        "1",
+		Model:           "gpt-test",
+		ReasoningEffort: "high",
+	}, RunOptions{
+		Root: root,
+		Now:  time.Unix(0, 0),
+		Refiner: SDKCommandCodexRefiner{
+			Command: shellQuoteForTest(runnerPath),
+		},
+	})
+	if err != nil {
+		t.Fatalf("RefineContent with SDK runner: %v", err)
+	}
+	if response.Target.Status != "codex-improved" || !strings.Contains(response.ContentPreview, "Clean refined text") {
+		t.Fatalf("unexpected SDK refine response: %#v", response)
+	}
+	requestData, err := os.ReadFile(requestPath)
+	if err != nil {
+		t.Fatalf("read SDK refine request: %v", err)
+	}
+	if !strings.Contains(string(requestData), `"reasoningEffort":"high"`) || !strings.Contains(string(requestData), "Raw lecture text") {
+		t.Fatalf("SDK refine request did not include expected prompt data: %s", string(requestData))
+	}
+}
+
 func TestBuildRefinePromptIncludesCustomPromptAsGuidance(t *testing.T) {
 	prompt := buildRefinePrompt(RefineInput{
 		CourseID:     "22585",

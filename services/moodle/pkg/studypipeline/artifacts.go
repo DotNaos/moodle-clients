@@ -407,7 +407,7 @@ func RefineContent(ctx context.Context, courseID string, resources []moodle.Reso
 	}
 	refiner := options.Refiner
 	if refiner == nil {
-		refiner = DockerCodexRefiner{}
+		refiner = defaultCodexRefiner()
 	}
 	output, err := refiner.Refine(ctx, RefineInput{
 		ArtifactRoot:    root,

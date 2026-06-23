@@ -20,6 +20,10 @@ type SDKCommandCodexCurator struct {
 	Command string
 }
 
+type SDKCommandCodexRefiner struct {
+	Command string
+}
+
 type codexSDKCurationRequest struct {
 	Prompt           string          `json:"prompt"`
 	Model            string          `json:"model"`
@@ -40,6 +44,13 @@ func defaultCodexCurator() ContentCurator {
 		return SDKCommandCodexCurator{Command: command}
 	}
 	return DockerCodexCurator{}
+}
+
+func defaultCodexRefiner() ContentRefiner {
+	if command := defaultCodexSDKCommand(); command != "" {
+		return SDKCommandCodexRefiner{Command: command}
+	}
+	return DockerCodexRefiner{}
 }
 
 func defaultCodexSDKCommand() string {
@@ -151,6 +162,66 @@ func (curator SDKCommandCodexCurator) Curate(ctx context.Context, input Curation
 	}
 	parsed.Model = model
 	return parsed, nil
+}
+
+func (refiner SDKCommandCodexRefiner) Refine(ctx context.Context, input RefineInput) (RefineOutput, error) {
+	command := strings.TrimSpace(refiner.Command)
+	if command == "" {
+		command = defaultCodexSDKCommand()
+	}
+	if command == "" {
+		return RefineOutput{}, fmt.Errorf("%s is not configured and the SDK runner script was not found", EnvCodexSDKCommand)
+	}
+	model := sanitizeCodexModel(input.Model)
+	if model == "" {
+		return RefineOutput{}, fmt.Errorf("codex model is required; load /api/codex/models and pass one of the returned model ids")
+	}
+	stateRoot, err := prepareCodexStateRoot(firstNonEmpty(input.ArtifactRoot, ArtifactRootFromEnv()), input.UserID)
+	if err != nil {
+		return RefineOutput{}, err
+	}
+	request := codexSDKCurationRequest{
+		Prompt:           buildRefinePrompt(input),
+		Model:            model,
+		ReasoningEffort:  sanitizeCodexOption(input.ReasoningEffort),
+		WorkingDirectory: codexSDKWorkingDirectory(command, stateRoot),
+	}
+	data, err := json.Marshal(request)
+	if err != nil {
+		return RefineOutput{}, err
+	}
+	if input.Emit != nil {
+		input.Emit(contract.StudyPipelineRefineEvent{
+			Type:            "runner",
+			Category:        "status",
+			Message:         "Starting Codex refinement through the SDK runner.",
+			Model:           model,
+			ReasoningEffort: request.ReasoningEffort,
+		})
+	}
+	cmd := exec.CommandContext(ctx, "sh", "-lc", command)
+	cmd.Stdin = bytes.NewReader(data)
+	cmd.Env = append(os.Environ(),
+		"MOODLE_STUDY_CODEX_SDK_MODE=refinement",
+		"MOODLE_STUDY_ARTIFACT_ROOT="+firstNonEmpty(input.ArtifactRoot, ArtifactRootFromEnv()),
+		"MOODLE_STUDY_CODEX_STATE_ROOT="+stateRoot,
+		"MOODLE_STUDY_CODEX_USER_ID="+input.UserID,
+	)
+	output, err := runCommandWithOptionalEvents(cmd, input.Emit)
+	if err != nil {
+		if isCodexAuthError(err.Error(), output) {
+			return RefineOutput{}, ErrCodexNotAuthenticated
+		}
+		return RefineOutput{}, fmt.Errorf("codex SDK refinement failed for %s: %w (%s)", input.Title, err, compactProcessOutput(output))
+	}
+	finalResponse, err := parseCodexSDKRunnerResponse(output)
+	if err != nil {
+		return RefineOutput{}, fmt.Errorf("codex SDK refinement returned invalid runner output for %s: %w", input.Title, err)
+	}
+	if strings.TrimSpace(finalResponse) == "" {
+		return RefineOutput{}, fmt.Errorf("codex SDK refinement returned empty content for %s", input.Title)
+	}
+	return RefineOutput{Content: strings.TrimSpace(finalResponse), Model: model}, nil
 }
 
 func parseCodexSDKRunnerResponse(output string) (string, error) {
