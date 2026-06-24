@@ -1,7 +1,7 @@
 "use client";
 
 import katex from "katex";
-import { AlertCircle, ArrowLeft, ArrowRight, BookOpenText, CheckCircle2, Circle, Columns2, FileText, Gauge, Lightbulb, Maximize2, MessageCircle, Minimize2, MoreHorizontal, PanelRightClose, PanelRightOpen, Pencil, Play, RefreshCw, Rows3, Sparkles, Square, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, BookOpenText, CheckCircle2, Circle, Columns2, FileCheck2, FileText, Gauge, Lightbulb, Maximize2, MessageCircle, Minimize2, MoreHorizontal, PanelRightClose, PanelRightOpen, Pencil, Play, RefreshCw, Rows3, Sparkles, Square, X } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -16,7 +16,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,6 +29,7 @@ import {
   type StudyPipelineStatusResponse,
 } from "@/components/study-pipeline-preview";
 import { PDFDocumentViewerMode } from "@/components/pdf-document-viewer-mode";
+import { ResizableSplitPanel } from "@/components/resizable-split-panel";
 import type { StudyTestContext } from "@/lib/codex-chat";
 import type { Course, Material } from "@/lib/dashboard-data";
 import { courseTitle } from "@/lib/dashboard-data";
@@ -195,7 +195,7 @@ export function TaskStudyPanel({
     window.localStorage.setItem(TASK_TEST_LAYOUT_STORAGE_KEY, testLayout);
   }, [testLayout]);
   const [previewResourceId, setPreviewResourceId] = useState<string | null>(null);
-  const [previewExpanded, setPreviewExpanded] = useState(false);
+  const [taskPdfSplitOpen, setTaskPdfSplitOpen] = useState(false);
   const loadRequestId = useRef(0);
 
   const courseId = course ? String(course.id) : null;
@@ -259,15 +259,35 @@ export function TaskStudyPanel({
     },
     [],
   );
-  const materialById = useMemo(() => new Map(materials.map((material) => [material.id, material])), [materials]);
-  const previewMaterial = previewResourceId ? materialById.get(previewResourceId) ?? null : null;
-  const previewResource = previewResourceId
-    ? view?.resources.find((resource) => resource.resourceId === previewResourceId) ?? null
+  const selectedTaskPdfResourceId = selectedTask?.sourceResourceId ?? selectedSheet?.resourceId ?? null;
+  const selectedSolutionPdfResourceId = selectedSheet?.solutionResourceId ?? null;
+  const activeTaskPdfResourceId = previewResourceId ?? selectedTaskPdfResourceId ?? selectedSolutionPdfResourceId;
+  const activeTaskPdfMaterial = activeTaskPdfResourceId
+    ? materialForPDFResource(view, materials, activeTaskPdfResourceId)
     : null;
-  const previewTitle = previewMaterial?.name ?? previewResource?.title ?? "Original-PDF";
-  const previewPDFUrl = courseId && previewResourceId
-    ? `/api/moodle/courses/${encodeURIComponent(courseId)}/materials/${encodeURIComponent(previewResourceId)}/pdf`
-    : "";
+  const taskPdfMaterial = selectedTaskPdfResourceId
+    ? materialForPDFResource(view, materials, selectedTaskPdfResourceId)
+    : null;
+  const solutionPdfMaterial = selectedSolutionPdfResourceId
+    ? materialForPDFResource(view, materials, selectedSolutionPdfResourceId)
+    : null;
+  const taskPdfSplitVisible = Boolean(
+    mode === "tasks" &&
+      selectedTask &&
+      taskMode === "view" &&
+      taskPdfSplitOpen &&
+      activeTaskPdfResourceId &&
+      activeTaskPdfMaterial,
+  );
+
+  const openTaskPdfSplit = useCallback((resourceId?: string | null) => {
+    const nextResourceId = resourceId ?? selectedTaskPdfResourceId ?? selectedSolutionPdfResourceId;
+    if (!nextResourceId) {
+      return;
+    }
+    setPreviewResourceId(nextResourceId);
+    setTaskPdfSplitOpen(true);
+  }, [selectedSolutionPdfResourceId, selectedTaskPdfResourceId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -306,12 +326,12 @@ export function TaskStudyPanel({
   useEffect(() => {
     if (!selectedTask) {
       setPreviewResourceId(null);
-      setPreviewExpanded(false);
+      setTaskPdfSplitOpen(false);
       return;
     }
     setTaskMode("view");
     setPreviewResourceId(null);
-    setPreviewExpanded(false);
+    setTaskPdfSplitOpen(false);
   }, [selectedTask?.taskId]);
 
   useEffect(() => {
@@ -385,7 +405,11 @@ export function TaskStudyPanel({
       }
     } catch (statusError) {
       if (!isAbortError(statusError)) {
-        setError(formatStudyPipelineError(statusError));
+        if (selectedTaskId || mode === "script") {
+          await loadView(id, includeScript, request, { fallbackError: formatStudyPipelineError(statusError) });
+        } else {
+          setError(formatStudyPipelineError(statusError));
+        }
       }
     } finally {
       if (!request || (!request.signal.aborted && request.requestId === loadRequestId.current)) {
@@ -467,7 +491,7 @@ export function TaskStudyPanel({
     id: string,
     includeScript = mode === "script",
     request?: { requestId: number; signal: AbortSignal },
-    options?: { allowUnavailable?: boolean },
+    options?: { allowUnavailable?: boolean; fallbackError?: string },
   ) {
     setLoading(true);
     setError(null);
@@ -486,7 +510,7 @@ export function TaskStudyPanel({
       if (options?.allowUnavailable && isTaskViewUnavailable(loadError)) {
         return;
       }
-      setError(formatStudyPipelineError(loadError));
+      setError(options?.fallbackError ?? formatStudyPipelineError(loadError));
     } finally {
       if (!request || (!request.signal.aborted && request.requestId === loadRequestId.current)) {
         setLoading(false);
@@ -644,24 +668,11 @@ export function TaskStudyPanel({
   const pageIcon = mode === "script" ? <BookOpenText aria-hidden className="size-4" /> : <CheckCircle2 aria-hidden className="size-4" />;
   const fatalLoadError = Boolean(error && !view && !loading && !runningStage);
   const coursePipelineHref = `/courses/${encodeURIComponent(courseId)}/pipeline`;
-  const hasPdfActions = Boolean(selectedTask?.sourceResourceId || selectedSheet?.resourceId || selectedSheet?.solutionResourceId);
+  const hasPdfActions = Boolean(selectedTaskPdfResourceId || selectedSolutionPdfResourceId);
 
   // Shared between the desktop header dropdown and the floating mobile one.
   const actionMenuItems = (
     <>
-      {selectedTask?.sourceResourceId || selectedSheet?.resourceId ? (
-        <DropdownMenuItem onSelect={() => setPreviewResourceId(selectedTask?.sourceResourceId ?? selectedSheet?.resourceId ?? null)}>
-          <FileText aria-hidden />
-          Original-PDF öffnen
-        </DropdownMenuItem>
-      ) : null}
-      {selectedSheet?.solutionResourceId ? (
-        <DropdownMenuItem onSelect={() => setPreviewResourceId(selectedSheet.solutionResourceId!)}>
-          <FileText aria-hidden />
-          Lösungs-PDF öffnen
-        </DropdownMenuItem>
-      ) : null}
-      {hasPdfActions ? <DropdownMenuSeparator /> : null}
       <DropdownMenuItem
         disabled={Boolean(runningStage)}
         onSelect={() => void runPipelineStage("curated")}
@@ -799,6 +810,24 @@ export function TaskStudyPanel({
                     Test starten
                   </Button>
                 )}
+                {hasPdfActions && taskMode === "view" ? (
+                  <Button
+                    aria-pressed={taskPdfSplitVisible}
+                    className="hidden md:inline-flex"
+                    onClick={() => {
+                      if (taskPdfSplitVisible) {
+                        setTaskPdfSplitOpen(false);
+                      } else {
+                        openTaskPdfSplit(selectedTaskPdfResourceId ?? selectedSolutionPdfResourceId);
+                      }
+                    }}
+                    type="button"
+                    variant="secondary"
+                  >
+                    <Columns2 aria-hidden />
+                    {taskPdfSplitVisible ? "PDF schließen" : "PDF anzeigen"}
+                  </Button>
+                ) : null}
               </>
             ) : null}
             <DropdownMenu>
@@ -888,6 +917,28 @@ export function TaskStudyPanel({
                 >
                   <Play aria-hidden className="size-4" />
                 </button>}
+                {hasPdfActions && taskMode === "view" ? (
+                  <button
+                    aria-label={taskPdfSplitVisible ? "PDF schließen" : "PDF anzeigen"}
+                    aria-pressed={taskPdfSplitVisible}
+                    className={cn(
+                      "grid size-10 place-items-center rounded-full shadow-md ring-1 backdrop-blur transition-transform active:scale-95",
+                      taskPdfSplitVisible
+                        ? "bg-primary text-primary-foreground ring-primary/30"
+                        : "bg-background/90 text-foreground ring-border",
+                    )}
+                    onClick={() => {
+                      if (taskPdfSplitVisible) {
+                        setTaskPdfSplitOpen(false);
+                      } else {
+                        openTaskPdfSplit(selectedTaskPdfResourceId ?? selectedSolutionPdfResourceId);
+                      }
+                    }}
+                    type="button"
+                  >
+                    <Columns2 aria-hidden className="size-4" />
+                  </button>
+                ) : null}
               </>
             )}
           </div>
@@ -938,94 +989,106 @@ export function TaskStudyPanel({
           view={view}
         />
       ) : (
-        <div
-          className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden"
+        <ResizableSplitPanel
+          className={cn(
+            "relative min-h-0 flex-1 overflow-hidden",
+            taskPdfSplitVisible ? "flex flex-col md:flex-row" : "grid grid-cols-1 gap-0",
+          )}
+          defaultLeftPercent={52}
+          handleLabel="PDF-Split-Breite anpassen"
+          maxLeftPercent={72}
+          minLeftPercent={34}
+          splitEnabled={taskPdfSplitVisible}
         >
-          <main
-            className={cn(
-              "min-h-0 bg-background",
-              selectedTask && taskMode === "test"
-                ? "flex flex-col overflow-hidden md:h-full"
-                : "overflow-auto px-4 py-5 md:px-10 md:py-8",
-            )}
-          >
-            {selectedTask && taskMode === "test" ? (
-              <TaskTestMode
-                checking={checking}
-                composerOpen={testComposerOpen}
-                courseId={courseId}
-                feedbackMarkdown={selectedTask.latestAttempt?.verdict.feedbackMarkdown ?? null}
-                initialAnswer={selectedTask.latestAttempt?.userAnswer ?? ""}
-                key={selectedTask.taskId}
-                layout={testLayout}
-                onActivityChange={handleTestActivityChange}
-                onCitationClick={(resourceId) => setPreviewResourceId(resourceId)}
-                onComposerOpenChange={setTestComposerOpen}
-                onGrade={(gradeInput) => void checkAnswer(gradeInput)}
-                onOpenSolutionResource={
-                  selectedSheet?.solutionResourceId
-                    ? () => setPreviewResourceId(selectedSheet.solutionResourceId ?? null)
-                    : null
-                }
-                solutionMarkdown={selectedSheet?.solutionMarkdown ?? null}
-                solutionResourceId={selectedSheet?.solutionResourceId ?? null}
-                task={selectedTask}
-              />
-            ) : selectedTask ? (
-              <article className="mx-auto max-w-[86ch] pb-28 md:pb-0">
-                {selectedTaskReadOnly ? (
-                  <div className="mb-5 rounded-2xl bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-800">
-                    <p className="font-semibold">Dieses Aufgabenblatt ist noch nicht aufbereitet.</p>
-                    <p className="mt-1">
-                      {selectedSheet?.readinessReason ?? "Der Inhalt ist nur maschinell extrahiert und sollte noch nicht zum Üben verwendet werden."}
-                    </p>
-                  </div>
-                ) : null}
-                <div className="py-2">
-                  <MarkdownBlock
+          {({ resizeHandle }) => (
+            <>
+              <main
+                className={cn(
+                  "min-h-0 bg-background",
+                  taskPdfSplitVisible
+                    ? "min-h-[48dvh] overflow-auto px-4 py-5 md:h-full md:min-h-0 md:w-[var(--left-panel-width)] md:flex-none md:px-8 md:py-6"
+                    : selectedTask && taskMode === "test"
+                    ? "flex flex-col overflow-hidden md:h-full"
+                    : "overflow-auto px-4 py-5 md:px-10 md:py-8",
+                )}
+              >
+                {selectedTask && taskMode === "test" ? (
+                  <TaskTestMode
+                    checking={checking}
+                    composerOpen={testComposerOpen}
                     courseId={courseId}
-                    onCitationClick={(resourceId) => setPreviewResourceId(resourceId)}
-                    text={taskPromptText(selectedTask)}
+                    feedbackMarkdown={selectedTask.latestAttempt?.verdict.feedbackMarkdown ?? null}
+                    initialAnswer={selectedTask.latestAttempt?.userAnswer ?? ""}
+                    key={selectedTask.taskId}
+                    layout={testLayout}
+                    onActivityChange={handleTestActivityChange}
+                    onCitationClick={(resourceId) => openTaskPdfSplit(resourceId)}
+                    onComposerOpenChange={setTestComposerOpen}
+                    onGrade={(gradeInput) => void checkAnswer(gradeInput)}
+                    onOpenSolutionResource={
+                      selectedSheet?.solutionResourceId
+                        ? () => openTaskPdfSplit(selectedSheet.solutionResourceId ?? null)
+                        : null
+                    }
+                    solutionMarkdown={selectedSheet?.solutionMarkdown ?? null}
+                    solutionResourceId={selectedSheet?.solutionResourceId ?? null}
+                    task={selectedTask}
                   />
-                </div>
-                {/* Mobile HUD: task navigation bottom-left (chat FAB owns bottom-right). */}
-                <div className="fixed bottom-[max(env(safe-area-inset-bottom),1rem)] left-4 z-20 flex items-center gap-1 rounded-full bg-background/90 p-1 shadow-lg ring-1 ring-border backdrop-blur md:hidden [[data-mobile-chat=open]_&]:hidden">
-                  <button
-                    aria-label="Vorherige Aufgabe"
-                    className="grid size-10 place-items-center rounded-full text-foreground transition-colors disabled:opacity-35"
-                    disabled={!previousTask}
-                    onClick={() => previousTask && onSelectedTaskIdChange(previousTask.taskId)}
-                    type="button"
-                  >
-                    <ArrowLeft aria-hidden className="size-4" />
-                  </button>
-                  {selectedTaskIndex >= 0 ? (
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {selectedTaskIndex + 1}/{flatTasks.length}
-                    </span>
-                  ) : null}
-                  <button
-                    aria-label="Nächste Aufgabe"
-                    className="grid size-10 place-items-center rounded-full text-foreground transition-colors disabled:opacity-35"
-                    disabled={!nextTask}
-                    onClick={() => nextTask && onSelectedTaskIdChange(nextTask.taskId)}
-                    type="button"
-                  >
-                    <ArrowRight aria-hidden className="size-4" />
-                  </button>
-                </div>
-                <footer className="mt-10 hidden items-center justify-between gap-2 border-t border-border bg-background/95 pb-3 pt-4 backdrop-blur md:sticky md:bottom-0 md:z-10 md:flex">
-                  <Button
-                    aria-label="Vorherige Aufgabe"
-                    disabled={!previousTask}
-                    onClick={() => previousTask && onSelectedTaskIdChange(previousTask.taskId)}
-                    type="button"
-                    variant="ghost"
-                  >
-                    <ArrowLeft aria-hidden />
-                    Vorherige
-                  </Button>
-                  <div className="flex items-center gap-2">
+                ) : selectedTask ? (
+                  <article className="mx-auto max-w-[86ch] pb-28 md:pb-0">
+                    {selectedTaskReadOnly ? (
+                      <div className="mb-5 rounded-2xl bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-800">
+                        <p className="font-semibold">Dieses Aufgabenblatt ist noch nicht aufbereitet.</p>
+                        <p className="mt-1">
+                          {selectedSheet?.readinessReason ?? "Der Inhalt ist nur maschinell extrahiert und sollte noch nicht zum Üben verwendet werden."}
+                        </p>
+                      </div>
+                    ) : null}
+                    <div className="py-2">
+                      <MarkdownBlock
+                        courseId={courseId}
+                        onCitationClick={(resourceId) => openTaskPdfSplit(resourceId)}
+                        text={taskPromptText(selectedTask)}
+                      />
+                    </div>
+                    {/* Mobile HUD: task navigation bottom-left (chat FAB owns bottom-right). */}
+                    <div className="fixed bottom-[max(env(safe-area-inset-bottom),1rem)] left-4 z-20 flex items-center gap-1 rounded-full bg-background/90 p-1 shadow-lg ring-1 ring-border backdrop-blur md:hidden [[data-mobile-chat=open]_&]:hidden">
+                      <button
+                        aria-label="Vorherige Aufgabe"
+                        className="grid size-10 place-items-center rounded-full text-foreground transition-colors disabled:opacity-35"
+                        disabled={!previousTask}
+                        onClick={() => previousTask && onSelectedTaskIdChange(previousTask.taskId)}
+                        type="button"
+                      >
+                        <ArrowLeft aria-hidden className="size-4" />
+                      </button>
+                      {selectedTaskIndex >= 0 ? (
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {selectedTaskIndex + 1}/{flatTasks.length}
+                        </span>
+                      ) : null}
+                      <button
+                        aria-label="Nächste Aufgabe"
+                        className="grid size-10 place-items-center rounded-full text-foreground transition-colors disabled:opacity-35"
+                        disabled={!nextTask}
+                        onClick={() => nextTask && onSelectedTaskIdChange(nextTask.taskId)}
+                        type="button"
+                      >
+                        <ArrowRight aria-hidden className="size-4" />
+                      </button>
+                    </div>
+                    <footer className="mt-10 hidden items-center justify-between gap-2 border-t border-border bg-background/95 pb-3 pt-4 backdrop-blur md:sticky md:bottom-0 md:z-10 md:flex">
+                      <Button
+                        aria-label="Vorherige Aufgabe"
+                        disabled={!previousTask}
+                        onClick={() => previousTask && onSelectedTaskIdChange(previousTask.taskId)}
+                        type="button"
+                        variant="ghost"
+                      >
+                        <ArrowLeft aria-hidden />
+                        Vorherige
+                      </Button>
+                      <div className="flex items-center gap-2">
                     <Button
                       className={cn(
                         isDoneTaskStatus(selectedTask.status) &&
@@ -1059,34 +1122,53 @@ export function TaskStudyPanel({
                       </span>
                     ) : null}
                   </div>
-                </footer>
-              </article>
-            ) : (
-              <div className="grid min-h-80 place-items-center py-10 text-center">
-                <div className="flex max-w-sm flex-col items-center">
-                  <span className="grid size-14 place-items-center rounded-full bg-secondary text-muted-foreground">
-                    <FileText aria-hidden className="size-6" />
-                  </span>
-                  <p className="mt-4 font-medium">Keine Aufgaben gefunden</p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    In den extrahierten Materialien wurden keine Aufgaben erkannt. Fordere die Aufgaben erneut mit den
-                    Standard-Einstellungen an.
-                  </p>
-                  <Button
-                    className="mt-4"
-                    disabled={loading || Boolean(runningStage)}
-                    onClick={() => void runPipelineStage("curated")}
-                    type="button"
-                    variant="secondary"
-                  >
-                    {runningStage === "curated" ? <Spinner aria-hidden /> : <Sparkles aria-hidden />}
-                    {runningStage === "curated" ? "Wird erstellt" : "Aufgaben anfordern"}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </main>
-        </div>
+                    </footer>
+                  </article>
+                ) : (
+                  <div className="grid min-h-80 place-items-center py-10 text-center">
+                    <div className="flex max-w-sm flex-col items-center">
+                      <span className="grid size-14 place-items-center rounded-full bg-secondary text-muted-foreground">
+                        <FileText aria-hidden className="size-6" />
+                      </span>
+                      <p className="mt-4 font-medium">Keine Aufgaben gefunden</p>
+                      <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                        In den extrahierten Materialien wurden keine Aufgaben erkannt. Fordere die Aufgaben erneut mit den
+                        Standard-Einstellungen an.
+                      </p>
+                      <Button
+                        className="mt-4"
+                        disabled={loading || Boolean(runningStage)}
+                        onClick={() => void runPipelineStage("curated")}
+                        type="button"
+                        variant="secondary"
+                      >
+                        {runningStage === "curated" ? <Spinner aria-hidden /> : <Sparkles aria-hidden />}
+                        {runningStage === "curated" ? "Wird erstellt" : "Aufgaben anfordern"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </main>
+              {taskPdfSplitVisible && activeTaskPdfResourceId && activeTaskPdfMaterial ? (
+                <>
+                  {resizeHandle}
+                  <TaskPDFSplitPane
+                    activeResourceId={activeTaskPdfResourceId}
+                    courseId={courseId}
+                    onActiveResourceChange={(resourceId) => {
+                      setPreviewResourceId(resourceId);
+                      setTaskPdfSplitOpen(true);
+                    }}
+                    onClose={() => setTaskPdfSplitOpen(false)}
+                    solutionMaterial={solutionPdfMaterial}
+                    taskMaterial={taskPdfMaterial}
+                    viewedMaterial={activeTaskPdfMaterial}
+                  />
+                </>
+              ) : null}
+            </>
+          )}
+        </ResizableSplitPanel>
       )}
       <Dialog
         open={feedbackDialogOpen}
@@ -1145,41 +1227,6 @@ export function TaskStudyPanel({
                 Senden
               </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={Boolean(previewResourceId)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPreviewResourceId(null);
-            setPreviewExpanded(false);
-          }
-        }}
-      >
-        <DialogContent
-          className={cn(
-            "flex flex-col gap-0 overflow-hidden p-0 ring-0 [&_[data-slot=dialog-close]]:right-4 [&_[data-slot=dialog-close]]:top-4",
-            previewExpanded
-              ? "!left-3 !top-3 !h-[calc(100dvh-1.5rem)] !w-[calc(100vw-1.5rem)] !max-w-none !translate-x-0 !translate-y-0 rounded-[1.25rem] sm:!max-w-none"
-              : "h-[min(84dvh,860px)] max-w-[min(1120px,94vw)] rounded-[1.75rem] sm:max-w-[min(1120px,94vw)]",
-          )}
-        >
-          <DialogTitle className="sr-only">{previewTitle}</DialogTitle>
-          <div className="min-h-0 flex-1 overflow-hidden bg-muted">
-            {courseId && previewResourceId && previewPDFUrl ? (
-              <PDFDocumentViewerMode
-                courseId={courseId}
-                expanded={previewExpanded}
-                externalUrl={previewMaterial?.url}
-                materialId={previewResourceId}
-                onExpandedChange={setPreviewExpanded}
-                onStateChange={() => {}}
-                scrollCommand={null}
-                title={previewTitle}
-                url={previewPDFUrl}
-              />
-            ) : null}
           </div>
         </DialogContent>
       </Dialog>
@@ -1800,6 +1847,108 @@ function StudyLoadingSkeleton({ mode }: { mode: Mode }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function TaskPDFSplitPane({
+  activeResourceId,
+  courseId,
+  onActiveResourceChange,
+  onClose,
+  solutionMaterial,
+  taskMaterial,
+  viewedMaterial,
+}: {
+  activeResourceId: string;
+  courseId: string;
+  onActiveResourceChange: (resourceId: string) => void;
+  onClose: () => void;
+  solutionMaterial: Material | null;
+  taskMaterial: Material | null;
+  viewedMaterial: Material;
+}) {
+  const activeTab = activeResourceId === solutionMaterial?.id
+    ? "solution"
+    : activeResourceId === taskMaterial?.id
+      ? "task"
+      : "custom";
+  const url = `/api/moodle/courses/${encodeURIComponent(courseId)}/materials/${encodeURIComponent(activeResourceId)}/pdf`;
+
+  return (
+    <aside className="flex min-h-[56dvh] min-w-0 flex-col border-t border-border bg-muted md:h-full md:min-h-0 md:w-[var(--right-panel-width)] md:flex-none md:border-l md:border-t-0">
+      <div className="flex min-h-16 items-center justify-between gap-3 border-b border-border bg-background px-3 py-2.5">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">PDF Material</p>
+          <h3 className="truncate text-sm font-semibold tracking-tight">{viewedMaterial.name}</h3>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex items-center rounded-full bg-secondary p-0.5">
+            <TaskPDFTabButton
+              active={activeTab === "task"}
+              disabled={!taskMaterial}
+              icon={FileText}
+              label="Aufgabe"
+              onClick={() => taskMaterial && onActiveResourceChange(taskMaterial.id)}
+            />
+            <TaskPDFTabButton
+              active={activeTab === "solution"}
+              disabled={!solutionMaterial}
+              icon={FileCheck2}
+              label="Lösung"
+              onClick={() => solutionMaterial && onActiveResourceChange(solutionMaterial.id)}
+            />
+          </div>
+          <Button aria-label="PDF-Split schließen" onClick={onClose} size="icon" type="button" variant="ghost">
+            <PanelRightClose aria-hidden />
+          </Button>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden bg-muted">
+        <PDFDocumentViewerMode
+          courseId={courseId}
+          embedded
+          externalUrl={viewedMaterial.url}
+          materialId={activeResourceId}
+          onStateChange={() => {}}
+          scrollCommand={null}
+          title={viewedMaterial.name}
+          url={url}
+        />
+      </div>
+    </aside>
+  );
+}
+
+function TaskPDFTabButton({
+  active,
+  disabled,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  disabled: boolean;
+  icon: React.ComponentType<{ "aria-hidden"?: boolean; className?: string }>;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={active}
+      className={cn(
+        "inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold transition-colors",
+        active
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+        disabled && "pointer-events-none opacity-35",
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      <Icon aria-hidden className="size-4" />
+      <span className="hidden sm:inline">{label}</span>
+    </button>
   );
 }
 
@@ -2429,6 +2578,9 @@ function renderMarkdownBlock(block: string, sourceBlock?: string, courseId: stri
   if (isHtmlCommentBlock(block)) {
     return "";
   }
+  if (isHorizontalRuleBlock(block)) {
+    return '<hr class="my-6 border-0 border-t border-border/80" />';
+  }
   if (isTrustedFigureBlock(block)) {
     return renderTrustedFigure(block);
   }
@@ -2630,22 +2782,30 @@ function inlineMarkdown(text: string, courseId: string | null = null): string {
   const escaped = escapeHtml(text);
   return renderMath(escaped)
     .replace(/\[([^\]]+)\]\(moodle-resource:([^)]+)\)/g, (_, label: string, resourceId: string) => {
-      const decodedId = decodeHtml(resourceId);
-      const encodedId = escapeHtml(encodeURIComponent(decodedId));
-      if (!courseId) {
-        return `<button class="inline max-w-full p-0 text-left text-[0.9em] font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900" data-moodle-resource-id="${encodedId}" type="button">${label}</button>`;
-      }
-      return `<a class="inline max-w-full text-left text-[0.9em] font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900" data-moodle-resource-id="${encodedId}" href="${escapeHtml(resourceHref(courseId, decodedId))}">${label}</a>`;
+      return renderMoodleResourceLink(label, resourceId, courseId);
+    })
+    .replace(/\[moodle-resource:([^\]]+)\]/g, (_, resourceId: string) => {
+      return renderMoodleResourceLink("Moodle resource", resourceId, courseId);
     })
     .replace(/\[([^\]]+)\]\((?!moodle-resource:)([^)]+)\)/g, (_, label: string, href: string) => {
       const decodedHref = decodeHtml(href).trim();
       if (/^https?:\/\//i.test(decodedHref) || decodedHref.startsWith("/")) {
-        return `<a class="font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900" href="${escapeHtml(decodedHref)}" rel="noreferrer" target="_blank">${label}</a>`;
+        return `<a class="font-medium text-muted-foreground underline decoration-border underline-offset-2 transition-colors hover:text-foreground" href="${escapeHtml(decodedHref)}" rel="noreferrer" target="_blank">${label}</a>`;
       }
       return label;
     })
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/`([^`]+)`/g, "<code class=\"rounded bg-secondary px-1 py-0.5 font-mono text-[0.85em]\">$1</code>");
+}
+
+function renderMoodleResourceLink(label: string, resourceId: string, courseId: string | null): string {
+  const decodedId = decodeHtml(resourceId).trim();
+  const encodedId = escapeHtml(encodeURIComponent(decodedId));
+  const safeLabel = label.trim() ? label : "Moodle resource";
+  if (!courseId) {
+    return `<button class="inline max-w-full p-0 text-left text-[0.9em] font-medium text-muted-foreground underline decoration-border underline-offset-2 transition-colors hover:text-foreground" data-moodle-resource-id="${encodedId}" type="button">${safeLabel}</button>`;
+  }
+  return `<a class="inline max-w-full text-left text-[0.9em] font-medium text-muted-foreground underline decoration-border underline-offset-2 transition-colors hover:text-foreground" data-moodle-resource-id="${encodedId}" href="${escapeHtml(resourceHref(courseId, decodedId))}">${safeLabel}</a>`;
 }
 
 function resourceHref(courseId: string, resourceId: string): string {
@@ -2658,6 +2818,10 @@ function resourceHref(courseId: string, resourceId: string): string {
 
 function isHtmlCommentBlock(block: string): boolean {
   return /^<!--[\s\S]*-->$/.test(block.trim());
+}
+
+function isHorizontalRuleBlock(block: string): boolean {
+  return /^(?:-{3,}|\*{3,}|_{3,})$/.test(block.trim());
 }
 
 function isTrustedFigureBlock(block: string): boolean {
@@ -2855,6 +3019,14 @@ function resourceTitle(view: TaskViewResponse | null, materials: Material[], res
   return view?.resources.find((resource) => resource.resourceId === resourceId)?.title
     ?? materials.find((material) => material.id === resourceId)?.name
     ?? null;
+}
+
+function materialForPDFResource(view: TaskViewResponse | null, materials: Material[], resourceId: string): Material {
+  return materials.find((material) => material.id === resourceId) ?? {
+    id: resourceId,
+    name: resourceTitle(view, materials, resourceId) ?? "PDF",
+    fileType: "pdf",
+  };
 }
 
 async function studyPipelineRequest<T>(path: string, init: RequestInit = {}): Promise<T> {

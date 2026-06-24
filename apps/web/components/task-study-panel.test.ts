@@ -442,6 +442,37 @@ describe("script markdown renderer", () => {
     expect(html).not.toContain("ai_used");
   });
 
+  test("renders standalone markdown separators as dividers", () => {
+    const html = renderScriptMarkdownHTML([
+      "Aufgabentext.",
+      "",
+      "---",
+      "",
+      "Verknüpfte Lösung",
+    ].join("\n"));
+
+    expect(html).toContain("<hr");
+    expect(html).toContain("border-border");
+    expect(html).not.toContain("<p>---</p>");
+  });
+
+  test("renders Moodle resource links with neutral UI color", () => {
+    const html = renderScriptMarkdownHTML("Source: [Moodle resource](moodle-resource:sheet-01)", "22584");
+
+    expect(html).toContain("text-muted-foreground");
+    expect(html).toContain("decoration-border");
+    expect(html).not.toContain("text-blue-700");
+    expect(html).not.toContain("hover:text-blue-900");
+  });
+
+  test("renders raw Moodle resource markers as resource links", () => {
+    const html = renderScriptMarkdownHTML("Linked solution: [moodle-resource:952057]", "22583");
+
+    expect(html).toContain('data-moodle-resource-id="952057"');
+    expect(html).toContain("Moodle resource");
+    expect(html).not.toContain("[moodle-resource:952057]");
+  });
+
   test("renders display math even when Codex leaves blank lines inside fences", () => {
     const html = renderScriptMarkdownHTML([
       "$$",
